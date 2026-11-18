@@ -15,6 +15,7 @@ import {
   AIRPORT_TIERS,
   HQ_TIERS,
   ISLAND_RESORT_TIERS,
+  FURNITURE_MILL_TIERS,
   fleetMissionState,
   marketState,
   stormState,
@@ -38,6 +39,12 @@ import {
   getSawmillVisualTier,
   getHarborVisualTier,
   getPlaneData,
+  getFranchiseRoyaltyPer10s,
+  getRealEstateIncomePer10s,
+  craftFurnitureBatch,
+  tickTradeExpo,
+  recordExportItem,
+  logTransaction,
   evaluateBadgeUnlocks,
   recordRevenue,
   addVipXp,
@@ -214,6 +221,8 @@ class TimberPortEngine {
     this.autoFleetIncomeTimer = 0;
     this.hqDivTimer = 0;
     this.resortTickTimer = 0;
+    this.furnitureCraftTimer = 0;
+    this.empirePhase6Timer = 0;
     this.revSampleTimer = 0;
     this.stockAccum = 0;
     this.chopCooldown = 0;
@@ -303,6 +312,12 @@ class TimberPortEngine {
       },
       onResortChange: () => {
         this.world?.syncResortTier(gameState.islandResortTier || 0);
+      },
+      onFurnitureMillChange: () => {
+        this.world?.syncFurnitureMillTier(gameState.furnitureMillTier || 0);
+      },
+      onLighthouseChange: () => {
+        this.world?.syncLighthouseTier(gameState.lighthouseTier || 0);
       },
       onLiveryChange: () => this.applyFleetLiveries(),
       onPlaneChange: () => this.rebuildAirSeaFleet(),
@@ -963,12 +978,16 @@ class TimberPortEngine {
 
     const distToHarbor = this.playerPos.distanceTo(ZONES.harborExport);
     const distToSawOut = this.playerPos.distanceTo(ZONES.sawOutput);
+    const distToFurniture = this.playerPos.distanceTo(ZONES.furnitureMill);
     const distToVeh = this.playerPos.distanceTo(this.vehiclePos);
     const distToYachtBerth = this.playerPos.distanceTo(ZONES.yachtBerth);
     const distToRunway = this.playerPos.distanceTo(ZONES.runwayStart);
 
     if (distToHarbor < 4.5 && (gameState.planks > 0 || gameState.pallets > 0 || gameState.cannedFish > 0)) {
       return { action: 'export', key: 'SPACE', label: 'Xuất khẩu Hợp đồng Cảng' };
+    }
+    if (distToFurniture < 4.2 && (gameState.furniture || 0) > 0) {
+      return { action: 'sell_furniture', key: 'SPACE', label: 'Bán nhanh Nội thất Xuất khẩu' };
     }
     if (distToSawOut < 4.2 && (gameState.planks > 0 || gameState.pallets > 0)) {
       return { action: 'sell_saw', key: 'SPACE', label: 'Bán nhanh Ván & Pallet' };
@@ -1001,6 +1020,7 @@ class TimberPortEngine {
     else if (prompt.action === 'vehicle') this.toggleVehicle();
     else if (prompt.action === 'export') this.handleDeliverContract(true);
     else if (prompt.action === 'sell_saw') this.sellAllAtSawmill();
+    else if (prompt.action === 'sell_furniture') this.sellAllFurniture();
   }
 
   boardYacht() {
@@ -1161,6 +1181,26 @@ class TimberPortEngine {
     saveGameServer();
   }
 
+  sellAllFurniture() {
+    const qty = Math.floor(gameState.furniture || 0);
+    if (qty <= 0) return false;
+    const mult = getRevenueMultiplier();
+    const earned = Math.round(qty * 320 * mult);
+    gameState.furniture = 0;
+    gameState.cash += earned;
+    gameState.totalExported += qty;
+    recordRevenue('furniture', earned);
+    recordExportItem('furniture', qty, earned);
+    logTransaction('export', `Xuất xưởng ${qty} Bộ Nội thất`, earned, 0);
+    addSeasonXp(Math.min(35, qty * 6));
+    sound.playCash();
+    this.spawnWorldText(ZONES.furnitureMill, `+$${earned.toLocaleString()} 🛋️`, 'cash');
+    this.world.spawnParticles(ZONES.furnitureMill, 0xfbbf24, 6);
+    saveGameServer();
+    this.ui.refreshHUD();
+    return true;
+  }
+
   sellCommodityAtMarket(key) {
     const def = MARKET_COMMODITIES.find((c) => c.key === key);
     const entry = marketState.items[key];
@@ -1171,7 +1211,10 @@ class TimberPortEngine {
     const earned = qty * unitPrice;
     gameState[key] = 0;
     gameState.cash += earned;
-    recordRevenue('market', earned);
+    gameState.totalExported += qty;
+    recordRevenue(key === 'furniture' ? 'furniture' : 'market', earned);
+    recordExportItem(key, qty, earned);
+    logTransaction('export', `Bán Sàn ${qty} ${def.unit} ${def.name}`, earned, 0);
     gameState.xp += Math.min(90, qty * 2);
     if (gameState.xp >= gameState.level * 120) gameState.level++;
     addSeasonXp(Math.min(35, Math.max(5, Math.ceil(qty / 2))));
@@ -1223,6 +1266,10 @@ class TimberPortEngine {
       const cashGain = Math.round(ct.rewardCash * getContractMultiplier());
       gameState.cash += cashGain;
       recordRevenue('contracts', cashGain);
+      recordExportItem('planks', ct.reqPlanks, Math.round(cashGain * 0.45));
+      recordExportItem('pallets', ct.reqPallets, Math.round(cashGain * 0.3));
+      recordExportItem('cannedFish', ct.reqCanned, Math.round(cashGain * 0.25));
+      logTransaction('export', `Hoàn thành ${ct.title}`, cashGain, ct.rewardGems);
       gameState.gems += ct.rewardGems;
       gameState.contractsCompleted += 1;
       shiftSession.contractsDone += 1;
@@ -1303,6 +1350,8 @@ class TimberPortEngine {
     this.world.syncIslandTier(gameState.islandStationTier || 0);
     this.world.syncHqTier(gameState.hqTier || 0);
     this.world.syncResortTier(gameState.islandResortTier || 0);
+    this.world.syncFurnitureMillTier(gameState.furnitureMillTier || 0);
+    this.world.syncLighthouseTier(gameState.lighthouseTier || 0);
     this.rebuildAirSeaFleet();
     this.lastVisualBuffer = -1;
     this.lastVisualPlanks = -1;
@@ -1577,7 +1626,7 @@ class TimberPortEngine {
         this.hqDivTimer = 0;
         const hqDef = HQ_TIERS.find((h) => h.tier === gameState.hqTier);
         if (hqDef) {
-          const divAdd = Math.round((hqDef.dividendPerMin / 4) * getPrestigeMultiplier());
+          const divAdd = Math.round((hqDef.dividend45s / 3) * getPrestigeMultiplier());
           gameState.pendingDividendCash = (gameState.pendingDividendCash || 0) + divAdd;
         }
       }
@@ -1597,6 +1646,40 @@ class TimberPortEngine {
           }
         }
       }
+    }
+
+    // Luxury Furniture Mill Auto-Crafting Loop
+    const millLv = gameState.furnitureMillTier || 0;
+    if (millLv > 0) {
+      const millDef = FURNITURE_MILL_TIERS.find((t) => t.tier === millLv) || FURNITURE_MILL_TIERS[0];
+      this.furnitureCraftTimer += dt;
+      if (this.furnitureCraftTimer >= millDef.craftSec) {
+        this.furnitureCraftTimer = 0;
+        const crafted = craftFurnitureBatch(false);
+        if (crafted.ok) {
+          this.syncSawmillVisuals();
+        }
+      }
+    }
+
+    // Global Franchise & Harbor Real Estate 5s Passive Yields
+    this.empirePhase6Timer += dt;
+    if (this.empirePhase6Timer >= 5.0) {
+      this.empirePhase6Timer = 0;
+      const fRate = getFranchiseRoyaltyPer10s();
+      if (fRate > 0) {
+        gameState.franchiseAccumCash = (gameState.franchiseAccumCash || 0) + Math.round(fRate / 2);
+      }
+      const reRate = getRealEstateIncomePer10s();
+      if (reRate > 0) {
+        gameState.realEstateAccumCash = (gameState.realEstateAccumCash || 0) + Math.round(reRate / 2);
+      }
+    }
+
+    // Trade Expo Rotation
+    const newExpo = tickTradeExpo(dt);
+    if (newExpo) {
+      this.ui.toast(`🎪 Hội Chợ ${newExpo.name}: ${newExpo.desc}!`);
     }
 
     // Sea Storm & Aerial Relief Challenge Timer

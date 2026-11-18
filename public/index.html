@@ -70,6 +70,10 @@
       <span class="res-item hide-sm" title="Cá hộp xuất khẩu">
         🥫 <span class="res-val" id="val-canned">0</span>
       </span>
+      <span class="meta-sep hide-sm" aria-hidden="true">·</span>
+      <span class="res-item hide-sm" title="Nội thất cao cấp xuất khẩu">
+        🛋️ <span class="res-val" id="val-furniture">0</span>
+      </span>
       <span class="meta-sep" aria-hidden="true">·</span>
       <span class="res-item res-gems" title="Đá quý thương mại">
         💎 <span class="res-val" id="val-gems">30</span>
@@ -251,10 +255,20 @@
         <button type="button" class="hub-tab active" data-tab="upgrades" role="tab">🏭 Xưởng &amp; Quản lý</button>
         <button type="button" class="hub-tab" data-tab="contracts" role="tab">🚢 Hợp đồng &amp; Sàn giá</button>
         <button type="button" class="hub-tab" data-tab="finance" role="tab">📊 Tài chính &amp; Cổ phiếu</button>
+        <button type="button" class="hub-tab" data-tab="boardroom" role="tab">🌐 Phòng họp &amp; Toàn cầu</button>
         <button type="button" class="hub-tab" data-tab="season" role="tab">🎡 Vòng quay &amp; Sự kiện</button>
         <button type="button" class="hub-tab" data-tab="locker" role="tab">✈️ Showroom Hạm đội</button>
         <button type="button" class="hub-tab" data-tab="achievements" role="tab">🏆 Thành tựu <span id="badge-ach" class="tab-badge tabular-nums" hidden>0</span></button>
         <button type="button" class="hub-tab" data-tab="vip" role="tab">👑 VIP &amp; Chuyển sinh</button>
+      </div>
+
+      <!-- Electronic Market Ticker & Instant Search Utility Bar -->
+      <div class="hub-utility-bar">
+        <div id="hub-ticker-strip" class="hub-ticker-strip tabular-nums" aria-label="Bảng giá điện tử trực tiếp"></div>
+        <div class="hub-search-wrap">
+          <input type="search" id="hub-search-input" class="hub-search-input" placeholder="Tìm nhanh cổ phiếu, đại lý, nâng cấp..." autocomplete="off">
+          <button type="button" id="btn-hub-search-clear" class="hub-search-clear" title="Xóa tìm kiếm" hidden>✕</button>
+        </div>
       </div>
 
       <!-- 4-Column Executive KPI Summary Header -->
@@ -342,7 +356,8 @@
       <div class="notif-toolbar">
         <div class="notif-filters" role="tablist">
           <button type="button" class="notif-filter-btn active" data-notif-filter="all">Tất cả</button>
-          <button type="button" class="notif-filter-btn" data-notif-filter="income">Doanh thu</button>
+          <button type="button" class="notif-filter-btn" data-notif-filter="export">Xuất khẩu</button>
+          <button type="button" class="notif-filter-btn" data-notif-filter="bank">Ngân hàng</button>
           <button type="button" class="notif-filter-btn" data-notif-filter="stocks">Cổ phiếu</button>
           <button type="button" class="notif-filter-btn" data-notif-filter="fleet">Hạm đội</button>
         </div>

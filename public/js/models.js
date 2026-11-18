@@ -1535,6 +1535,145 @@ export function createStormBeaconModel() {
   return g;
 }
 
+export function createFurnitureFactoryModel(lowSpec = false) {
+  const g = new THREE.Group();
+  const wallMat = new THREE.MeshStandardMaterial({ color: 0xf1f5f9, roughness: 0.52 });
+  const timberMat = new THREE.MeshStandardMaterial({ color: 0x9a3412, roughness: 0.62 });
+  const copperMat = new THREE.MeshStandardMaterial({ color: 0xd97706, roughness: 0.3, metalness: 0.72 });
+  const glassMat = new THREE.MeshStandardMaterial({ color: 0x38bdf8, roughness: 0.14, metalness: 0.55 });
+  const darkMat = new THREE.MeshStandardMaterial({ color: 0x1e293b, roughness: 0.5, metalness: 0.55 });
+
+  // Tier 1: Main Craft Workshop Hall
+  const tier1Group = new THREE.Group();
+  tier1Group.visible = false;
+  const plinth = new THREE.Mesh(new THREE.BoxGeometry(9.6, 0.35, 7.6), darkMat);
+  plinth.position.y = 0.175;
+  plinth.receiveShadow = !lowSpec;
+  const hall = new THREE.Mesh(new THREE.BoxGeometry(8.4, 3.6, 6.2), wallMat);
+  hall.position.y = 2.15;
+  hall.castShadow = !lowSpec;
+  const roof = new THREE.Mesh(new THREE.ConeGeometry(5.6, 1.8, 4), timberMat);
+  roof.rotation.y = Math.PI / 4;
+  roof.scale.set(1.25, 1, 0.92);
+  roof.position.y = 4.85;
+  const trim = new THREE.Mesh(new THREE.BoxGeometry(8.6, 0.35, 6.4), copperMat);
+  trim.position.y = 3.92;
+  tier1Group.add(plinth, hall, roof, trim);
+  g.add(tier1Group);
+
+  // Tier 2: Glass Furniture Showroom Wing & Twin Extractors
+  const tier2Group = new THREE.Group();
+  tier2Group.visible = false;
+  const wing = new THREE.Mesh(new THREE.BoxGeometry(4.2, 2.8, 4.8), glassMat);
+  wing.position.set(-5.8, 1.7, 0.4);
+  const wingFrame = new THREE.Mesh(new THREE.BoxGeometry(4.4, 0.28, 5.0), copperMat);
+  wingFrame.position.set(-5.8, 3.2, 0.4);
+  [-1.8, 1.8].forEach((sx) => {
+    const silo = new THREE.Mesh(new THREE.CylinderGeometry(0.62, 0.68, 4.4, 8), darkMat);
+    silo.position.set(sx, 2.5, -3.5);
+    tier2Group.add(silo);
+  });
+  tier2Group.add(wing, wingFrame);
+  g.add(tier2Group);
+
+  // Tier 3: Royal Export Gallery Sign + Animated Display Pedestal
+  const tier3Group = new THREE.Group();
+  tier3Group.visible = false;
+  const crown = new THREE.Mesh(new THREE.BoxGeometry(4.8, 1.2, 1.2), copperMat);
+  crown.position.set(0, 6.0, 0);
+  const cncSpinner = new THREE.Group();
+  cncSpinner.position.set(-5.8, 0.85, 0.4);
+  const tableTop = new THREE.Mesh(new THREE.CylinderGeometry(1.1, 1.1, 0.22, 10), timberMat);
+  const chairBack = new THREE.Mesh(new THREE.BoxGeometry(0.55, 0.9, 0.14), copperMat);
+  chairBack.position.set(0, 0.55, -0.35);
+  cncSpinner.add(tableTop, chairBack);
+  tier3Group.add(crown, cncSpinner);
+  g.add(tier3Group);
+
+  // Accent light gated OFF on <8GB RAM low-spec laptops
+  const accentLight = new THREE.PointLight(0xfbbf24, 1.65, 18, 1.7);
+  accentLight.position.set(-3.2, 3.8, 3.6);
+  accentLight.visible = false;
+  g.add(accentLight);
+
+  g.userData = { tier1Group, tier2Group, tier3Group, cncSpinner, accentLight };
+  return g;
+}
+
+export function createLighthouseModel(lowSpec = false) {
+  const g = new THREE.Group();
+  const rockMat = new THREE.MeshStandardMaterial({ color: 0x475569, roughness: 0.92, flatShading: true });
+  const whiteMat = new THREE.MeshStandardMaterial({ color: 0xf8fafc, roughness: 0.48 });
+  const crimsonMat = new THREE.MeshStandardMaterial({ color: 0xdc2626, roughness: 0.42 });
+  const brassMat = new THREE.MeshStandardMaterial({ color: 0xf59e0b, roughness: 0.26, metalness: 0.8 });
+  const glassMat = new THREE.MeshBasicMaterial({ color: 0xfef08a });
+
+  // Tier 1: Coastal Rock Base + Tapered Lighthouse Tower + Lantern Room
+  const tier1Group = new THREE.Group();
+  tier1Group.visible = false;
+  const rockBase = new THREE.Mesh(new THREE.DodecahedronGeometry(4.2, 0), rockMat);
+  rockBase.scale.set(1.2, 0.45, 1.1);
+  rockBase.position.y = 0.4;
+  rockBase.receiveShadow = !lowSpec;
+
+  const lowerBand = new THREE.Mesh(new THREE.CylinderGeometry(1.65, 2.15, 4.2, 10), whiteMat);
+  lowerBand.position.y = 2.8;
+  lowerBand.castShadow = !lowSpec;
+  const midBand = new THREE.Mesh(new THREE.CylinderGeometry(1.32, 1.65, 3.6, 10), crimsonMat);
+  midBand.position.y = 6.7;
+  midBand.castShadow = !lowSpec;
+  const upperBand = new THREE.Mesh(new THREE.CylinderGeometry(1.08, 1.32, 2.8, 10), whiteMat);
+  upperBand.position.y = 9.9;
+
+  const balcony = new THREE.Mesh(new THREE.CylinderGeometry(1.58, 1.45, 0.35, 12), rockMat);
+  balcony.position.y = 11.4;
+  const lantern = new THREE.Mesh(new THREE.CylinderGeometry(0.92, 0.96, 1.5, 10), glassMat);
+  lantern.position.y = 12.25;
+  const dome = new THREE.Mesh(new THREE.ConeGeometry(1.18, 1.35, 10), crimsonMat);
+  dome.position.y = 13.6;
+
+  // Rotating Fresnel reflector bar inside/above lantern
+  const beaconHead = new THREE.Group();
+  beaconHead.position.y = 12.25;
+  const lensBar = new THREE.Mesh(new THREE.BoxGeometry(2.6, 0.42, 0.55), brassMat);
+  beaconHead.add(lensBar);
+
+  tier1Group.add(rockBase, lowerBand, midBand, upperBand, balcony, lantern, dome, beaconHead);
+  g.add(tier1Group);
+
+  // Tier 2: Keeper Cottage Annex
+  const tier2Group = new THREE.Group();
+  tier2Group.visible = false;
+  const cottage = new THREE.Mesh(new THREE.BoxGeometry(3.4, 2.2, 2.8), whiteMat);
+  cottage.position.set(2.9, 1.8, 0.5);
+  const cRoof = new THREE.Mesh(new THREE.ConeGeometry(2.5, 1.3, 4), crimsonMat);
+  cRoof.rotation.y = Math.PI / 4;
+  cRoof.position.set(2.9, 3.55, 0.5);
+  tier2Group.add(cottage, cRoof);
+  g.add(tier2Group);
+
+  // Tier 3: Imperial Brass Spire & Signal Array
+  const tier3Group = new THREE.Group();
+  tier3Group.visible = false;
+  const spire = new THREE.Mesh(new THREE.CylinderGeometry(0.08, 0.22, 3.2, 6), brassMat);
+  spire.position.y = 15.6;
+  const halo = new THREE.Mesh(new THREE.TorusGeometry(1.75, 0.14, 8, 20), brassMat);
+  halo.rotation.x = Math.PI / 2;
+  halo.position.y = 11.65;
+  tier3Group.add(spire, halo);
+  g.add(tier3Group);
+
+  // Rotating Maritime PointLight gated OFF on <8GB RAM low-spec laptops
+  const beamLight = new THREE.PointLight(0xfef08a, 2.2, 34, 1.5);
+  beamLight.position.set(0, 12.6, 2.2);
+  beamLight.visible = false;
+  g.add(beamLight);
+
+  g.userData = { tier1Group, tier2Group, tier3Group, beaconHead, beamLight };
+  return g;
+}
+
+
 
 
 

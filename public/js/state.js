@@ -144,7 +144,8 @@ export const ACHIEVEMENTS = [
 export const MARKET_COMMODITIES = [
   { key: 'planks', name: 'Ván Gỗ Xẻ', unit: 'thanh', basePrice: 24, color: '#f59e0b' },
   { key: 'pallets', name: 'Kiện Pallet Đai Thép', unit: 'kiện', basePrice: 115, color: '#10b981' },
-  { key: 'cannedFish', name: 'Cá Hộp Xuất Khẩu', unit: 'hộp', basePrice: 75, color: '#38bdf8' }
+  { key: 'cannedFish', name: 'Cá Hộp Xuất Khẩu', unit: 'hộp', basePrice: 75, color: '#38bdf8' },
+  { key: 'furniture', name: 'Nội Thất Xuất Khẩu', unit: 'bộ', basePrice: 280, color: '#f43f5e' }
 ];
 
 export const marketState = {
@@ -152,13 +153,17 @@ export const marketState = {
   items: {
     planks: { mult: 1.05, history: [0.96, 1.0, 1.02, 0.99, 1.04, 1.08, 1.03, 1.05] },
     pallets: { mult: 1.12, history: [1.0, 0.98, 1.05, 1.09, 1.14, 1.1, 1.08, 1.12] },
-    cannedFish: { mult: 0.98, history: [1.04, 1.01, 0.97, 0.95, 0.99, 1.02, 1.0, 0.98] }
+    cannedFish: { mult: 0.98, history: [1.04, 1.01, 0.97, 0.95, 0.99, 1.02, 1.0, 0.98] },
+    furniture: { mult: 1.15, history: [1.02, 1.06, 1.04, 1.1, 1.12, 1.09, 1.14, 1.15] }
   }
 };
 
 export function updateMarketPrices() {
   const surged = [];
   for (const c of MARKET_COMMODITIES) {
+    if (!marketState.items[c.key]) {
+      marketState.items[c.key] = { mult: 1.05, history: [1.0, 1.02, 1.05] };
+    }
     const entry = marketState.items[c.key];
     // Mean-reverting stochastic step within [0.82, 1.48]
     const pull = (1.08 - entry.mult) * 0.25;
@@ -257,6 +262,53 @@ export const FLEET_LIVERIES = [
 ];
 
 export const ENGINE_MAX_TIER = 5;
+
+// Phase 6: Luxury Furniture Mill, Coastal Lighthouse, Global Franchises, Bank, Real Estate, Trade Expo & Alliance
+export const FURNITURE_MILL_TIERS = [
+  { tier: 1, name: 'Xưởng Mộc Mỹ Nghệ', costCash: 3600, cycleSec: 6.5, reqPlanks: 4, reqPallets: 0, output: 1, desc: 'Chế biến 4 Ván gỗ thành 1 Bộ Nội thất Xuất khẩu biên lợi nhuận cao.' },
+  { tier: 2, name: 'Nhà Máy Nội Thất Cao Cấp', costCash: 12800, cycleSec: 4.5, reqPlanks: 6, reqPallets: 1, output: 2, desc: 'Dây chuyền CNC tinh chế Ván & Pallet thành 2 Bộ Nội thất mỗi chu kỳ.' },
+  { tier: 3, name: 'Tổ Hợp Xuất Khẩu Hoàng Gia', costCash: 42000, cycleSec: 3.2, reqPlanks: 8, reqPallets: 1, output: 3, desc: 'Nhà máy nội thất tự động tối thượng, sản xuất 3 Bộ Nội thất cao cấp mỗi nhịp.' }
+];
+
+export const LIGHTHOUSE_TIERS = [
+  { tier: 1, name: 'Hải Đăng Mũi Tây', costCash: 2900, contractBonus: 0.14, desc: 'Định hướng tàu hàng vào vịnh an toàn, tăng +14% thưởng Hợp đồng & Xuất khẩu.' },
+  { tier: 2, name: 'Tháp Đèn Xoay Hàng Hải', costCash: 10500, contractBonus: 0.28, desc: 'Nâng tầm chiếu sáng toàn vùng biển, tăng +28% thưởng Hợp đồng & Xuất khẩu.' },
+  { tier: 3, name: 'Hải Đăng Hoàng Gia Đế Chế', costCash: 34000, contractBonus: 0.48, desc: 'Ngọn hải đăng tối thượng tăng +48% toàn bộ giá trị Hợp đồng & Đấu giá.' }
+];
+
+export const GLOBAL_FRANCHISES = [
+  { id: 'tokyo', city: 'Tokyo', region: 'Đông Á', mapX: 0.84, mapY: 0.40, costCash: 4200, reqContracts: 1, royaltyPer10s: 135, exportBonusPct: 8, desc: 'Đại lý phân phối gỗ xẻ & nội thất cao cấp khu vực Vịnh Tokyo.' },
+  { id: 'singapore', city: 'Singapore', region: 'Đông Nam Á', mapX: 0.74, mapY: 0.62, costCash: 9600, reqContracts: 2, royaltyPer10s: 260, exportBonusPct: 12, desc: 'Trung tâm trung chuyển hàng hải kết nối tuyến Pallet & Cá hộp.' },
+  { id: 'dubai', city: 'Dubai', region: 'Trung Đông', mapX: 0.60, mapY: 0.48, costCash: 19500, reqContracts: 4, royaltyPer10s: 480, exportBonusPct: 16, desc: 'Showroom nội thất siêu sang phục vụ các tổ hợp khách sạn Vịnh Ả Rập.' },
+  { id: 'rotterdam', city: 'Rotterdam', region: 'Châu Âu', mapX: 0.46, mapY: 0.28, costCash: 36000, reqContracts: 6, royaltyPer10s: 840, exportBonusPct: 22, desc: 'Cảng nhập khẩu gỗ công nghiệp lớn nhất Bắc Âu với hợp đồng dài hạn.' },
+  { id: 'vancouver', city: 'Vancouver', region: 'Bắc Mỹ', mapX: 0.17, mapY: 0.30, costCash: 68000, reqContracts: 9, royaltyPer10s: 1550, exportBonusPct: 30, desc: 'Tổng đại lý Thái Bình Dương hoàn thiện mạng lưới nhượng quyền 5 châu.' }
+];
+
+export const BANK_LOAN_PACKAGES = [
+  { id: 'loan_sme', name: 'Gói Tín Dụng Mở Rộng', principal: 4500, interestPct: 12, minNetWorth: 0, autoDeductRate: 0.15, desc: 'Giải ngân nhanh $4,500 mở xưởng & tàu; tự trích 15% doanh thu trả dần.' },
+  { id: 'loan_corp', name: 'Vốn Lưu Động Tập Đoàn', principal: 18000, interestPct: 15, minNetWorth: 12000, autoDeductRate: 0.15, desc: 'Hạn mức $18,000 xây Nhà máy Nội thất & Trụ sở; trả góp an toàn 15%.' },
+  { id: 'loan_global', name: 'Trái Phiếu Thương Mại Toàn Cầu', principal: 60000, interestPct: 18, minNetWorth: 45000, autoDeductRate: 0.15, desc: 'Nguồn vốn $60,000 thâu tóm Nhượng quyền Quốc tế & Bất động sản Cảng.' }
+];
+
+export const REAL_ESTATE_CATALOG = [
+  { id: 're_coldstorage', name: 'Kho Lạnh Cảng Biển', icon: '❄️', baseCost: 3400, scale: 1.95, cashPer10s: 110, netValue: 5200, desc: 'Cho thuê kho bảo quản thủy sản xuất khẩu tại bến cảng.' },
+  { id: 're_office', name: 'Tháp Văn Phòng Thương Mại', icon: '🏙️', baseCost: 9200, scale: 2.0, cashPer10s: 285, netValue: 13500, desc: 'Cho các hãng logistics quốc tế thuê trụ sở điều hành.' },
+  { id: 're_auction_hall', name: 'Sàn Đấu Giá Hàng Hải', icon: '🏛️', baseCost: 22000, scale: 2.1, cashPer10s: 660, netValue: 32000, desc: 'Thu phí giao dịch & hoa hồng mỗi phiên đấu giá container.' },
+  { id: 're_bay_complex', name: 'Tổ Hợp Thương Mại Vịnh', icon: '🌆', baseCost: 54000, scale: 2.2, cashPer10s: 1520, netValue: 78000, desc: 'Trung tâm hội nghị, khách sạn & bến du thuyền quốc tế.' }
+];
+
+export const TRADE_EXPOS = [
+  { id: 'expo_furniture', name: 'Triển Lãm Nội Thất Milan', target: 'furniture', bonusPct: 55, duration: 95, desc: 'Tăng +55% giá trị Nội Thất Xuất Khẩu trên sàn & hợp đồng.' },
+  { id: 'expo_maritime', name: 'Hội Chợ Hàng Hải Singapore', target: 'contracts', bonusPct: 45, duration: 95, desc: 'Tăng +45% thưởng Hợp đồng Cảng & Hợp đồng Liên minh.' },
+  { id: 'expo_timber', name: 'Triển Lãm Gỗ Xanh Bắc Âu', target: 'sawmill', bonusPct: 40, duration: 95, desc: 'Tăng +40% doanh thu Ván Gỗ Xẻ & Kiện Pallet.' }
+];
+
+export const expoState = {
+  current: TRADE_EXPOS[0],
+  timeLeft: 95,
+  cooldown: 0,
+  index: 0
+};
 
 export const STOCK_TICKERS = [
   { symbol: 'TMBR', name: 'Tập Đoàn Gỗ Timber', sector: 'Lâm nghiệp & Xưởng', basePrice: 85, color: '#f59e0b' },
@@ -409,6 +461,8 @@ export function getCashPerMinute() {
   const resortPerMin = resortDef ? resortDef.cashPer10s * 6 * getPrestigeMultiplier() : 0;
   const hqDef = HQ_TIERS.find((h) => h.tier === (gameState.hqTier || 0));
   const hqDivPerMin = hqDef ? Math.round((hqDef.dividend45s * (60 / 45)) * getPrestigeMultiplier()) : 0;
+  const franchisePerMin = getFranchiseRoyaltyPer10s() * 6;
+  const realEstatePerMin = getRealEstateIncomePer10s() * 6;
   const logisticsPerMin = (gameState.logisticsTier || 0) * 140 * getRevenueMultiplier();
   const autoFleetPerMin = ((gameState.autoSeaFleet || 0) * 320 + (gameState.autoAirFleet || 0) * 480) * getRevenueMultiplier();
   const passiveEstimate = Math.round(
@@ -418,6 +472,8 @@ export function getCashPerMinute() {
     + yachtPerMin
     + resortPerMin
     + hqDivPerMin
+    + franchisePerMin
+    + realEstatePerMin
     + logisticsPerMin
     + autoFleetPerMin
   );
@@ -563,6 +619,47 @@ export function createDefaultState() {
       completedShifts: 0
     },
 
+    // Phase 6: Furniture Mill, Lighthouse, Franchises, Bank Loans, Real Estate & Alliance Exports
+    furniture: 0,
+    furnitureMillTier: 0,
+    lighthouseTier: 0,
+    totalFurnitureCrafted: 0,
+    unlockedFranchises: [],
+    franchiseAccumCash: 0,
+    activeLoan: null,
+    loansRepaidCount: 0,
+    realEstate: {
+      re_coldstorage: 0,
+      re_office: 0,
+      re_auction_hall: 0,
+      re_bay_complex: 0
+    },
+    realEstateAccumCash: 0,
+    allianceContract: {
+      id: 'al_init_1',
+      title: 'Liên Minh Thương Mại Á - Âu',
+      partner: 'EuroAsia Timber Guild',
+      reqPlanks: 16,
+      reqPallets: 3,
+      reqCanned: 3,
+      reqFurniture: 2,
+      rewardCash: 4800,
+      rewardGems: 48,
+      rewardRep: 120
+    },
+    allianceCompleted: 0,
+    allianceReputation: 0,
+    exportBreakdown: {
+      planks: 0,
+      pallets: 0,
+      cannedFish: 0,
+      furniture: 0,
+      revPlanks: 0,
+      revPallets: 0,
+      revCanned: 0,
+      revFurniture: 0
+    },
+
     // Cosmetics & Fleet
     equippedSkin: 'classic',
     unlockedSkins: ['classic'],
@@ -641,6 +738,39 @@ export function getHqMultiplierBonus() {
   return hq ? hq.revBonus : 0;
 }
 
+export function getLighthouseContractBonus() {
+  const lh = LIGHTHOUSE_TIERS.find((l) => l.tier === (gameState.lighthouseTier || 0));
+  return lh ? lh.contractBonus : 0;
+}
+
+export function getFranchiseBonusPct() {
+  const list = Array.isArray(gameState.unlockedFranchises) ? gameState.unlockedFranchises : [];
+  let pct = 0;
+  for (const f of GLOBAL_FRANCHISES) {
+    if (list.includes(f.id)) pct += f.exportBonusPct;
+  }
+  return pct;
+}
+
+export function getFranchiseRoyaltyPer10s() {
+  const list = Array.isArray(gameState.unlockedFranchises) ? gameState.unlockedFranchises : [];
+  let sum = 0;
+  for (const f of GLOBAL_FRANCHISES) {
+    if (list.includes(f.id)) sum += f.royaltyPer10s;
+  }
+  return Math.round(sum * getPrestigeMultiplier());
+}
+
+export function getRealEstateIncomePer10s() {
+  const re = gameState.realEstate || {};
+  let sum = 0;
+  for (const prop of REAL_ESTATE_CATALOG) {
+    const lv = re[prop.id] || 0;
+    if (lv > 0) sum += prop.cashPer10s * lv;
+  }
+  return Math.round(sum * getPrestigeMultiplier());
+}
+
 export function getRevenueMultiplier() {
   const branchMult = getActiveBranch().multiplier;
   const plankMult = 1 + ((gameState.plankValueTier || 1) - 1) * 0.35;
@@ -649,18 +779,24 @@ export function getRevenueMultiplier() {
   const prestigeMult = getPrestigeMultiplier();
   const badgeMult = 1 + getBadgeRevenueBonus();
   const hqMult = 1 + getHqMultiplierBonus();
+  const franchiseMult = 1 + getFranchiseBonusPct() / 100;
   const ev = activeEventState.current;
   const eventMult = ev && ev.multTarget === 'sawmill' ? 1 + ev.multBonus : 1.0;
+  const expo = expoState.current;
+  const expoMult = expo && expo.target === 'sawmill' ? 1 + expo.bonusPct / 100 : 1.0;
   let skinMult = 1.0;
   if (gameState.equippedSkin === 'captain') skinMult = 1.15;
   if (gameState.equippedSkin === 'gold_tycoon') skinMult = 1.25;
-  return branchMult * plankMult * vipMult * skinMult * mgrMult * prestigeMult * badgeMult * hqMult * eventMult;
+  return branchMult * plankMult * vipMult * skinMult * mgrMult * prestigeMult * badgeMult * hqMult * franchiseMult * eventMult * expoMult;
 }
 
 export function getContractMultiplier() {
   const ev = activeEventState.current;
   const eventMult = ev && ev.multTarget === 'contracts' ? 1 + ev.multBonus : 1.0;
-  return getRevenueMultiplier() * (1 + getManagerBonus('contractBonus')) * eventMult;
+  const expo = expoState.current;
+  const expoMult = expo && expo.target === 'contracts' ? 1 + expo.bonusPct / 100 : 1.0;
+  const lhMult = 1 + getLighthouseContractBonus();
+  return getRevenueMultiplier() * (1 + getManagerBonus('contractBonus')) * eventMult * expoMult * lhMult;
 }
 
 export function getUpgradeCost(item) {
@@ -712,12 +848,17 @@ export function recordRevenue(source, amount) {
   if (!amount || amount <= 0) return;
   const rounded = Math.round(amount);
   if (!gameState.revenueStats) {
-    gameState.revenueStats = { sawmill: 0, contracts: 0, fishery: 0, market: 0, offline: 0, stocks: 0, resort: 0 };
+    gameState.revenueStats = { sawmill: 0, contracts: 0, fishery: 0, market: 0, offline: 0, stocks: 0, resort: 0, furniture: 0, franchise: 0, realestate: 0 };
   }
   if (!(source in gameState.revenueStats)) {
     gameState.revenueStats[source] = 0;
   }
   gameState.revenueStats[source] += rounded;
+
+  // Automatic safe loan repayment on positive earnings
+  if (gameState.activeLoan && gameState.activeLoan.remaining > 0 && source !== 'offline') {
+    processLoanAutoDeduct(rounded);
+  }
 
   shiftSession.cashEarned += rounded;
   if (!gameState.personalBests) {
@@ -922,6 +1063,12 @@ export function performPrestige() {
   gameState.resortAccumGems = 0;
   gameState.yachtEngineTier = 1;
   gameState.planeEngineTier = 1;
+  gameState.furniture = 0;
+  gameState.furnitureMillTier = 0;
+  gameState.lighthouseTier = 0;
+  gameState.franchiseAccumCash = 0;
+  gameState.activeLoan = null;
+  gameState.realEstateAccumCash = 0;
   gameState.stockPortfolio = {
     TMBR: { shares: 0, avgPrice: 0 },
     PORT: { shares: 0, avgPrice: 0 },
@@ -934,6 +1081,7 @@ export function performPrestige() {
   gameState.padProgress = {};
   gameState.vipRushOrder = null;
   gameState.vipRushCooldown = 15;
+  generateAllianceContract();
   fleetMissionState.sea = null;
   fleetMissionState.air = null;
   stormState.active = false;
@@ -1441,7 +1589,9 @@ export function claimDividendYield() {
 export function getTotalPendingYields() {
   return Math.floor(gameState.yachtAccumCash || 0)
     + Math.floor(gameState.resortAccumCash || 0)
-    + Math.floor(gameState.pendingDividendCash || 0);
+    + Math.floor(gameState.pendingDividendCash || 0)
+    + Math.floor(gameState.franchiseAccumCash || 0)
+    + Math.floor(gameState.realEstateAccumCash || 0);
 }
 
 export function collectAllEmpireYields() {
@@ -1461,6 +1611,14 @@ export function collectAllEmpireYields() {
   const d = claimDividendYield();
   if (d) {
     cash += d.cash;
+  }
+  const f = claimFranchiseYield();
+  if (f) {
+    cash += f.cash;
+  }
+  const re = claimRealEstateYield();
+  if (re) {
+    cash += re.cash;
   }
   if (cash <= 0 && gems <= 0) return null;
   return { cash, gems };
@@ -1637,6 +1795,323 @@ export function hydrateLoadedState() {
   if (typeof gameState.unreadNotifications !== 'number') gameState.unreadNotifications = 0;
   if (!gameState.personalBests || typeof gameState.personalBests !== 'object') {
     gameState.personalBests = { bestShiftCash: 0, bestCpm: 0, bestSingleDeal: 0, totalStormRescues: 0, completedShifts: 0 };
+  }
+
+  // Phase 6 safe hydration
+  if (typeof gameState.furniture !== 'number') gameState.furniture = 0;
+  if (typeof gameState.furnitureMillTier !== 'number') gameState.furnitureMillTier = 0;
+  if (typeof gameState.lighthouseTier !== 'number') gameState.lighthouseTier = 0;
+  if (typeof gameState.totalFurnitureCrafted !== 'number') gameState.totalFurnitureCrafted = 0;
+  if (!Array.isArray(gameState.unlockedFranchises)) gameState.unlockedFranchises = [];
+  if (typeof gameState.franchiseAccumCash !== 'number') gameState.franchiseAccumCash = 0;
+  if (gameState.activeLoan && typeof gameState.activeLoan.remaining !== 'number') gameState.activeLoan = null;
+  if (typeof gameState.loansRepaidCount !== 'number') gameState.loansRepaidCount = 0;
+  if (!gameState.realEstate || typeof gameState.realEstate !== 'object') {
+    gameState.realEstate = { re_coldstorage: 0, re_office: 0, re_auction_hall: 0, re_bay_complex: 0 };
+  }
+  for (const prop of REAL_ESTATE_CATALOG) {
+    if (typeof gameState.realEstate[prop.id] !== 'number') gameState.realEstate[prop.id] = 0;
+  }
+  if (typeof gameState.realEstateAccumCash !== 'number') gameState.realEstateAccumCash = 0;
+  if (!gameState.allianceContract || typeof gameState.allianceContract !== 'object') {
+    generateAllianceContract();
+  }
+  if (typeof gameState.allianceCompleted !== 'number') gameState.allianceCompleted = 0;
+  if (typeof gameState.allianceReputation !== 'number') gameState.allianceReputation = 0;
+  if (!gameState.exportBreakdown || typeof gameState.exportBreakdown !== 'object') {
+    gameState.exportBreakdown = { planks: 0, pallets: 0, cannedFish: 0, furniture: 0, revPlanks: 0, revPallets: 0, revCanned: 0, revFurniture: 0 };
+  }
+  ['furniture', 'franchise', 'realestate'].forEach((k) => {
+    if (typeof gameState.revenueStats[k] !== 'number') gameState.revenueStats[k] = 0;
+  });
+}
+
+// ---------------------------------------------------------------------------
+// Phase 6 Business Helpers: Furniture Mill, Lighthouse, Franchises, Bank, Real Estate, Expo & Alliance
+// ---------------------------------------------------------------------------
+export function getFurnitureMillNextTier() {
+  const cur = gameState.furnitureMillTier || 0;
+  return FURNITURE_MILL_TIERS.find((t) => t.tier === cur + 1) || null;
+}
+
+export function getLighthouseNextTier() {
+  const cur = gameState.lighthouseTier || 0;
+  return LIGHTHOUSE_TIERS.find((t) => t.tier === cur + 1) || null;
+}
+
+export function craftFurnitureBatch(manual = false) {
+  const lv = gameState.furnitureMillTier || 0;
+  if (lv <= 0) return { ok: false, reason: 'Hãy xây Nhà Máy Nội Thất Cấp 1 trước!' };
+  const def = FURNITURE_MILL_TIERS.find((t) => t.tier === lv) || FURNITURE_MILL_TIERS[0];
+  if (gameState.planks < def.reqPlanks || gameState.pallets < def.reqPallets) {
+    return {
+      ok: false,
+      reason: `Cần ${def.reqPlanks} Ván${def.reqPallets > 0 ? ` và ${def.reqPallets} Pallet` : ''} trong kho.`
+    };
+  }
+  gameState.planks -= def.reqPlanks;
+  gameState.pallets -= def.reqPallets;
+  gameState.furniture = (gameState.furniture || 0) + def.output;
+  gameState.totalFurnitureCrafted = (gameState.totalFurnitureCrafted || 0) + def.output;
+  addSeasonXp(manual ? 12 : 6);
+  return { ok: true, produced: def.output };
+}
+
+export function getEmpireNetWorth() {
+  let stockVal = 0;
+  for (const t of STOCK_TICKERS) {
+    const hold = gameState.stockPortfolio?.[t.symbol];
+    const entry = stockMarketState.items[t.symbol];
+    if (hold && entry) stockVal += hold.shares * entry.price;
+  }
+  let reVal = 0;
+  for (const prop of REAL_ESTATE_CATALOG) {
+    reVal += (gameState.realEstate?.[prop.id] || 0) * prop.netValue;
+  }
+  return Math.round(
+    (gameState.cash || 0)
+    + (gameState.gems || 0) * 120
+    + stockVal
+    + reVal
+    + (gameState.yachtTier || 0) * 6500
+    + (gameState.airportTier || 0) * 5500
+    + (gameState.islandStationTier || 0) * 4800
+    + (gameState.islandResortTier || 0) * 8200
+    + (gameState.hqTier || 0) * 7800
+    + (gameState.furnitureMillTier || 0) * 5200
+    + (gameState.lighthouseTier || 0) * 4000
+    + (gameState.unlockedFranchises?.length || 0) * 8500
+    + (gameState.unlockedPlanes?.length || 0) * 4200
+    + (gameState.logisticsTier || 0) * 3200
+    + ((gameState.unlockedBranches?.length || 1) - 1) * 12000
+  );
+}
+
+export function getBankCreditLimit() {
+  const nw = getEmpireNetWorth();
+  return Math.max(5000, Math.round(nw * 0.85));
+}
+
+export function takeBankLoan(packageId) {
+  if (gameState.activeLoan && gameState.activeLoan.remaining > 0) {
+    return { ok: false, reason: 'Đế chế đang có khoản vay chưa tất toán!' };
+  }
+  const pkg = BANK_LOAN_PACKAGES.find((p) => p.id === packageId);
+  if (!pkg) return { ok: false, reason: 'Gói vay không hợp lệ.' };
+  const nw = getEmpireNetWorth();
+  if (nw < pkg.minNetWorth) {
+    return { ok: false, reason: `Cần định giá Đế chế tối thiểu $${pkg.minNetWorth.toLocaleString()} để mở gói này.` };
+  }
+  const totalDue = Math.round(pkg.principal * (1 + pkg.interestPct / 100));
+  gameState.activeLoan = {
+    packageId: pkg.id,
+    name: pkg.name,
+    principal: pkg.principal,
+    totalDue,
+    remaining: totalDue,
+    ratePct: pkg.interestPct,
+    autoDeductRate: pkg.autoDeductRate
+  };
+  gameState.cash += pkg.principal;
+  logTransaction('bank', `Giải ngân ${pkg.name}`, pkg.principal, 0);
+  return { ok: true, pkg, totalDue };
+}
+
+export function processLoanAutoDeduct(earnedCash) {
+  const loan = gameState.activeLoan;
+  if (!loan || loan.remaining <= 0 || earnedCash <= 0) return 0;
+  const deduct = Math.min(loan.remaining, Math.max(1, Math.round(earnedCash * (loan.autoDeductRate || 0.15))), Math.floor(gameState.cash || 0));
+  if (deduct <= 0) return 0;
+  gameState.cash -= deduct;
+  loan.remaining -= deduct;
+  if (loan.remaining <= 0) {
+    const paidName = loan.name;
+    gameState.activeLoan = null;
+    gameState.loansRepaidCount = (gameState.loansRepaidCount || 0) + 1;
+    addVipXp(35);
+    logTransaction('bank', `Hoàn tất trả góp ${paidName}`, 0, 0);
+  }
+  return deduct;
+}
+
+export function repayBankLoan() {
+  const loan = gameState.activeLoan;
+  if (!loan || loan.remaining <= 0) return { ok: false, reason: 'Hiện không có khoản vay nào.' };
+  const payAmt = Math.ceil(loan.remaining);
+  if (gameState.cash < payAmt) {
+    return { ok: false, reason: `Cần đủ $${payAmt.toLocaleString()} để tất toán dứt điểm.` };
+  }
+  gameState.cash -= payAmt;
+  const paidName = loan.name;
+  gameState.activeLoan = null;
+  gameState.loansRepaidCount = (gameState.loansRepaidCount || 0) + 1;
+  addVipXp(45);
+  logTransaction('bank', `Tất toán ${paidName}`, -payAmt, 0);
+  return { ok: true, paid: payAmt, name: paidName };
+}
+
+export function getRealEstateCost(prop) {
+  const lv = gameState.realEstate?.[prop.id] || 0;
+  if (lv >= 3) return null;
+  return Math.round(prop.baseCost * Math.pow(prop.scale, lv));
+}
+
+export function buyOrUpgradeRealEstate(propId) {
+  const prop = REAL_ESTATE_CATALOG.find((r) => r.id === propId);
+  if (!prop) return { ok: false, reason: 'Dự án không tồn tại.' };
+  const curLv = gameState.realEstate?.[propId] || 0;
+  if (curLv >= 3) return { ok: false, reason: 'Đã đạt cấp tối đa 3/3.' };
+  const cost = getRealEstateCost(prop);
+  if (gameState.cash < cost) return { ok: false, reason: 'Chưa đủ tiền mặt đầu tư!' };
+  gameState.cash -= cost;
+  if (!gameState.realEstate) gameState.realEstate = {};
+  gameState.realEstate[propId] = curLv + 1;
+  addVipXp(45);
+  logTransaction('bank', `Đầu tư ${prop.name} (Cấp ${curLv + 1})`, -cost, 0);
+  return { ok: true, prop, level: curLv + 1, cost };
+}
+
+export function claimFranchiseYield() {
+  const cash = Math.floor(gameState.franchiseAccumCash || 0);
+  if (cash <= 0) return null;
+  gameState.cash += cash;
+  gameState.franchiseAccumCash = 0;
+  recordRevenue('franchise', cash);
+  addVipXp(16);
+  logTransaction('export', 'Thu Bản Quyền Nhượng Quyền Toàn Cầu', cash, 0);
+  return { cash };
+}
+
+export function claimRealEstateYield() {
+  const cash = Math.floor(gameState.realEstateAccumCash || 0);
+  if (cash <= 0) return null;
+  gameState.cash += cash;
+  gameState.realEstateAccumCash = 0;
+  recordRevenue('realestate', cash);
+  addVipXp(14);
+  logTransaction('bank', 'Thu Lợi Tức Bất Động Sản Cảng', cash, 0);
+  return { cash };
+}
+
+export function unlockGlobalFranchise(id) {
+  const fr = GLOBAL_FRANCHISES.find((f) => f.id === id);
+  if (!fr) return { ok: false, reason: 'Đại lý không hợp lệ.' };
+  if (!Array.isArray(gameState.unlockedFranchises)) gameState.unlockedFranchises = [];
+  if (gameState.unlockedFranchises.includes(id)) return { ok: false, reason: 'Đại lý đã hoạt động.' };
+  if ((gameState.contractsCompleted || 0) < fr.reqContracts) {
+    return { ok: false, reason: `Cần hoàn thành ${fr.reqContracts} Hợp đồng cảng trước.` };
+  }
+  if (gameState.cash < fr.costCash) return { ok: false, reason: 'Chưa đủ tiền mặt khai trương!' };
+  gameState.cash -= fr.costCash;
+  gameState.unlockedFranchises.push(id);
+  addVipXp(80);
+  addSeasonXp(60);
+  logTransaction('export', `Mở Đại Lý Nhượng Quyền ${fr.city}`, -fr.costCash, 0);
+  return { ok: true, franchise: fr };
+}
+
+export function tickTradeExpo(dt) {
+  if (expoState.current) {
+    expoState.timeLeft -= dt;
+    if (expoState.timeLeft <= 0) {
+      expoState.current = null;
+      expoState.cooldown = 25;
+    }
+  } else {
+    expoState.cooldown -= dt;
+    if (expoState.cooldown <= 0) {
+      expoState.index = (expoState.index + 1) % TRADE_EXPOS.length;
+      expoState.current = TRADE_EXPOS[expoState.index];
+      expoState.timeLeft = expoState.current.duration;
+      return expoState.current;
+    }
+  }
+  return null;
+}
+
+export function generateAllianceContract() {
+  const n = (gameState.allianceCompleted || 0) + 1;
+  const partners = [
+    { partner: 'EuroAsia Timber Guild', title: 'Liên Minh Gỗ & Nội Thất Á - Âu' },
+    { partner: 'Nordic Maritime Consortium', title: 'Hợp Đồng Liên Minh Bắc Âu' },
+    { partner: 'Pacific Luxury Trade Pact', title: 'Hiệp Định Xuất Khẩu Thái Bình Dương' },
+    { partner: 'Emirates Royal Furnishings', title: 'Lô Hàng Nội Thất Hoàng Gia Dubai' }
+  ];
+  const pick = partners[n % partners.length];
+  const mult = getActiveBranch().multiplier * getPrestigeMultiplier();
+  gameState.allianceContract = {
+    id: 'al_' + Date.now(),
+    title: pick.title,
+    partner: pick.partner,
+    reqPlanks: 12 + n * 6,
+    reqPallets: 2 + n,
+    reqCanned: 2 + n,
+    reqFurniture: 1 + Math.floor(n * 0.9),
+    rewardCash: Math.round((4200 + n * 1850) * mult),
+    rewardGems: 42 + n * 10,
+    rewardRep: 100 + n * 35
+  };
+}
+
+export function deliverAllianceContract() {
+  const ac = gameState.allianceContract;
+  if (!ac) return { ok: false, reason: 'Chưa có Hợp đồng Liên minh khả dụng.' };
+  if (
+    gameState.planks < ac.reqPlanks
+    || gameState.pallets < ac.reqPallets
+    || gameState.cannedFish < ac.reqCanned
+    || (gameState.furniture || 0) < ac.reqFurniture
+  ) {
+    return { ok: false, reason: 'Kho chưa đủ Ván, Pallet, Cá hộp và Nội thất cho Hợp đồng Liên minh!' };
+  }
+  gameState.planks -= ac.reqPlanks;
+  gameState.pallets -= ac.reqPallets;
+  gameState.cannedFish -= ac.reqCanned;
+  gameState.furniture -= ac.reqFurniture;
+
+  const cashGain = Math.round(ac.rewardCash * getContractMultiplier());
+  gameState.cash += cashGain;
+  gameState.gems += ac.rewardGems;
+  gameState.allianceCompleted = (gameState.allianceCompleted || 0) + 1;
+  gameState.allianceReputation = (gameState.allianceReputation || 0) + ac.rewardRep;
+  const totalQty = ac.reqPlanks + ac.reqPallets + ac.reqCanned + ac.reqFurniture;
+  gameState.totalExported = (gameState.totalExported || 0) + totalQty;
+
+  recordExportItem('planks', ac.reqPlanks, Math.round(cashGain * 0.25));
+  recordExportItem('pallets', ac.reqPallets, Math.round(cashGain * 0.2));
+  recordExportItem('cannedFish', ac.reqCanned, Math.round(cashGain * 0.15));
+  recordExportItem('furniture', ac.reqFurniture, Math.round(cashGain * 0.4));
+
+  recordRevenue('contracts', cashGain);
+  addVipXp(90);
+  addSeasonXp(80);
+  logTransaction('export', `Hoàn tất ${ac.title}`, cashGain, ac.rewardGems);
+
+  const completedTitle = ac.title;
+  const gemsGain = ac.rewardGems;
+  const repGain = ac.rewardRep;
+  generateAllianceContract();
+  return { ok: true, title: completedTitle, cash: cashGain, gems: gemsGain, rep: repGain };
+}
+
+export function recordExportItem(itemKey, qty, cashVal = 0) {
+  if (!qty || qty <= 0) return;
+  if (!gameState.exportBreakdown) {
+    gameState.exportBreakdown = { planks: 0, pallets: 0, cannedFish: 0, furniture: 0, revPlanks: 0, revPallets: 0, revCanned: 0, revFurniture: 0 };
+  }
+  const eb = gameState.exportBreakdown;
+  if (itemKey === 'planks') {
+    eb.planks = (eb.planks || 0) + qty;
+    eb.revPlanks = (eb.revPlanks || 0) + cashVal;
+  } else if (itemKey === 'pallets') {
+    eb.pallets = (eb.pallets || 0) + qty;
+    eb.revPallets = (eb.revPallets || 0) + cashVal;
+  } else if (itemKey === 'cannedFish') {
+    eb.cannedFish = (eb.cannedFish || 0) + qty;
+    eb.revCanned = (eb.revCanned || 0) + cashVal;
+  } else if (itemKey === 'furniture') {
+    eb.furniture = (eb.furniture || 0) + qty;
+    eb.revFurniture = (eb.revFurniture || 0) + cashVal;
   }
 }
 

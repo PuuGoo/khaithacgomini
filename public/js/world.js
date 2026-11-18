@@ -28,6 +28,8 @@ import {
   createCorporateHqModel,
   createCloudsAndStormGroup,
   createStormBeaconModel,
+  createFurnitureFactoryModel,
+  createLighthouseModel,
   syncBuildingEvolution,
   disposeObject3D
 } from './models.js';
@@ -46,6 +48,8 @@ export const ZONES = {
   yachtBerth: new THREE.Vector3(14.5, 0.5, 29),
   runwayStart: new THREE.Vector3(30, 0.14, 13),
   hqPlaza: new THREE.Vector3(15, 0, 7),
+  furnitureMill: new THREE.Vector3(16, 0, -24),
+  lighthouse: new THREE.Vector3(-30, 0, 26),
   islandDock: new THREE.Vector3(41, 0.5, 86),
   islandAirDrop: new THREE.Vector3(52, 12, 92),
   harborAirDrop: new THREE.Vector3(2, 12, 32)
@@ -76,6 +80,8 @@ export class WorldManager {
     this.airport = null;
     this.islandOutpost = null;
     this.corporateHq = null;
+    this.furnitureFactory = null;
+    this.lighthouse = null;
     this.weatherGroup = null;
     this.stormBeacon = null;
     this._weatherDummy = new THREE.Object3D();
@@ -152,6 +158,7 @@ export class WorldManager {
     this.addFloorMarker(ZONES.yachtBerth, 2.6, '#06b6d4', 'BẾN DU THUYỀN VIP', '🚤 Lái ra khơi [E]');
     this.addFloorMarker(ZONES.runwayStart, 2.8, '#f59e0b', 'ĐƯỜNG BĂNG SÂN BAY', '✈️ Cất cánh [E]');
     this.addFloorMarker(ZONES.hqPlaza, 2.5, '#a855f7', 'TRỤ SỞ TẬP ĐOÀN', '🏢 Cổ phiếu & Tài chính');
+    this.addFloorMarker(ZONES.furnitureMill, 2.5, '#fb7185', 'NHÀ MÁY NỘI THẤT', '🛋️ Chế biến & Bán');
   }
 
   addFloorMarker(pos, radius, colorHex, title, sub) {
@@ -306,6 +313,18 @@ export class WorldManager {
     this.worldGroup.add(this.corporateHq);
     this.syncHqTier(gameState.hqTier || 0);
 
+    // Pre-built Luxury Furniture Factory (16, 0, -24)
+    this.furnitureFactory = createFurnitureFactoryModel(this.lowSpec);
+    this.furnitureFactory.position.copy(ZONES.furnitureMill);
+    this.worldGroup.add(this.furnitureFactory);
+    this.syncFurnitureMillTier(gameState.furnitureMillTier || 0);
+
+    // Pre-built Coastal Maritime Lighthouse (-30, 0, 26)
+    this.lighthouse = createLighthouseModel(this.lowSpec);
+    this.lighthouse.position.copy(ZONES.lighthouse);
+    this.worldGroup.add(this.lighthouse);
+    this.syncLighthouseTier(gameState.lighthouseTier || 0);
+
     // Pre-built Instanced Clouds & Storm Rain (auto-gated OFF on <8GB RAM)
     this.weatherGroup = createCloudsAndStormGroup(this.lowSpec);
     this.worldGroup.add(this.weatherGroup);
@@ -390,6 +409,26 @@ export class WorldManager {
     if (u?.facadeLight) u.facadeLight.visible = !this.lowSpec && tier >= 1;
   }
 
+  syncFurnitureMillTier(tier = 0) {
+    if (!this.furnitureFactory) return;
+    const u = this.furnitureFactory.userData;
+    this.furnitureFactory.visible = tier > 0;
+    if (u?.tier1Group) u.tier1Group.visible = tier >= 1;
+    if (u?.tier2Group) u.tier2Group.visible = tier >= 2;
+    if (u?.tier3Group) u.tier3Group.visible = tier >= 3;
+    if (u?.accentLight) u.accentLight.visible = !this.lowSpec && tier >= 2;
+  }
+
+  syncLighthouseTier(tier = 0) {
+    if (!this.lighthouse) return;
+    const u = this.lighthouse.userData;
+    this.lighthouse.visible = tier > 0;
+    if (u?.tier1Group) u.tier1Group.visible = tier >= 1;
+    if (u?.tier2Group) u.tier2Group.visible = tier >= 2;
+    if (u?.tier3Group) u.tier3Group.visible = tier >= 3;
+    if (u?.beamLight) u.beamLight.visible = !this.lowSpec && tier >= 1;
+  }
+
   setLowSpec(isLow) {
     this.lowSpec = Boolean(isLow);
     if (this.harborBeaconLight) this.harborBeaconLight.visible = !this.lowSpec;
@@ -404,6 +443,12 @@ export class WorldManager {
     }
     if (this.corporateHq?.userData?.facadeLight) {
       this.corporateHq.userData.facadeLight.visible = !this.lowSpec && (gameState.hqTier || 0) >= 1;
+    }
+    if (this.furnitureFactory?.userData?.accentLight) {
+      this.furnitureFactory.userData.accentLight.visible = !this.lowSpec && (gameState.furnitureMillTier || 0) >= 2;
+    }
+    if (this.lighthouse?.userData?.beamLight) {
+      this.lighthouse.userData.beamLight.visible = !this.lowSpec && (gameState.lighthouseTier || 0) >= 1;
     }
     if (this.weatherGroup?.userData?.clouds) {
       this.weatherGroup.userData.clouds.visible = !this.lowSpec;
@@ -691,6 +736,20 @@ export class WorldManager {
 
     if (this.airport?.visible && this.airport.userData?.radar?.visible !== false) {
       this.airport.userData.radar.rotation.y += dt * 1.4;
+    }
+
+    // Furniture Factory showcase turntable & Lighthouse rotating beacon (gated OFF on <8GB RAM lowSpec)
+    if (!this.lowSpec) {
+      if (this.furnitureFactory?.visible && this.furnitureFactory.userData?.tier3Group?.visible && this.furnitureFactory.userData.cncSpinner) {
+        this.furnitureFactory.userData.cncSpinner.rotation.y += dt * 0.9;
+      }
+      if (this.lighthouse?.visible && this.lighthouse.userData?.beaconHead) {
+        this.lighthouse.userData.beaconHead.rotation.y += dt * 1.65;
+        if (this.lighthouse.userData.beamLight) {
+          const ang = this.lighthouse.userData.beaconHead.rotation.y;
+          this.lighthouse.userData.beamLight.position.set(Math.sin(ang) * 2.4, 12.6, Math.cos(ang) * 2.4);
+        }
+      }
     }
 
     for (let i = 0; i < this.seaTreasures.length; i++) {
