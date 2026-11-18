@@ -8,6 +8,9 @@ import * as THREE from 'three';
 import {
   getGrassTexture,
   getAsphaltTexture,
+  getTravertineTexture,
+  getGraniteCobbleTexture,
+  getBoardwalkPlankTexture,
   getWaterTexture,
   drawRadialProgressToCanvas,
   drawWorldBadgeToCanvas,
@@ -92,10 +95,18 @@ export class WorldManager {
     this.seaBeaconRing = null;
     this.airBeaconRing = null;
     this.harborBeaconLight = null;
+    this.landPointLights = [];
+    this.landDetailGroup = new THREE.Group();
+    this.fountainJetsGroup = new THREE.Group();
+    this.fountainJets = [];
+    this.fountainRipple = null;
     this.questRing = null;
     this.currentQuestTarget = ZONES.hopper;
 
     this.buildTerrainAndOcean();
+    this.buildLuxuryBoulevardsAndParking();
+    this.buildExecutivePlazaAndFountain();
+    this.buildCoastalPromenadeAndFishery();
     this.buildPerimeterNature();
     this.buildSawmillAndHarbor();
     this.buildHarvestableForest();
@@ -103,6 +114,7 @@ export class WorldManager {
     this.initParticlePool();
     this.initFlyingPool();
     this.buildQuestIndicator();
+    this.setLowSpec(this.lowSpec);
   }
 
   buildTerrainAndOcean() {
@@ -116,7 +128,7 @@ export class WorldManager {
     land.receiveShadow = !this.lowSpec;
     this.worldGroup.add(land);
 
-    const sandMat = new THREE.MeshStandardMaterial({ color: 0xe6c88a, roughness: 0.92, metalness: 0.0 });
+    const sandMat = new THREE.MeshStandardMaterial({ color: 0xe9cc90, roughness: 0.92, metalness: 0.0 });
     const beach = new THREE.Mesh(new THREE.BoxGeometry(240, 0.4, 7), sandMat);
     beach.position.set(0, -0.18, 24.5);
     beach.receiveShadow = !this.lowSpec;
@@ -130,9 +142,9 @@ export class WorldManager {
       polygonOffsetFactor: -1,
       polygonOffsetUnits: -1
     });
-    const roadEW = new THREE.Mesh(new THREE.PlaneGeometry(46, 5.2), roadMat);
+    const roadEW = new THREE.Mesh(new THREE.PlaneGeometry(51, 5.2), roadMat);
     roadEW.rotation.x = -Math.PI / 2;
-    roadEW.position.set(-2, 0.02, -4);
+    roadEW.position.set(0.5, 0.02, -4);
     roadEW.receiveShadow = !this.lowSpec;
 
     const roadNS = new THREE.Mesh(new THREE.PlaneGeometry(5.8, 30), roadMat);
@@ -153,31 +165,495 @@ export class WorldManager {
     ocean.receiveShadow = false;
     this.worldGroup.add(ocean);
 
-    this.addFloorMarker(ZONES.hopper, 2.6, '#0ea5e9', 'NẠP GỖ VÀO MÁY', '🪵 Tự động hút');
-    this.addFloorMarker(ZONES.sawOutput, 2.6, '#10b981', 'KHO VÁN & BÁN', '📦 Nhận hàng');
-    this.addFloorMarker(ZONES.vehicleSpawn, 2.8, '#f59e0b', 'BÃI XE THƯƠNG MẠI', '🚘 Nhấn [E]');
-    this.addFloorMarker(ZONES.harborExport, 2.8, '#10b981', 'CẨU XUẤT CẢNG', '🚢 Giao hợp đồng');
-    this.addFloorMarker(ZONES.canneryDock, 2.5, '#38bdf8', 'CẢNG CÁ HỘP', '🐟 Thu hoạch cá');
-    this.addFloorMarker(ZONES.yachtBerth, 2.6, '#06b6d4', 'BẾN DU THUYỀN VIP', '🚤 Lái ra khơi [E]');
-    this.addFloorMarker(ZONES.runwayStart, 2.8, '#f59e0b', 'ĐƯỜNG BĂNG SÂN BAY', '✈️ Cất cánh [E]');
-    this.addFloorMarker(ZONES.hqPlaza, 2.5, '#a855f7', 'TRỤ SỞ TẬP ĐOÀN', '🏢 Cổ phiếu & Tài chính');
-    this.addFloorMarker(ZONES.furnitureMill, 2.5, '#fb7185', 'NHÀ MÁY NỘI THẤT', '🛋️ Chế biến & Bán');
-    this.addFloorMarker(ZONES.deepPort, 2.7, '#0ea5e9', 'CẢNG CONTAINER', '🚢 Siêu cảng Nước Sâu');
+    this.worldGroup.add(this.landDetailGroup);
+
+    this.addFloorMarker(ZONES.hopper, 2.4, '#0ea5e9', 'NẠP GỖ VÀO MÁY', '🪵 Tự động hút');
+    this.addFloorMarker(ZONES.sawOutput, 2.4, '#10b981', 'KHO VÁN & BÁN', '📦 Nhận hàng');
+    this.addFloorMarker(ZONES.vehicleSpawn, 2.6, '#f59e0b', 'BÃI XE THƯƠNG MẠI', '🚘 Nhấn [E]');
+    this.addFloorMarker(ZONES.harborExport, 2.6, '#10b981', 'CẨU XUẤT CẢNG', '🚢 Giao hợp đồng');
+    this.addFloorMarker(ZONES.canneryDock, 2.3, '#38bdf8', 'CẢNG CÁ HỘP', '🐟 Thu hoạch cá');
+    this.addFloorMarker(ZONES.yachtBerth, 2.4, '#06b6d4', 'BẾN DU THUYỀN VIP', '🚤 Lái ra khơi [E]');
+    this.addFloorMarker(ZONES.runwayStart, 2.6, '#f59e0b', 'ĐƯỜNG BĂNG SÂN BAY', '✈️ Cất cánh [E]');
+    this.addFloorMarker(ZONES.hqPlaza, 2.4, '#a855f7', 'TRỤ SỞ TẬP ĐOÀN', '🏢 Cổ phiếu & Tài chính');
+    this.addFloorMarker(ZONES.furnitureMill, 2.4, '#fb7185', 'NHÀ MÁY NỘI THẤT', '🛋️ Chế biến & Bán');
+    this.addFloorMarker(ZONES.deepPort, 2.5, '#0ea5e9', 'CẢNG CONTAINER', '🚢 Siêu cảng Nước Sâu');
   }
 
   addFloorMarker(pos, radius, colorHex, title, sub) {
-    const ringGeo = new THREE.RingGeometry(radius * 0.78, radius, 24);
-    ringGeo.rotateX(-Math.PI / 2);
-    const ring = new THREE.Mesh(
-      ringGeo,
+    const outerGeo = new THREE.RingGeometry(radius * 0.9, radius, 28);
+    outerGeo.rotateX(-Math.PI / 2);
+    const outerRing = new THREE.Mesh(
+      outerGeo,
       new THREE.MeshBasicMaterial({ color: colorHex, transparent: true, opacity: 0.72, side: THREE.DoubleSide })
     );
-    ring.position.set(pos.x, pos.y + 0.04, pos.z);
-    this.worldGroup.add(ring);
+    outerRing.position.set(pos.x, pos.y + 0.045, pos.z);
+
+    const innerGeo = new THREE.RingGeometry(radius * 0.7, radius * 0.74, 28);
+    innerGeo.rotateX(-Math.PI / 2);
+    const innerRing = new THREE.Mesh(
+      innerGeo,
+      new THREE.MeshBasicMaterial({ color: 0xfef3c7, transparent: true, opacity: 0.38, side: THREE.DoubleSide })
+    );
+    innerRing.position.set(pos.x, pos.y + 0.045, pos.z);
+
+    const discGeo = new THREE.CircleGeometry(radius * 0.7, 24);
+    discGeo.rotateX(-Math.PI / 2);
+    const disc = new THREE.Mesh(
+      discGeo,
+      new THREE.MeshBasicMaterial({ color: colorHex, transparent: true, opacity: 0.09, side: THREE.DoubleSide })
+    );
+    disc.position.set(pos.x, pos.y + 0.042, pos.z);
 
     const badge = makeWorldBadgeSprite(title, sub, colorHex);
-    badge.position.set(pos.x, pos.y + 2.4, pos.z);
-    this.worldGroup.add(badge);
+    badge.position.set(pos.x, pos.y + 1.85, pos.z);
+    this.worldGroup.add(outerRing, innerRing, disc, badge);
+  }
+
+  buildLuxuryBoulevardsAndParking() {
+    const travMat = new THREE.MeshStandardMaterial({ map: getTravertineTexture(8, 1), roughness: 0.78, metalness: 0.04 });
+    const cobbleMat = new THREE.MeshStandardMaterial({ map: getGraniteCobbleTexture(4, 3), roughness: 0.76, metalness: 0.06 });
+    const curbMat = new THREE.MeshStandardMaterial({ color: 0x94a3b8, roughness: 0.7, metalness: 0.1 });
+    const stripeMat = new THREE.MeshBasicMaterial({ color: 0xf8fafc });
+    const stallMat = new THREE.MeshBasicMaterial({ color: 0xfbbf24 });
+    const ironMat = new THREE.MeshStandardMaterial({ color: 0x1e293b, roughness: 0.42, metalness: 0.7 });
+    const timberMat = new THREE.MeshStandardMaterial({ color: 0x92400e, roughness: 0.65 });
+    const warmGlassMat = new THREE.MeshStandardMaterial({
+      color: 0xfef3c7,
+      emissive: 0xfbbf24,
+      emissiveIntensity: 1.15,
+      roughness: 0.2
+    });
+    const planterStoneMat = new THREE.MeshStandardMaterial({ color: 0xe2d6c3, roughness: 0.75 });
+    const hedgeMat = new THREE.MeshStandardMaterial({ color: 0x15803d, roughness: 0.84, flatShading: true });
+
+    // Raised Travertine Sidewalks flanking EW & NS boulevards
+    const walkDefs = [
+      { x: -13.0, z: -7.45, w: 24.2, d: 1.7 }, // EW North-West
+      { x: 15.2, z: -7.45, w: 20.6, d: 1.7 },  // EW North-East
+      { x: -13.0, z: -0.55, w: 24.2, d: 1.7 }, // EW South-West
+      { x: 15.2, z: -0.55, w: 20.6, d: 1.7 },  // EW South-East
+      { x: -1.75, z: 10.45, w: 1.7, d: 20.3 }, // NS West
+      { x: 5.75, z: 10.45, w: 1.7, d: 20.3 },  // NS East
+      { x: 2.0, z: -8.1, w: 14.0, d: 1.4 },    // Sawmill Front Apron Connector
+      { x: 16.0, z: -13.8, w: 3.4, d: 11.4 }   // Furniture Factory Boulevard Path
+    ];
+    for (const s of walkDefs) {
+      const m = new THREE.Mesh(new THREE.BoxGeometry(s.w, 0.1, s.d), travMat);
+      m.position.set(s.x, 0.05, s.z);
+      m.receiveShadow = !this.lowSpec;
+      this.worldGroup.add(m);
+    }
+
+    // Crosswalk stripes (InstancedMesh) at intersection & plaza crossings
+    const cwGeo = new THREE.BoxGeometry(0.45, 0.02, 1.35);
+    const cwSpots = [];
+    for (let dx = -1.6; dx <= 1.6; dx += 0.8) {
+      cwSpots.push({ x: 2 + dx, z: -7.1, ry: 0 });
+      cwSpots.push({ x: 2 + dx, z: -0.9, ry: 0 });
+      cwSpots.push({ x: 2 + dx, z: 7.0, ry: 0 });
+      cwSpots.push({ x: 2 + dx, z: 19.6, ry: 0 });
+    }
+    for (let dz = -1.6; dz <= 1.6; dz += 0.8) {
+      cwSpots.push({ x: -1.3, z: -4 + dz, ry: Math.PI / 2 });
+      cwSpots.push({ x: 5.3, z: -4 + dz, ry: Math.PI / 2 });
+    }
+    const cwInst = new THREE.InstancedMesh(cwGeo, stripeMat, cwSpots.length);
+    const dummy = new THREE.Object3D();
+    cwSpots.forEach((p, idx) => {
+      dummy.position.set(p.x, 0.035, p.z);
+      dummy.rotation.set(0, p.ry, 0);
+      dummy.scale.set(1, 1, 1);
+      dummy.updateMatrix();
+      cwInst.setMatrixAt(idx, dummy.matrix);
+    });
+    cwInst.instanceMatrix.needsUpdate = true;
+    this.worldGroup.add(cwInst);
+
+    // Commercial Parking Hub around ZONES.vehicleSpawn (-10, 0, 4)
+    const parkingCourt = new THREE.Mesh(new THREE.BoxGeometry(11.4, 0.09, 8.6), cobbleMat);
+    parkingCourt.position.set(-10, 0.045, 4.4);
+    parkingCourt.receiveShadow = !this.lowSpec;
+    this.worldGroup.add(parkingCourt);
+
+    const bayLineGeo = new THREE.BoxGeometry(0.14, 0.02, 4.4);
+    [-14.6, -11.6, -8.4, -5.4].forEach((bx) => {
+      const line = new THREE.Mesh(bayLineGeo, stallMat);
+      line.position.set(bx, 0.095, 4.3);
+      this.worldGroup.add(line);
+    });
+    const stopGeo = new THREE.BoxGeometry(1.9, 0.16, 0.24);
+    [-13.1, -10.0, -6.9].forEach((bx) => {
+      const stop = new THREE.Mesh(stopGeo, curbMat);
+      stop.position.set(bx, 0.16, 6.2);
+      this.worldGroup.add(stop);
+    });
+
+    // Sleek Parking Pergola Canopy along south edge of parking bays
+    const postGeo = new THREE.BoxGeometry(0.2, 2.7, 0.2);
+    [-14.4, -10.0, -5.6].forEach((px) => {
+      const post = new THREE.Mesh(postGeo, ironMat);
+      post.position.set(px, 1.4, 7.6);
+      post.castShadow = !this.lowSpec;
+      this.worldGroup.add(post);
+    });
+    const canopyRoof = new THREE.Mesh(new THREE.BoxGeometry(9.8, 0.16, 2.4), timberMat);
+    canopyRoof.position.set(-10.0, 2.78, 7.2);
+    canopyRoof.rotation.x = -0.1;
+    canopyRoof.castShadow = !this.lowSpec;
+    const canopyTrim = new THREE.Mesh(new THREE.BoxGeometry(9.9, 0.12, 0.18), warmGlassMat);
+    canopyTrim.position.set(-10.0, 2.66, 6.08);
+    this.worldGroup.add(canopyRoof, canopyTrim);
+
+    // Classic Cast-Iron Warm Golden Streetlamps (InstancedMesh: 3 draw calls total!)
+    const lampSpots = [
+      [-21, -7.45], [-12, -7.45], [-3, -7.45], [7, -7.45], [16, -7.45], [24, -7.45],
+      [-21, -0.55], [-12, -0.55], [-3, -0.55], [7, -0.55], [16, -0.55],
+      [-1.75, 4.5], [-1.75, 11.5], [-1.75, 18.5],
+      [5.75, 4.5], [5.75, 11.5], [5.75, 18.5],
+      [-15.2, 1.2], [-4.8, 1.2],
+      [-28, 21.8], [-15, 21.8], [10, 21.8], [21, 21.8]
+    ];
+    const lBaseGeo = new THREE.CylinderGeometry(0.14, 0.22, 3.3, 7);
+    lBaseGeo.translate(0, 1.65, 0);
+    const lHeadGeo = new THREE.CylinderGeometry(0.32, 0.22, 0.48, 6);
+    lHeadGeo.translate(0, 3.45, 0);
+    const lGlowGeo = new THREE.SphereGeometry(0.24, 8, 8);
+    lGlowGeo.translate(0, 3.22, 0);
+
+    const lampPosts = new THREE.InstancedMesh(lBaseGeo, ironMat, lampSpots.length);
+    const lampCaps = new THREE.InstancedMesh(lHeadGeo, ironMat, lampSpots.length);
+    const lampBulbs = new THREE.InstancedMesh(lGlowGeo, warmGlassMat, lampSpots.length);
+    lampPosts.castShadow = !this.lowSpec;
+
+    lampSpots.forEach(([lx, lz], i) => {
+      dummy.position.set(lx, 0.08, lz);
+      dummy.rotation.set(0, 0, 0);
+      dummy.scale.set(1, 1, 1);
+      dummy.updateMatrix();
+      lampPosts.setMatrixAt(i, dummy.matrix);
+      lampCaps.setMatrixAt(i, dummy.matrix);
+      lampBulbs.setMatrixAt(i, dummy.matrix);
+    });
+    lampPosts.instanceMatrix.needsUpdate = true;
+    lampCaps.instanceMatrix.needsUpdate = true;
+    lampBulbs.instanceMatrix.needsUpdate = true;
+    this.worldGroup.add(lampPosts, lampCaps, lampBulbs);
+
+    // Boulevard Ornamental Cypress Planters (InstancedMesh)
+    const cypressSpots = [
+      [-18, -7.8], [-9, -7.8], [11.5, -7.8], [21, -7.8],
+      [-18, -0.2], [-3.2, 2.0], [-3.2, 8.0], [-3.2, 14.5],
+      [13.5, 0.2], [19.5, 0.2]
+    ];
+    const pPotGeo = new THREE.BoxGeometry(0.95, 0.42, 0.95);
+    pPotGeo.translate(0, 0.21, 0);
+    const pTreeGeo = new THREE.ConeGeometry(0.48, 2.2, 7);
+    pTreeGeo.translate(0, 1.45, 0);
+    const pots = new THREE.InstancedMesh(pPotGeo, planterStoneMat, cypressSpots.length);
+    const trees = new THREE.InstancedMesh(pTreeGeo, hedgeMat, cypressSpots.length);
+    trees.castShadow = !this.lowSpec;
+
+    cypressSpots.forEach(([cx, cz], i) => {
+      dummy.position.set(cx, 0.06, cz);
+      dummy.rotation.set(0, i * 0.4, 0);
+      dummy.scale.set(1, 1, 1);
+      dummy.updateMatrix();
+      pots.setMatrixAt(i, dummy.matrix);
+      trees.setMatrixAt(i, dummy.matrix);
+    });
+    pots.instanceMatrix.needsUpdate = true;
+    trees.instanceMatrix.needsUpdate = true;
+    this.worldGroup.add(pots, trees);
+
+    // 3 Strategic Warm Boulevard PointLights (strictly gated OFF on <8GB RAM lowSpec)
+    const warmLightPositions = [
+      [2, 4.4, -4],
+      [8.5, 4.4, 7],
+      [2, 4.2, 20.5]
+    ];
+    for (const [wx, wy, wz] of warmLightPositions) {
+      const pl = new THREE.PointLight(0xfde68a, 1.75, 22, 1.65);
+      pl.position.set(wx, wy, wz);
+      pl.visible = !this.lowSpec;
+      this.worldGroup.add(pl);
+      this.landPointLights.push(pl);
+    }
+  }
+
+  buildExecutivePlazaAndFountain() {
+    const plazaMat = new THREE.MeshStandardMaterial({ map: getGraniteCobbleTexture(6, 5), roughness: 0.74, metalness: 0.06 });
+    const travMat = new THREE.MeshStandardMaterial({ map: getTravertineTexture(4, 4), roughness: 0.72 });
+    const marbleMat = new THREE.MeshStandardMaterial({ color: 0xf1f5f9, roughness: 0.42, metalness: 0.08 });
+    const poolWaterMat = new THREE.MeshStandardMaterial({
+      color: 0x0ea5e9,
+      emissive: 0x0369a1,
+      emissiveIntensity: 0.35,
+      roughness: 0.14,
+      metalness: 0.25
+    });
+    const brassMat = new THREE.MeshStandardMaterial({ color: 0xf59e0b, roughness: 0.24, metalness: 0.85 });
+    const hedgeMat = new THREE.MeshStandardMaterial({ color: 0x15803d, roughness: 0.84, flatShading: true });
+    const timberMat = new THREE.MeshStandardMaterial({ color: 0x92400e, roughness: 0.65 });
+    const ironMat = new THREE.MeshStandardMaterial({ color: 0x1e293b, roughness: 0.45, metalness: 0.65 });
+
+    // Paved Executive Courtyard connecting Road NS (x=5.0) to HQ Tower (x=15, z=7)
+    const courtyard = new THREE.Mesh(new THREE.BoxGeometry(14.6, 0.09, 12.4), plazaMat);
+    courtyard.position.set(12.8, 0.045, 7.0);
+    courtyard.receiveShadow = !this.lowSpec;
+    this.worldGroup.add(courtyard);
+
+    // Tiered Marble Fountain centered at (7.7, 0.09, 7.0) — clear of Road NS and HQ stairs
+    const fountain = new THREE.Group();
+    fountain.position.set(7.7, 0.09, 7.0);
+
+    const outerBasin = new THREE.Mesh(new THREE.CylinderGeometry(1.62, 1.78, 0.44, 8), travMat);
+    outerBasin.position.y = 0.22;
+    outerBasin.castShadow = !this.lowSpec;
+    outerBasin.receiveShadow = !this.lowSpec;
+
+    const waterPool = new THREE.Mesh(new THREE.CylinderGeometry(1.36, 1.36, 0.14, 16), poolWaterMat);
+    waterPool.position.y = 0.36;
+
+    const pedestal = new THREE.Mesh(new THREE.CylinderGeometry(0.28, 0.42, 1.25, 8), marbleMat);
+    pedestal.position.y = 0.74;
+    const midBowl = new THREE.Mesh(new THREE.CylinderGeometry(0.82, 0.36, 0.3, 12), marbleMat);
+    midBowl.position.y = 1.2;
+    const topSpire = new THREE.Mesh(new THREE.CylinderGeometry(0.12, 0.2, 0.6, 8), brassMat);
+    topSpire.position.y = 1.58;
+    const finial = new THREE.Mesh(new THREE.OctahedronGeometry(0.22, 0), brassMat);
+    finial.position.y = 1.98;
+
+    fountain.add(outerBasin, waterPool, pedestal, midBowl, topSpire, finial);
+
+    // Animated water jets & ripple ring (gated OFF on <8GB RAM lowSpec)
+    const jetMat = new THREE.MeshBasicMaterial({ color: 0xbae6fd, transparent: true, opacity: 0.72 });
+    const jetGeo = new THREE.CylinderGeometry(0.045, 0.075, 0.7, 6);
+    for (let i = 0; i < 4; i++) {
+      const ang = (i / 4) * Math.PI * 2;
+      const jet = new THREE.Mesh(jetGeo, jetMat);
+      jet.position.set(Math.cos(ang) * 0.56, 1.0, Math.sin(ang) * 0.56);
+      jet.rotation.z = Math.cos(ang) * 0.26;
+      jet.rotation.x = -Math.sin(ang) * 0.26;
+      this.fountainJetsGroup.add(jet);
+      this.fountainJets.push(jet);
+    }
+    this.fountainRipple = new THREE.Mesh(
+      new THREE.RingGeometry(0.82, 0.98, 20),
+      new THREE.MeshBasicMaterial({ color: 0xe0f2fe, transparent: true, opacity: 0.55, side: THREE.DoubleSide })
+    );
+    this.fountainRipple.rotation.x = -Math.PI / 2;
+    this.fountainRipple.position.y = 0.44;
+    this.fountainJetsGroup.add(this.fountainRipple);
+    fountain.add(this.fountainJetsGroup);
+    this.worldGroup.add(fountain);
+
+    // 3D Maritime Compass Monument Sign at Plaza NW Corner
+    const monument = new THREE.Group();
+    monument.position.set(7.2, 0.09, 1.95);
+    monument.rotation.y = -0.32;
+    const monPlinth = new THREE.Mesh(new THREE.BoxGeometry(2.2, 0.65, 0.85), travMat);
+    monPlinth.position.y = 0.325;
+    monPlinth.castShadow = !this.lowSpec;
+    const monSlab = new THREE.Mesh(new THREE.BoxGeometry(1.9, 1.05, 0.24), ironMat);
+    monSlab.position.y = 1.15;
+    const monFrame = new THREE.Mesh(new THREE.BoxGeometry(2.02, 0.14, 0.3), brassMat);
+    monFrame.position.y = 1.68;
+    const emblem = new THREE.Mesh(new THREE.TorusGeometry(0.28, 0.06, 6, 16), brassMat);
+    emblem.position.set(0, 1.15, 0.15);
+    monument.add(monPlinth, monSlab, monFrame, emblem);
+    this.worldGroup.add(monument);
+
+    // Park Benches flanking Fountain Courtyard (preserving clear central walkway)
+    const benchPositions = [
+      [7.7, 3.8, 0],
+      [7.7, 10.2, Math.PI]
+    ];
+    for (const [bx, bz, ry] of benchPositions) {
+      const bGroup = new THREE.Group();
+      bGroup.position.set(bx, 0.09, bz);
+      bGroup.rotation.y = ry;
+      const seat = new THREE.Mesh(new THREE.BoxGeometry(1.85, 0.1, 0.58), timberMat);
+      seat.position.y = 0.42;
+      const back = new THREE.Mesh(new THREE.BoxGeometry(1.85, 0.4, 0.09), timberMat);
+      back.position.set(0, 0.68, -0.24);
+      const legGeo = new THREE.BoxGeometry(0.12, 0.42, 0.5);
+      [-0.74, 0.74].forEach((lx) => {
+        const leg = new THREE.Mesh(legGeo, ironMat);
+        leg.position.set(lx, 0.21, 0);
+        bGroup.add(leg);
+      });
+      bGroup.add(seat, back);
+      this.worldGroup.add(bGroup);
+    }
+
+    // Manicured Hedges & Ornamental Flowers around Courtyard (Flowers gated in landDetailGroup)
+    [[11.0, 1.5], [16.5, 1.5], [11.0, 12.5], [16.5, 12.5]].forEach(([hx, hz]) => {
+      const boxBorder = new THREE.Mesh(new THREE.BoxGeometry(3.8, 0.32, 0.9), travMat);
+      boxBorder.position.set(hx, 0.24, hz);
+      const hedge = new THREE.Mesh(new THREE.BoxGeometry(3.5, 0.48, 0.62), hedgeMat);
+      hedge.position.set(hx, 0.56, hz);
+      this.worldGroup.add(boxBorder, hedge);
+    });
+
+    // High-spec decorative golden/coral flower clusters inside planters
+    const flowerGeo = new THREE.DodecahedronGeometry(0.18, 0);
+    const flowerMat = new THREE.MeshStandardMaterial({ color: 0xf43f5e, roughness: 0.7, flatShading: true });
+    const flowerCoords = [];
+    [[11.0, 1.5], [16.5, 1.5], [11.0, 12.5], [16.5, 12.5]].forEach(([hx, hz]) => {
+      for (let ox = -1.2; ox <= 1.2; ox += 0.8) flowerCoords.push([hx + ox, 0.84, hz]);
+    });
+    const flowers = new THREE.InstancedMesh(flowerGeo, flowerMat, flowerCoords.length);
+    const dummy = new THREE.Object3D();
+    flowerCoords.forEach(([fx, fy, fz], idx) => {
+      dummy.position.set(fx, fy, fz);
+      dummy.rotation.set(0, idx * 0.7, 0);
+      dummy.scale.set(1, 0.8, 1);
+      dummy.updateMatrix();
+      flowers.setMatrixAt(idx, dummy.matrix);
+    });
+    flowers.instanceMatrix.needsUpdate = true;
+    this.landDetailGroup.add(flowers);
+  }
+
+  buildCoastalPromenadeAndFishery() {
+    const stoneWallMat = new THREE.MeshStandardMaterial({ map: getTravertineTexture(10, 1), roughness: 0.8 });
+    const boardwalkMat = new THREE.MeshStandardMaterial({ map: getBoardwalkPlankTexture(14, 1), roughness: 0.76 });
+    const postWoodMat = new THREE.MeshStandardMaterial({ color: 0x78350f, roughness: 0.86 });
+    const ropeMat = new THREE.MeshStandardMaterial({ color: 0xd6b37c, roughness: 0.88 });
+    const crateMat = new THREE.MeshStandardMaterial({ color: 0xc28546, roughness: 0.74 });
+    const iceBoxMat = new THREE.MeshStandardMaterial({ color: 0x0284c7, roughness: 0.42 });
+    const barrelMat = new THREE.MeshStandardMaterial({ color: 0x92400e, roughness: 0.68 });
+    const palmTrunkMat = new THREE.MeshStandardMaterial({ color: 0x78350f, roughness: 0.88 });
+    const palmLeafMat = new THREE.MeshStandardMaterial({ color: 0x16a34a, roughness: 0.78, flatShading: true });
+
+    // Stone Seawall Edge separating grass from beach (West & East wings around central Harbor Road)
+    const wallW = new THREE.Mesh(new THREE.BoxGeometry(41, 0.42, 0.85), stoneWallMat);
+    wallW.position.set(-21.5, 0.14, 20.6);
+    wallW.receiveShadow = !this.lowSpec;
+    const wallE = new THREE.Mesh(new THREE.BoxGeometry(37, 0.42, 0.85), stoneWallMat);
+    wallE.position.set(23.5, 0.14, 20.6);
+    wallE.receiveShadow = !this.lowSpec;
+    this.worldGroup.add(wallW, wallE);
+
+    // Teak Timber Boardwalk Promenade along coastline
+    const bwWest = new THREE.Mesh(new THREE.BoxGeometry(36, 0.16, 2.3), boardwalkMat);
+    bwWest.position.set(-19.0, 0.08, 22.0);
+    bwWest.receiveShadow = !this.lowSpec;
+    const bwEast = new THREE.Mesh(new THREE.BoxGeometry(19.5, 0.16, 2.3), boardwalkMat);
+    bwEast.position.set(14.8, 0.08, 22.0);
+    bwEast.receiveShadow = !this.lowSpec;
+    this.worldGroup.add(bwWest, bwEast);
+
+    // Wooden Post & Nautical Rope Fencing along boardwalk outer edge (InstancedMesh)
+    const fencePostsX = [];
+    for (let x = -35; x <= -10; x += 2.5) fencePostsX.push(x);
+    for (let x = 6.5; x <= 23.5; x += 2.5) fencePostsX.push(x);
+
+    const postGeo = new THREE.CylinderGeometry(0.1, 0.12, 0.92, 6);
+    postGeo.translate(0, 0.46, 0);
+    const postsInst = new THREE.InstancedMesh(postGeo, postWoodMat, fencePostsX.length);
+    postsInst.castShadow = !this.lowSpec;
+
+    const railSegments = [];
+    for (let i = 0; i < fencePostsX.length - 1; i++) {
+      const x1 = fencePostsX[i];
+      const x2 = fencePostsX[i + 1];
+      if (Math.abs(x2 - x1) < 3.0) railSegments.push((x1 + x2) * 0.5);
+    }
+    const ropeGeo = new THREE.CylinderGeometry(0.045, 0.045, 2.5, 5);
+    ropeGeo.rotateZ(Math.PI / 2);
+    const ropesInst = new THREE.InstancedMesh(ropeGeo, ropeMat, railSegments.length);
+
+    const dummy = new THREE.Object3D();
+    fencePostsX.forEach((fx, i) => {
+      dummy.position.set(fx, 0.08, 23.05);
+      dummy.rotation.set(0, 0, 0);
+      dummy.scale.set(1, 1, 1);
+      dummy.updateMatrix();
+      postsInst.setMatrixAt(i, dummy.matrix);
+    });
+    postsInst.instanceMatrix.needsUpdate = true;
+
+    railSegments.forEach((rx, i) => {
+      dummy.position.set(rx, 0.72, 23.05);
+      dummy.rotation.set(0, 0, 0);
+      dummy.scale.set(1, 1, 1);
+      dummy.updateMatrix();
+      ropesInst.setMatrixAt(i, dummy.matrix);
+    });
+    ropesInst.instanceMatrix.needsUpdate = true;
+    this.worldGroup.add(postsInst, ropesInst);
+
+    // Coastal Cargo Crates, Fish Ice Boxes & Oak Barrels near Cannery & West Beach (clear of pads)
+    const crateCoords = [
+      [-12.5, 0.35, 24.4], [-13.4, 0.35, 24.4], [-12.95, 1.0, 24.4],
+      [-23.5, 0.35, 24.5], [-24.4, 0.35, 24.8], [10.8, 0.35, 24.4]
+    ];
+    const crateGeo = new THREE.BoxGeometry(0.82, 0.72, 0.82);
+    const cratesInst = new THREE.InstancedMesh(crateGeo, crateMat, crateCoords.length);
+    cratesInst.castShadow = !this.lowSpec;
+    crateCoords.forEach(([cx, cy, cz], i) => {
+      dummy.position.set(cx, cy, cz);
+      dummy.rotation.set(0, (i % 3) * 0.25, 0);
+      dummy.scale.set(1, 1, 1);
+      dummy.updateMatrix();
+      cratesInst.setMatrixAt(i, dummy.matrix);
+    });
+    cratesInst.instanceMatrix.needsUpdate = true;
+
+    const iceCoords = [
+      [-9.2, 0.32, 24.3], [-10.3, 0.32, 24.6], [-8.4, 0.32, 24.9]
+    ];
+    const iceGeo = new THREE.BoxGeometry(0.95, 0.56, 0.62);
+    const iceInst = new THREE.InstancedMesh(iceGeo, iceBoxMat, iceCoords.length);
+    iceCoords.forEach(([ix, iy, iz], i) => {
+      dummy.position.set(ix, iy, iz);
+      dummy.rotation.set(0, i * 0.3, 0);
+      dummy.scale.set(1, 1, 1);
+      dummy.updateMatrix();
+      iceInst.setMatrixAt(i, dummy.matrix);
+    });
+    iceInst.instanceMatrix.needsUpdate = true;
+
+    const barrelCoords = [
+      [-14.3, 0.42, 24.7], [-14.9, 0.42, 24.2], [11.7, 0.42, 24.6], [-22.6, 0.42, 24.3]
+    ];
+    const barrelGeo = new THREE.CylinderGeometry(0.32, 0.34, 0.82, 8);
+    const barrelsInst = new THREE.InstancedMesh(barrelGeo, barrelMat, barrelCoords.length);
+    barrelCoords.forEach(([bx, by, bz], i) => {
+      dummy.position.set(bx, by, bz);
+      dummy.rotation.set(0, 0, 0);
+      dummy.scale.set(1, 1, 1);
+      dummy.updateMatrix();
+      barrelsInst.setMatrixAt(i, dummy.matrix);
+    });
+    barrelsInst.instanceMatrix.needsUpdate = true;
+    this.worldGroup.add(cratesInst, iceInst, barrelsInst);
+
+    // Coastal Beach Palms (InstancedMesh)
+    const palmSpots = [
+      [-26.5, 22.8], [-17.5, 23.6], [19.5, 23.6], [23.2, 22.6], [-35.5, 23.2]
+    ];
+    const pTrunkGeo = new THREE.CylinderGeometry(0.16, 0.28, 3.8, 6);
+    pTrunkGeo.translate(0, 1.9, 0);
+    const pCrownGeo = new THREE.DodecahedronGeometry(1.35, 0);
+    pCrownGeo.scale(1.25, 0.6, 1.25);
+    pCrownGeo.translate(0, 3.9, 0);
+    const pTrunks = new THREE.InstancedMesh(pTrunkGeo, palmTrunkMat, palmSpots.length);
+    const pCrowns = new THREE.InstancedMesh(pCrownGeo, palmLeafMat, palmSpots.length);
+    pTrunks.castShadow = !this.lowSpec;
+    pCrowns.castShadow = !this.lowSpec;
+    palmSpots.forEach(([px, pz], i) => {
+      dummy.position.set(px, 0, pz);
+      dummy.rotation.set(0.06, i * 1.1, (i % 2 === 0 ? 1 : -1) * 0.08);
+      dummy.scale.set(1, 0.9 + (i % 3) * 0.12, 1);
+      dummy.updateMatrix();
+      pTrunks.setMatrixAt(i, dummy.matrix);
+      pCrowns.setMatrixAt(i, dummy.matrix);
+    });
+    pTrunks.instanceMatrix.needsUpdate = true;
+    pCrowns.instanceMatrix.needsUpdate = true;
+    this.worldGroup.add(pTrunks, pCrowns);
   }
 
   buildPerimeterNature() {
@@ -453,6 +929,11 @@ export class WorldManager {
   setLowSpec(isLow) {
     this.lowSpec = Boolean(isLow);
     if (this.harborBeaconLight) this.harborBeaconLight.visible = !this.lowSpec;
+    for (const pl of this.landPointLights) {
+      pl.visible = !this.lowSpec;
+    }
+    if (this.landDetailGroup) this.landDetailGroup.visible = !this.lowSpec;
+    if (this.fountainJetsGroup) this.fountainJetsGroup.visible = !this.lowSpec;
     if (this.cargoFreighter?.userData?.mastBeacon) {
       this.cargoFreighter.userData.mastBeacon.visible = !this.lowSpec;
     }
@@ -528,9 +1009,9 @@ export class WorldManager {
       { id: 'fishingBoats', pos: new THREE.Vector3(-12, 0.5, 29), color: '#0ea5e9', label: 'Mua Tàu Đánh Cá' }
     ];
 
-    const ringGeo = new THREE.RingGeometry(1.4, 1.8, 24);
+    const ringGeo = new THREE.RingGeometry(1.52, 1.72, 28);
     ringGeo.rotateX(-Math.PI / 2);
-    const discGeo = new THREE.CircleGeometry(1.35, 24);
+    const discGeo = new THREE.CircleGeometry(1.32, 24);
     discGeo.rotateX(-Math.PI / 2);
 
     for (const def of padDefs) {
@@ -540,9 +1021,9 @@ export class WorldManager {
 
       const ring = new THREE.Mesh(
         ringGeo,
-        new THREE.MeshBasicMaterial({ color: def.color, transparent: true, opacity: 0.7, side: THREE.DoubleSide })
+        new THREE.MeshBasicMaterial({ color: def.color, transparent: true, opacity: 0.68, side: THREE.DoubleSide })
       );
-      ring.position.y = 0.04;
+      ring.position.y = 0.045;
 
       // Persistent offscreen canvas + CanvasTexture per pad (zero allocation on refresh!)
       const radialCanvas = document.createElement('canvas');
@@ -563,7 +1044,7 @@ export class WorldManager {
       disc.position.y = 0.05;
 
       const sprite = makeWorldBadgeSprite(def.label, '$0', def.color);
-      sprite.position.set(0, 2.2, 0);
+      sprite.position.set(0, 1.85, 0);
 
       group.add(ring, disc, sprite);
       const pad = {
@@ -762,8 +1243,21 @@ export class WorldManager {
       this.airport.userData.radar.rotation.y += dt * 1.4;
     }
 
-    // Furniture Factory showcase turntable, Lighthouse rotating beacon & Deep-Port Gantry/Ship (gated OFF on <8GB RAM lowSpec)
+    // Fountain animated jets, Furniture turntable, Lighthouse rotating beacon & Deep-Port (gated OFF on <8GB RAM lowSpec)
     if (!this.lowSpec) {
+      if (this.fountainJetsGroup?.visible) {
+        for (let i = 0; i < this.fountainJets.length; i++) {
+          const j = this.fountainJets[i];
+          const pulse = 0.85 + Math.sin(elapsed * 5.2 + i * 1.4) * 0.22;
+          j.scale.set(1, pulse, 1);
+          j.position.y = 1.0 + (pulse - 0.85) * 0.35;
+        }
+        if (this.fountainRipple) {
+          const rScale = 0.85 + ((elapsed * 0.75) % 1) * 0.55;
+          this.fountainRipple.scale.setScalar(rScale);
+          this.fountainRipple.material.opacity = Math.max(0.08, 0.58 * (1 - ((elapsed * 0.75) % 1)));
+        }
+      }
       if (this.furnitureFactory?.visible && this.furnitureFactory.userData?.tier3Group?.visible && this.furnitureFactory.userData.cncSpinner) {
         this.furnitureFactory.userData.cncSpinner.rotation.y += dt * 0.9;
       }

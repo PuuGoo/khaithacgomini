@@ -5,7 +5,7 @@
  */
 
 import * as THREE from 'three';
-import { getBarkTexture, getTimberTexture } from './textures.js';
+import { getBarkTexture, getTimberTexture, getTravertineTexture } from './textures.js';
 
 function markShared(resource) {
   if (!resource) return resource;
@@ -592,10 +592,17 @@ export function createVehicleModel(type = 'forklift', lowSpec = false) {
 
 export function createSawmillModel() {
   const g = new THREE.Group();
-  const concreteMat = new THREE.MeshStandardMaterial({ color: 0x64748b, roughness: 0.88, metalness: 0.05 });
+  const concreteMat = new THREE.MeshStandardMaterial({ color: 0x64748b, roughness: 0.85, metalness: 0.06 });
+  const apronMat = new THREE.MeshStandardMaterial({ map: markShared(getTravertineTexture(5, 3)), roughness: 0.78 });
   const steelMat = new THREE.MeshStandardMaterial({ color: 0x1e293b, roughness: 0.38, metalness: 0.72 });
-  const roofMat = new THREE.MeshStandardMaterial({ color: 0xd97706, roughness: 0.5, metalness: 0.25, flatShading: true });
+  const roofMat = new THREE.MeshStandardMaterial({ color: 0xd97706, roughness: 0.46, metalness: 0.25, flatShading: true });
   const timberMat = new THREE.MeshStandardMaterial({ map: markShared(getTimberTexture()), roughness: 0.68 });
+  const warmGlowMat = new THREE.MeshStandardMaterial({ color: 0xfef3c7, emissive: 0xfbbf24, emissiveIntensity: 0.95, roughness: 0.25 });
+
+  const apron = new THREE.Mesh(new THREE.BoxGeometry(17.2, 0.14, 12.4), apronMat);
+  apron.position.y = 0.07;
+  apron.receiveShadow = true;
+  g.add(apron);
 
   const slab = new THREE.Mesh(new THREE.BoxGeometry(16, 0.36, 11), concreteMat);
   slab.position.y = 0.18;
@@ -608,6 +615,11 @@ export function createSawmillModel() {
     col.position.set(px, 2.75, pz);
     col.castShadow = true;
     g.add(col);
+    if (pz > 0) {
+      const sconce = new THREE.Mesh(new THREE.BoxGeometry(0.28, 0.38, 0.18), warmGlowMat);
+      sconce.position.set(px, 3.2, pz + 0.28);
+      g.add(sconce);
+    }
   });
 
   const roofGeo = new THREE.BoxGeometry(16.8, 0.28, 6.4);
@@ -619,7 +631,20 @@ export function createSawmillModel() {
   roofR.position.set(0, 5.85, 2.6);
   roofR.rotation.x = 0.22;
   roofR.castShadow = true;
-  g.add(roofL, roofR);
+  const frontFascia = new THREE.Mesh(new THREE.BoxGeometry(16.9, 0.22, 0.24), steelMat);
+  frontFascia.position.set(0, 5.15, 5.6);
+  g.add(roofL, roofR, frontFascia);
+
+  // Decorative seasoned timber rack beside rear corner
+  const rackPostGeo = new THREE.BoxGeometry(0.18, 1.4, 0.18);
+  [[-6.8, 4.1], [-4.8, 4.1]].forEach(([rx, rz]) => {
+    const rp = new THREE.Mesh(rackPostGeo, steelMat);
+    rp.position.set(rx, 0.9, rz);
+    g.add(rp);
+  });
+  const rackBeam = new THREE.Mesh(new THREE.BoxGeometry(2.4, 0.45, 0.85), timberMat);
+  rackBeam.position.set(-5.8, 0.72, 4.1);
+  g.add(rackBeam);
 
   const hopper = new THREE.Mesh(
     new THREE.CylinderGeometry(2.1, 1.35, 1.55, 6),
@@ -1180,16 +1205,29 @@ export function createAirportRunwayModel(lowSpec = false) {
     polygonOffsetFactor: -1,
     polygonOffsetUnits: -1
   });
+  const curbStoneMat = new THREE.MeshStandardMaterial({ map: markShared(getTravertineTexture(2, 6)), roughness: 0.78 });
   const stripeMat = new THREE.MeshBasicMaterial({ color: 0xf8fafc });
-  const amberMat = new THREE.MeshBasicMaterial({ color: 0xf59e0b });
-  const hangarMat = new THREE.MeshStandardMaterial({ color: 0x475569, roughness: 0.55, metalness: 0.45 });
+  const amberMat = new THREE.MeshStandardMaterial({ color: 0xfef08a, emissive: 0xf59e0b, emissiveIntensity: 0.95, roughness: 0.3 });
+  const hangarMat = new THREE.MeshStandardMaterial({ color: 0x475569, roughness: 0.52, metalness: 0.45 });
   const roofMat = new THREE.MeshStandardMaterial({ color: 0x0284c7, roughness: 0.42, metalness: 0.35 });
+  const hedgeMat = new THREE.MeshStandardMaterial({ color: 0x15803d, roughness: 0.85, flatShading: true });
 
-  // Runway slab (9 x 38 along Z)
+  // Clean travertine shoulder apron + Runway slab (9.2 x 38 along Z)
+  const shoulder = new THREE.Mesh(new THREE.BoxGeometry(10.4, 0.08, 39.2), curbStoneMat);
+  shoulder.position.set(0, 0.04, 0);
+  shoulder.receiveShadow = !lowSpec;
+  g.add(shoulder);
+
   const runway = new THREE.Mesh(new THREE.BoxGeometry(9.2, 0.12, 38), tarmacMat);
   runway.position.set(0, 0.06, 0);
   runway.receiveShadow = !lowSpec;
   g.add(runway);
+
+  // Connecting taxiway approach apron linking runway to central boulevard (-X)
+  const taxiApproach = new THREE.Mesh(new THREE.BoxGeometry(4.8, 0.1, 6.2), curbStoneMat);
+  taxiApproach.position.set(-6.8, 0.05, -2.0);
+  taxiApproach.receiveShadow = !lowSpec;
+  g.add(taxiApproach);
 
   // Centerline dashed markings
   const dashGeo = markShared(new THREE.PlaneGeometry(0.45, 2.2));
@@ -1200,42 +1238,49 @@ export function createAirportRunwayModel(lowSpec = false) {
     g.add(dash);
   }
 
-  // Runway threshold bars & edge lights
+  // Runway threshold bars & warm golden edge beacons
   [-17.2, 17.2].forEach((tz) => {
-    const bar = new THREE.Mesh(new THREE.PlaneGeometry(7.2, 0.7), amberMat);
+    const bar = new THREE.Mesh(new THREE.PlaneGeometry(7.2, 0.7), stripeMat);
     bar.rotation.x = -Math.PI / 2;
     bar.position.set(0, 0.135, tz);
     g.add(bar);
   });
 
-  const edgeGeo = markShared(new THREE.BoxGeometry(0.24, 0.22, 0.24));
+  const edgeGeo = markShared(new THREE.BoxGeometry(0.24, 0.24, 0.24));
   for (let z = -16; z <= 16; z += 6.4) {
-    [-4.3, 4.3].forEach((ex) => {
+    [-4.4, 4.4].forEach((ex) => {
       const marker = new THREE.Mesh(edgeGeo, amberMat);
-      marker.position.set(ex, 0.18, z);
+      marker.position.set(ex, 0.19, z);
       g.add(marker);
     });
   }
 
-  // Tier 2: Hangar & Air Traffic Control Tower
+  // Tier 2: Hangar & Air Traffic Control Tower with landscaped forecourt
   const tier2Group = new THREE.Group();
   tier2Group.visible = false;
+  const terminalPad = new THREE.Mesh(new THREE.BoxGeometry(7.6, 0.14, 18.0), curbStoneMat);
+  terminalPad.position.set(8.5, 0.07, -1.5);
+  terminalPad.receiveShadow = !lowSpec;
   const hangar = new THREE.Mesh(new THREE.BoxGeometry(6.8, 3.6, 8.2), hangarMat);
-  hangar.position.set(8.6, 1.8, -8);
+  hangar.position.set(8.6, 1.85, -8);
   hangar.castShadow = !lowSpec;
   const hangarRoof = new THREE.Mesh(new THREE.CylinderGeometry(3.5, 3.5, 8.3, 8, 1, false, 0, Math.PI), roofMat);
   hangarRoof.rotation.z = Math.PI / 2;
   hangarRoof.rotation.y = Math.PI / 2;
-  hangarRoof.position.set(8.6, 3.6, -8);
+  hangarRoof.position.set(8.6, 3.65, -8);
   const atcShaft = new THREE.Mesh(new THREE.BoxGeometry(2.2, 7.2, 2.2), hangarMat);
-  atcShaft.position.set(8.4, 3.6, 4.5);
+  atcShaft.position.set(8.4, 3.65, 4.5);
   atcShaft.castShadow = !lowSpec;
   const atcCab = new THREE.Mesh(
     new THREE.CylinderGeometry(2.0, 1.5, 1.5, 8),
     new THREE.MeshStandardMaterial({ color: 0x38bdf8, roughness: 0.15, metalness: 0.45 })
   );
-  atcCab.position.set(8.4, 7.9, 4.5);
-  tier2Group.add(hangar, hangarRoof, atcShaft, atcCab);
+  atcCab.position.set(8.4, 7.95, 4.5);
+  const planterBox = new THREE.Mesh(new THREE.BoxGeometry(1.1, 0.45, 5.2), curbStoneMat);
+  planterBox.position.set(5.4, 0.3, -1.5);
+  const hedge = new THREE.Mesh(new THREE.BoxGeometry(0.75, 0.55, 4.8), hedgeMat);
+  hedge.position.set(5.4, 0.72, -1.5);
+  tier2Group.add(terminalPad, hangar, hangarRoof, atcShaft, atcCab, planterBox, hedge);
   g.add(tier2Group);
 
   // Tier 3: Radar Dish & Extended Jet Apron
@@ -1403,28 +1448,42 @@ export function applyLiveryToModel(model, livery, isPlane = false) {
 
 export function createCorporateHqModel(lowSpec = false) {
   const g = new THREE.Group();
-  const graniteMat = new THREE.MeshStandardMaterial({ color: 0x334155, roughness: 0.75, metalness: 0.15 });
-  const glassMat = new THREE.MeshStandardMaterial({ color: 0x0284c7, roughness: 0.15, metalness: 0.68 });
-  const steelMat = new THREE.MeshStandardMaterial({ color: 0xf8fafc, roughness: 0.32, metalness: 0.45 });
-  const goldMat = new THREE.MeshStandardMaterial({ color: 0xf59e0b, roughness: 0.24, metalness: 0.85, emissive: 0x78350f, emissiveIntensity: 0.25 });
+  const graniteMat = new THREE.MeshStandardMaterial({ color: 0x334155, roughness: 0.72, metalness: 0.15 });
+  const travertineMat = new THREE.MeshStandardMaterial({ map: markShared(getTravertineTexture(3, 3)), roughness: 0.74 });
+  const glassMat = new THREE.MeshStandardMaterial({ color: 0x0284c7, roughness: 0.14, metalness: 0.7 });
+  const steelMat = new THREE.MeshStandardMaterial({ color: 0xf8fafc, roughness: 0.3, metalness: 0.45 });
+  const goldMat = new THREE.MeshStandardMaterial({ color: 0xf59e0b, roughness: 0.22, metalness: 0.85, emissive: 0x78350f, emissiveIntensity: 0.32 });
+  const warmTrimMat = new THREE.MeshStandardMaterial({ color: 0xfef08a, emissive: 0xfbbf24, emissiveIntensity: 0.9, roughness: 0.2 });
 
-  // Tier 1: Granite Plaza + 2-Story TimberPort Lobby
+  // Tier 1: Stepped Travertine & Granite Terrace + 2-Story TimberPort Lobby
   const tier1Group = new THREE.Group();
   tier1Group.visible = false;
+  const plazaBase = new THREE.Mesh(new THREE.BoxGeometry(9.6, 0.22, 9.6), travertineMat);
+  plazaBase.position.y = 0.11;
+  plazaBase.receiveShadow = !lowSpec;
   const plaza = new THREE.Mesh(new THREE.BoxGeometry(8.8, 0.4, 8.8), graniteMat);
-  plaza.position.y = 0.2;
+  plaza.position.y = 0.22;
   plaza.receiveShadow = !lowSpec;
+  const frontStep = new THREE.Mesh(new THREE.BoxGeometry(4.2, 0.22, 1.2), travertineMat);
+  frontStep.position.set(0, 0.11, 4.9);
   const lobby = new THREE.Mesh(new THREE.BoxGeometry(6.6, 4.2, 6.2), steelMat);
-  lobby.position.y = 2.4;
+  lobby.position.y = 2.42;
   lobby.castShadow = !lowSpec;
   const lobbyGlass = new THREE.Mesh(new THREE.BoxGeometry(6.8, 2.5, 5.4), glassMat);
-  lobbyGlass.position.y = 2.5;
-  const canopy = new THREE.Mesh(new THREE.BoxGeometry(3.2, 0.25, 2.2), goldMat);
+  lobbyGlass.position.y = 2.52;
+  const canopy = new THREE.Mesh(new THREE.BoxGeometry(3.4, 0.25, 2.2), goldMat);
   canopy.position.set(0, 2.8, 3.6);
-  tier1Group.add(plaza, lobby, lobbyGlass, canopy);
+  const canopyGlow = new THREE.Mesh(new THREE.BoxGeometry(3.1, 0.08, 0.22), warmTrimMat);
+  canopyGlow.position.set(0, 2.66, 4.45);
+  [-1.4, 1.4].forEach((bx) => {
+    const col = new THREE.Mesh(new THREE.CylinderGeometry(0.14, 0.16, 2.4, 8), goldMat);
+    col.position.set(bx, 1.55, 4.2);
+    tier1Group.add(col);
+  });
+  tier1Group.add(plazaBase, plaza, frontStep, lobby, lobbyGlass, canopy, canopyGlow);
   g.add(tier1Group);
 
-  // Tier 2: Corporate Financial Tower + Golden Crown Band
+  // Tier 2: Corporate Financial Tower + Golden Crown Band + Uplight Ribs
   const tier2Group = new THREE.Group();
   tier2Group.visible = false;
   const tower = new THREE.Mesh(new THREE.BoxGeometry(5.2, 6.5, 5.0), glassMat);
@@ -1434,7 +1493,9 @@ export function createCorporateHqModel(lowSpec = false) {
   ribs.position.y = 7.7;
   const crownBand = new THREE.Mesh(new THREE.BoxGeometry(5.7, 0.55, 5.4), goldMat);
   crownBand.position.y = 11.1;
-  tier2Group.add(tower, ribs, crownBand);
+  const warmHalo = new THREE.Mesh(new THREE.BoxGeometry(5.8, 0.12, 5.5), warmTrimMat);
+  warmHalo.position.y = 10.78;
+  tier2Group.add(tower, ribs, crownBand, warmHalo);
   g.add(tier2Group);
 
   // Tier 3: Penthouse Spire + Helipad + Warm Facade PointLight (gated off on <8GB RAM)
@@ -1455,8 +1516,8 @@ export function createCorporateHqModel(lowSpec = false) {
   tier3Group.add(penthouse, helipadDeck, heliRing, spire);
   g.add(tier3Group);
 
-  const facadeLight = new THREE.PointLight(0xfde68a, 1.8, 22, 1.6);
-  facadeLight.position.set(0, 5.5, 4.8);
+  const facadeLight = new THREE.PointLight(0xfde68a, 1.85, 24, 1.6);
+  facadeLight.position.set(0, 5.6, 5.0);
   facadeLight.visible = false;
   g.add(facadeLight);
 
@@ -1537,17 +1598,23 @@ export function createStormBeaconModel() {
 
 export function createFurnitureFactoryModel(lowSpec = false) {
   const g = new THREE.Group();
-  const wallMat = new THREE.MeshStandardMaterial({ color: 0xf1f5f9, roughness: 0.52 });
+  const wallMat = new THREE.MeshStandardMaterial({ color: 0xf1f5f9, roughness: 0.5 });
+  const travertineMat = new THREE.MeshStandardMaterial({ map: markShared(getTravertineTexture(3, 2)), roughness: 0.78 });
   const timberMat = new THREE.MeshStandardMaterial({ color: 0x9a3412, roughness: 0.62 });
-  const copperMat = new THREE.MeshStandardMaterial({ color: 0xd97706, roughness: 0.3, metalness: 0.72 });
+  const copperMat = new THREE.MeshStandardMaterial({ color: 0xd97706, roughness: 0.28, metalness: 0.72 });
   const glassMat = new THREE.MeshStandardMaterial({ color: 0x38bdf8, roughness: 0.14, metalness: 0.55 });
   const darkMat = new THREE.MeshStandardMaterial({ color: 0x1e293b, roughness: 0.5, metalness: 0.55 });
+  const hedgeMat = new THREE.MeshStandardMaterial({ color: 0x15803d, roughness: 0.85, flatShading: true });
+  const warmGlowMat = new THREE.MeshStandardMaterial({ color: 0xfef3c7, emissive: 0xfbbf24, emissiveIntensity: 0.9, roughness: 0.25 });
 
-  // Tier 1: Main Craft Workshop Hall
+  // Tier 1: Main Craft Workshop Hall + Travertine Courtyard Apron & Awning
   const tier1Group = new THREE.Group();
   tier1Group.visible = false;
+  const apron = new THREE.Mesh(new THREE.BoxGeometry(10.8, 0.14, 9.0), travertineMat);
+  apron.position.y = 0.07;
+  apron.receiveShadow = !lowSpec;
   const plinth = new THREE.Mesh(new THREE.BoxGeometry(9.6, 0.35, 7.6), darkMat);
-  plinth.position.y = 0.175;
+  plinth.position.y = 0.18;
   plinth.receiveShadow = !lowSpec;
   const hall = new THREE.Mesh(new THREE.BoxGeometry(8.4, 3.6, 6.2), wallMat);
   hall.position.y = 2.15;
@@ -1558,7 +1625,19 @@ export function createFurnitureFactoryModel(lowSpec = false) {
   roof.position.y = 4.85;
   const trim = new THREE.Mesh(new THREE.BoxGeometry(8.6, 0.35, 6.4), copperMat);
   trim.position.y = 3.92;
-  tier1Group.add(plinth, hall, roof, trim);
+  const awning = new THREE.Mesh(new THREE.BoxGeometry(4.4, 0.16, 1.6), copperMat);
+  awning.position.set(0, 2.65, 3.85);
+  awning.rotation.x = 0.16;
+  const awningGlow = new THREE.Mesh(new THREE.BoxGeometry(3.8, 0.08, 0.18), warmGlowMat);
+  awningGlow.position.set(0, 2.5, 4.35);
+  [-3.0, 3.0].forEach((px) => {
+    const planter = new THREE.Mesh(new THREE.BoxGeometry(1.5, 0.38, 0.9), travertineMat);
+    planter.position.set(px, 0.35, 3.7);
+    const bush = new THREE.Mesh(new THREE.BoxGeometry(1.2, 0.45, 0.65), hedgeMat);
+    bush.position.set(px, 0.7, 3.7);
+    tier1Group.add(planter, bush);
+  });
+  tier1Group.add(apron, plinth, hall, roof, trim, awning, awningGlow);
   g.add(tier1Group);
 
   // Tier 2: Glass Furniture Showroom Wing & Twin Extractors

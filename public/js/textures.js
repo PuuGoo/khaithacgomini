@@ -113,22 +113,137 @@ export function getAsphaltTexture() {
   cv.width = 256;
   cv.height = 256;
   const ctx = cv.getContext('2d');
-  ctx.fillStyle = '#334155';
+  ctx.fillStyle = '#263140';
   ctx.fillRect(0, 0, 256, 256);
 
-  for (let i = 0; i < 400; i++) {
-    ctx.fillStyle = i % 2 === 0 ? 'rgba(255,255,255,0.04)' : 'rgba(0,0,0,0.06)';
+  // Subtle mineral aggregate grain
+  for (let i = 0; i < 420; i++) {
+    ctx.fillStyle = i % 2 === 0 ? 'rgba(255,255,255,0.035)' : 'rgba(0,0,0,0.07)';
     ctx.fillRect(Math.random() * 256, Math.random() * 256, 3, 3);
   }
 
-  // Yellow dashed road center line
+  // Crisp ivory outer lane shoulder lines
+  ctx.fillStyle = 'rgba(248, 250, 252, 0.72)';
+  ctx.fillRect(14, 0, 5, 256);
+  ctx.fillRect(237, 0, 5, 256);
+
+  // Warm amber double dashed center line
   ctx.fillStyle = '#f59e0b';
   for (let y = 12; y < 256; y += 48) {
-    ctx.fillRect(124, y, 8, 26);
+    ctx.fillRect(120, y, 5, 26);
+    ctx.fillRect(131, y, 5, 26);
   }
 
   const tex = finalizeTexture(cv, 1, 4);
   cache.set('asphalt', tex);
+  return tex;
+}
+
+export function getTravertineTexture(repeatX = 6, repeatY = 6) {
+  const key = `travertine_${repeatX}_${repeatY}`;
+  if (cache.has(key)) return cache.get(key);
+
+  const cv = document.createElement('canvas');
+  cv.width = 256;
+  cv.height = 256;
+  const ctx = cv.getContext('2d');
+
+  ctx.fillStyle = '#ddd2be';
+  ctx.fillRect(0, 0, 256, 256);
+
+  const cols = 4;
+  const rows = 4;
+  const w = 256 / cols;
+  const h = 256 / rows;
+
+  for (let r = 0; r < rows; r++) {
+    const offset = (r % 2) * (w * 0.5);
+    for (let c = -1; c <= cols; c++) {
+      const shade = ((r * 3 + c * 5) % 5 - 2) * 5;
+      const baseR = 224 + shade;
+      const baseG = 212 + shade;
+      const baseB = 191 + shade;
+      ctx.fillStyle = `rgb(${baseR},${baseG},${baseB})`;
+      ctx.fillRect(c * w + offset + 2, r * h + 2, w - 4, h - 4);
+
+      // Subtle warm highlight on top-left stone bevel
+      ctx.fillStyle = 'rgba(255, 250, 240, 0.25)';
+      ctx.fillRect(c * w + offset + 2, r * h + 2, w - 4, 3);
+    }
+  }
+
+  for (let i = 0; i < 240; i++) {
+    ctx.fillStyle = i % 2 === 0 ? 'rgba(255,255,255,0.05)' : 'rgba(120,100,80,0.06)';
+    ctx.fillRect(Math.random() * 256, Math.random() * 256, 3, 2);
+  }
+
+  const tex = finalizeTexture(cv, repeatX, repeatY);
+  cache.set(key, tex);
+  return tex;
+}
+
+export function getGraniteCobbleTexture(repeatX = 5, repeatY = 5) {
+  const key = `cobble_${repeatX}_${repeatY}`;
+  if (cache.has(key)) return cache.get(key);
+
+  const cv = document.createElement('canvas');
+  cv.width = 256;
+  cv.height = 256;
+  const ctx = cv.getContext('2d');
+
+  ctx.fillStyle = '#475569';
+  ctx.fillRect(0, 0, 256, 256);
+
+  const step = 32;
+  for (let y = 0; y < 256; y += step) {
+    const rowShift = ((y / step) % 2) * 16;
+    for (let x = -step; x < 256; x += step) {
+      const isBorder = (y === 0 || y === 224 || ((x + 256) % 256) === 0);
+      const tone = isBorder ? '#d6c3a5' : ((x + y) % 64 === 0 ? '#94a3b8' : '#7b8798');
+      ctx.fillStyle = tone;
+      ctx.fillRect(x + rowShift + 2, y + 2, step - 4, step - 4);
+      ctx.fillStyle = 'rgba(255,255,255,0.14)';
+      ctx.fillRect(x + rowShift + 2, y + 2, step - 4, 2);
+    }
+  }
+
+  const tex = finalizeTexture(cv, repeatX, repeatY);
+  cache.set(key, tex);
+  return tex;
+}
+
+export function getBoardwalkPlankTexture(repeatX = 12, repeatY = 1) {
+  const key = `boardwalk_${repeatX}_${repeatY}`;
+  if (cache.has(key)) return cache.get(key);
+
+  const cv = document.createElement('canvas');
+  cv.width = 256;
+  cv.height = 256;
+  const ctx = cv.getContext('2d');
+
+  ctx.fillStyle = '#7c4a26';
+  ctx.fillRect(0, 0, 256, 256);
+
+  const planks = 8;
+  const pw = 256 / planks;
+  for (let i = 0; i < planks; i++) {
+    const tones = ['#b57b45', '#a96e3b', '#be834d', '#9e6535'];
+    ctx.fillStyle = tones[i % tones.length];
+    ctx.fillRect(i * pw + 1.5, 0, pw - 3, 256);
+
+    // Wood grain & nail accents
+    ctx.fillStyle = 'rgba(60, 30, 10, 0.18)';
+    ctx.fillRect(i * pw + 6, 0, 2, 256);
+    ctx.fillRect(i * pw + 18, 0, 1.5, 256);
+    ctx.fillStyle = 'rgba(30, 41, 59, 0.45)';
+    for (let ny = 24; ny < 256; ny += 64) {
+      ctx.fillRect(i * pw + 5, ny, 3, 3);
+      ctx.fillRect(i * pw + pw - 8, ny, 3, 3);
+    }
+  }
+
+  const tex = finalizeTexture(cv, repeatX, repeatY);
+  cache.set(key, tex);
   return tex;
 }
 
@@ -167,15 +282,15 @@ export function drawRadialProgressToCanvas(ctx, progress, color = '#f59e0b') {
 
   ctx.beginPath();
   ctx.arc(64, 64, 52, 0, Math.PI * 2);
-  ctx.strokeStyle = 'rgba(255,255,255,0.2)';
-  ctx.lineWidth = 10;
+  ctx.strokeStyle = 'rgba(255,255,255,0.22)';
+  ctx.lineWidth = 8;
   ctx.stroke();
 
   if (progress > 0.01) {
     ctx.beginPath();
     ctx.arc(64, 64, 52, -Math.PI / 2, -Math.PI / 2 + Math.PI * 2 * Math.min(1, progress));
     ctx.strokeStyle = color;
-    ctx.lineWidth = 10;
+    ctx.lineWidth = 8;
     ctx.lineCap = 'round';
     ctx.stroke();
   }
@@ -195,39 +310,48 @@ export function makeRadialProgressTexture(progress, color = '#f59e0b') {
 }
 
 export function drawWorldBadgeToCanvas(ctx, title, subtitle, accentColor = '#f59e0b') {
-  ctx.clearRect(0, 0, 320, 84);
-  ctx.fillStyle = 'rgba(15, 23, 42, 0.92)';
+  ctx.clearRect(0, 0, 320, 76);
+
+  // Sleek dark obsidian-slate architectural plaque with hairline gold/accent border
+  ctx.fillStyle = 'rgba(11, 17, 30, 0.86)';
   ctx.beginPath();
-  if (ctx.roundRect) ctx.roundRect(4, 4, 312, 76, 14);
-  else ctx.rect(4, 4, 312, 76);
+  if (ctx.roundRect) ctx.roundRect(10, 6, 300, 64, 12);
+  else ctx.rect(10, 6, 300, 64);
   ctx.fill();
 
-  ctx.strokeStyle = accentColor;
-  ctx.lineWidth = 3;
+  ctx.strokeStyle = 'rgba(245, 196, 81, 0.55)';
+  ctx.lineWidth = 1.5;
   ctx.stroke();
 
+  // Slim left indicator bar
+  ctx.fillStyle = accentColor;
+  ctx.beginPath();
+  if (ctx.roundRect) ctx.roundRect(16, 15, 5, 46, 3);
+  else ctx.rect(16, 15, 5, 46);
+  ctx.fill();
+
   ctx.fillStyle = '#f8fafc';
-  ctx.font = '700 22px Outfit, sans-serif';
+  ctx.font = '700 20px Outfit, sans-serif';
   ctx.textAlign = 'center';
-  ctx.fillText(title, 160, 34);
+  ctx.fillText(title, 165, 33);
 
   ctx.fillStyle = accentColor;
-  ctx.font = '700 19px JetBrains Mono, monospace';
-  ctx.fillText(subtitle, 160, 62);
+  ctx.font = '600 17px JetBrains Mono, monospace';
+  ctx.fillText(subtitle, 165, 57);
 }
 
 export function makeWorldBadgeSprite(title, subtitle, accentColor = '#f59e0b') {
   const cv = document.createElement('canvas');
   cv.width = 320;
-  cv.height = 84;
+  cv.height = 76;
   const ctx = cv.getContext('2d');
   drawWorldBadgeToCanvas(ctx, title, subtitle, accentColor);
 
   const tex = new THREE.CanvasTexture(cv);
   tex.colorSpace = THREE.SRGBColorSpace;
   tex.needsUpdate = true;
-  const sprite = new THREE.Sprite(new THREE.SpriteMaterial({ map: tex, depthTest: false }));
-  sprite.scale.set(4.2, 1.1, 1);
+  const sprite = new THREE.Sprite(new THREE.SpriteMaterial({ map: tex, depthTest: false, transparent: true }));
+  sprite.scale.set(3.2, 0.76, 1);
   sprite.userData._canvasCtx = ctx;
   sprite.userData._canvasTex = tex;
   return sprite;
@@ -239,4 +363,5 @@ export function disposeAllCachedTextures() {
   }
   cache.clear();
 }
+
 
