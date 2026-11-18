@@ -173,6 +173,61 @@ export function updateMarketPrices() {
   return surged;
 }
 
+export const MANAGER_CATALOG = [
+  { id: 'mgr_forest', name: 'Giám Đốc Lâm Trường', role: 'Khai thác Rừng', icon: '🌲', statKey: 'forestSpeed', baseCost: 900, scale: 2.1, maxStar: 5, bonusPerStar: 0.16, desc: (lv) => `+${lv * 16}% tốc độ đốn cây & sản lượng thợ rừng.` },
+  { id: 'mgr_sawmill', name: 'Kỹ Sư Trưởng Xưởng', role: 'Dây chuyền Cưa', icon: '⚙️', statKey: 'sawValue', baseCost: 1400, scale: 2.2, maxStar: 5, bonusPerStar: 0.15, desc: (lv) => `+${lv * 15}% giá trị ván gỗ & tốc độ băng chuyền.` },
+  { id: 'mgr_harbor', name: 'Trưởng Cảng Thương Mại', role: 'Xuất khẩu Cảng', icon: '⚓', statKey: 'contractBonus', baseCost: 2200, scale: 2.3, maxStar: 5, bonusPerStar: 0.18, desc: (lv) => `+${lv * 18}% tiền thưởng hợp đồng & tốc độ xe nâng AI.` },
+  { id: 'mgr_coldchain', name: 'Điều Phối Chuỗi Lạnh', role: 'Thủy sản & Ngoại tuyến', icon: '❄️', statKey: 'offlineBonus', baseCost: 1800, scale: 2.15, maxStar: 5, bonusPerStar: 0.20, desc: (lv) => `+${lv * 20}% giá trị cá hộp & thu nhập ngoại tuyến.` }
+];
+
+export const WHEEL_SEGMENTS = [
+  { id: 'w_cash_sm', label: '+$850', type: 'cash', amount: 850, color: '#1e293b', text: '#34d399' },
+  { id: 'w_gems_15', label: '+15 💎', type: 'gems', amount: 15, color: '#0c4a6e', text: '#7dd3fc' },
+  { id: 'w_cash_md', label: '+$2,600', type: 'cash', amount: 2600, color: '#1e293b', text: '#34d399' },
+  { id: 'w_vip_120', label: '+120 VIP', type: 'vip', amount: 120, color: '#3b2607', text: '#fde68a' },
+  { id: 'w_gems_40', label: '+40 💎', type: 'gems', amount: 40, color: '#0c4a6e', text: '#7dd3fc' },
+  { id: 'w_boost', label: '⚡ x2 40s', type: 'boost', amount: 40, color: '#14532d', text: '#86efac' },
+  { id: 'w_cash_lg', label: '+$6,000', type: 'cash', amount: 6000, color: '#1e293b', text: '#fbbf24' },
+  { id: 'w_gems_85', label: '+85 💎', type: 'gems', amount: 85, color: '#312e81', text: '#c4b5fd' }
+];
+
+export const TIMED_EVENTS = [
+  { id: 'ev_timber_boom', name: 'Hội Chợ Gỗ Bắc Âu', desc: 'Tăng +45% doanh thu toàn bộ Ván & Pallet', multTarget: 'sawmill', multBonus: 0.45, duration: 120, color: '#f59e0b' },
+  { id: 'ev_export_surge', name: 'Giờ Vàng Xuất Cảng', desc: 'Tăng +55% thưởng Hợp đồng Cảng biển', multTarget: 'contracts', multBonus: 0.55, duration: 110, color: '#10b981' },
+  { id: 'ev_ocean_harvest', name: 'Mùa Thu Hoạch Biển', desc: 'Tăng +65% giá trị Cá Hộp xuất khẩu', multTarget: 'fishery', multBonus: 0.65, duration: 110, color: '#0ea5e9' }
+];
+
+export const activeEventState = {
+  current: TIMED_EVENTS[0],
+  timeLeft: 120,
+  cooldown: 0,
+  index: 0
+};
+
+// Rolling 60s Cash Telemetry (Zero GC ring of timestamped entries)
+const cashFlowSamples = [];
+
+export function getCashPerMinute() {
+  const now = Date.now();
+  const cutoff = now - 60000;
+  let total = 0;
+  let i = 0;
+  while (i < cashFlowSamples.length) {
+    if (cashFlowSamples[i].t < cutoff) {
+      cashFlowSamples.shift();
+    } else {
+      total += cashFlowSamples[i].amt;
+      i++;
+    }
+  }
+  const passiveEstimate = Math.round(
+    ((gameState.autoForklifts || 0) * 180 + Math.max(0, gameState.fishingBoats || 0) * 95)
+    * getRevenueMultiplier()
+    * (1 + getManagerBonus('contractBonus'))
+  );
+  return Math.max(total, passiveEstimate);
+}
+
 export function createDefaultState() {
   return {
     playerId: 'player_' + Math.random().toString(36).slice(2, 8),
@@ -246,6 +301,19 @@ export function createDefaultState() {
       offline: 0
     },
 
+    // Managers (1★-5★), Prestige, Lucky Wheel & VIP Rush Order
+    managers: {
+      mgr_forest: 0,
+      mgr_sawmill: 0,
+      mgr_harbor: 0,
+      mgr_coldchain: 0
+    },
+    prestigeLevel: 0,
+    prestigeMedals: 0,
+    lastFreeSpinDate: '',
+    vipRushOrder: null,
+    vipRushCooldown: 12,
+
     // Cosmetics & Fleet
     equippedSkin: 'classic',
     unlockedSkins: ['classic'],
@@ -286,14 +354,48 @@ export function getSkinData(id = gameState.equippedSkin) {
   return SKINS.find((s) => s.id === id) || SKINS[0];
 }
 
+export function getManagerLevel(id) {
+  return (gameState.managers && gameState.managers[id]) || 0;
+}
+
+export function getManagerCost(mgr) {
+  const lv = getManagerLevel(mgr.id);
+  if (lv >= mgr.maxStar) return null;
+  return Math.floor(mgr.baseCost * Math.pow(mgr.scale, lv));
+}
+
+export function getManagerBonus(statKey) {
+  const mgr = MANAGER_CATALOG.find((m) => m.statKey === statKey);
+  if (!mgr) return 0;
+  return getManagerLevel(mgr.id) * mgr.bonusPerStar;
+}
+
+export function getPrestigeMultiplier() {
+  return 1 + (gameState.prestigeLevel || 0) * 0.35 + (gameState.prestigeMedals || 0) * 0.04;
+}
+
+export function getActiveEvent() {
+  return activeEventState.current;
+}
+
 export function getRevenueMultiplier() {
   const branchMult = getActiveBranch().multiplier;
   const plankMult = 1 + ((gameState.plankValueTier || 1) - 1) * 0.35;
   const vipMult = getVipMultiplier();
+  const mgrMult = 1 + getManagerBonus('sawValue');
+  const prestigeMult = getPrestigeMultiplier();
+  const ev = activeEventState.current;
+  const eventMult = ev && ev.multTarget === 'sawmill' ? 1 + ev.multBonus : 1.0;
   let skinMult = 1.0;
   if (gameState.equippedSkin === 'captain') skinMult = 1.15;
   if (gameState.equippedSkin === 'gold_tycoon') skinMult = 1.25;
-  return branchMult * plankMult * vipMult * skinMult;
+  return branchMult * plankMult * vipMult * skinMult * mgrMult * prestigeMult * eventMult;
+}
+
+export function getContractMultiplier() {
+  const ev = activeEventState.current;
+  const eventMult = ev && ev.multTarget === 'contracts' ? 1 + ev.multBonus : 1.0;
+  return getRevenueMultiplier() * (1 + getManagerBonus('contractBonus')) * eventMult;
 }
 
 export function getUpgradeCost(item) {
@@ -319,12 +421,15 @@ export function getHarborVisualTier() {
 
 export function recordRevenue(source, amount) {
   if (!amount || amount <= 0) return;
+  const rounded = Math.round(amount);
   if (!gameState.revenueStats) {
     gameState.revenueStats = { sawmill: 0, contracts: 0, fishery: 0, market: 0, offline: 0 };
   }
   if (source in gameState.revenueStats) {
-    gameState.revenueStats[source] += Math.round(amount);
+    gameState.revenueStats[source] += rounded;
   }
+  cashFlowSamples.push({ t: Date.now(), amt: rounded });
+  if (cashFlowSamples.length > 240) cashFlowSamples.shift();
 }
 
 export function addVipXp(amount) {
@@ -398,10 +503,116 @@ export function calculateOfflineEarnings(previousUpdatedAt) {
     + (gameState.autoForklifts || 0) * 2.5
     + Math.max(1, gameState.fishingBoats || 0) * 1.1;
 
-  const mult = getRevenueMultiplier();
+  const mult = getRevenueMultiplier() * (1 + getManagerBonus('offlineBonus'));
   const cash = Math.max(25, Math.round((cappedSec / 12) * workforceScore * mult));
   const planks = Math.min(40, Math.floor((cappedSec / 45) * Math.max(1, gameState.lumberjacks || 0)));
   return { seconds: cappedSec, cash, planks };
+}
+
+export function canFreeSpin() {
+  return gameState.lastFreeSpinDate !== todayIsoDate();
+}
+
+export function spawnVipRushOrder() {
+  const tier = Math.max(1, gameState.contractsCompleted || 1);
+  const reqPlanks = 6 + tier * 2;
+  const reqPallets = tier >= 2 ? Math.min(5, Math.floor(tier * 0.8)) : 0;
+  const reqCanned = tier >= 3 ? Math.min(4, Math.floor(tier * 0.6)) : 0;
+  const mult = getActiveBranch().multiplier * getPrestigeMultiplier();
+  gameState.vipRushOrder = {
+    id: 'rush_' + Date.now(),
+    title: reqPallets > 0 ? 'Đơn Hàng VIP Khẩn Cấp Cảng' : 'Lệnh Xuất Gỗ Ván Hỏa Tốc',
+    reqPlanks,
+    reqPallets,
+    reqCanned,
+    rewardCash: Math.floor((1800 + tier * 950) * mult),
+    rewardGems: 22 + tier * 3,
+    timeLeft: 95,
+    maxTime: 95
+  };
+}
+
+export function tickTimedEvents(dt) {
+  if (activeEventState.current) {
+    activeEventState.timeLeft -= dt;
+    if (activeEventState.timeLeft <= 0) {
+      activeEventState.current = null;
+      activeEventState.cooldown = 30;
+    }
+  } else {
+    activeEventState.cooldown -= dt;
+    if (activeEventState.cooldown <= 0) {
+      activeEventState.index = (activeEventState.index + 1) % TIMED_EVENTS.length;
+      activeEventState.current = TIMED_EVENTS[activeEventState.index];
+      activeEventState.timeLeft = activeEventState.current.duration;
+      return activeEventState.current;
+    }
+  }
+  return null;
+}
+
+export function tickVipRushOrder(dt) {
+  if (gameState.vipRushOrder) {
+    gameState.vipRushOrder.timeLeft -= dt;
+    if (gameState.vipRushOrder.timeLeft <= 0) {
+      gameState.vipRushOrder = null;
+      gameState.vipRushCooldown = 45;
+      return 'expired';
+    }
+  } else {
+    gameState.vipRushCooldown = (gameState.vipRushCooldown ?? 20) - dt;
+    if (gameState.vipRushCooldown <= 0) {
+      spawnVipRushOrder();
+      return 'spawned';
+    }
+  }
+  return null;
+}
+
+export function canPrestige() {
+  return (gameState.level || 1) >= 5 || (gameState.contractsCompleted || 0) >= 3 || (gameState.cash || 0) >= 18000;
+}
+
+export function getPrestigeRewardMedals() {
+  const score = Math.floor((gameState.cash || 0) / 8000) + (gameState.contractsCompleted || 0) + Math.floor((gameState.level || 1) / 3);
+  return Math.max(2, score);
+}
+
+export function performPrestige() {
+  if (!canPrestige()) return 0;
+  const medals = getPrestigeRewardMedals();
+  gameState.prestigeLevel = (gameState.prestigeLevel || 0) + 1;
+  gameState.prestigeMedals = (gameState.prestigeMedals || 0) + medals;
+
+  gameState.level = 1;
+  gameState.xp = 0;
+  gameState.cash = 280 + medals * 60;
+  gameState.logs = 0;
+  gameState.sawmillBuffer = 0;
+  gameState.planks = 0;
+  gameState.pallets = 0;
+  gameState.freshFish = 0;
+  gameState.cannedFish = 0;
+
+  gameState.axeTier = 1;
+  gameState.backpackTier = 1;
+  gameState.bootsTier = 1;
+  gameState.sawSpeedTier = 1;
+  gameState.conveyorTier = 0;
+  gameState.plankValueTier = 1;
+  gameState.lumberjacks = 0;
+  gameState.autoForklifts = 0;
+  gameState.fishingBoats = 0;
+
+  gameState.managers = { mgr_forest: 0, mgr_sawmill: 0, mgr_harbor: 0, mgr_coldchain: 0 };
+  gameState.activeBranchId = 'pine_bay';
+  gameState.unlockedBranches = ['pine_bay'];
+  gameState.contractsCompleted = 0;
+  gameState.padProgress = {};
+  gameState.vipRushOrder = null;
+  gameState.vipRushCooldown = 15;
+  generateNextContract();
+  return medals;
 }
 
 export function generateNextContract() {
@@ -416,7 +627,7 @@ export function generateNextContract() {
   const reqPlanks = 8 + n * 5;
   const reqPallets = 2 + Math.floor(n * 1.2);
   const reqCanned = n >= 2 ? 2 + Math.floor(n * 0.8) : 0;
-  const mult = getActiveBranch().multiplier;
+  const mult = getActiveBranch().multiplier * getPrestigeMultiplier();
   gameState.activeContract = {
     id: 'ct_' + Date.now(),
     title: titles[n % titles.length],
@@ -479,6 +690,9 @@ export function loadGameLocal() {
       }
       if (!Array.isArray(gameState.claimedAchievements)) {
         gameState.claimedAchievements = [];
+      }
+      if (!gameState.managers) {
+        gameState.managers = { mgr_forest: 0, mgr_sawmill: 0, mgr_harbor: 0, mgr_coldchain: 0 };
       }
       return prevUpdatedAt;
     }

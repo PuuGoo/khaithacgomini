@@ -19,6 +19,7 @@ import {
   createHarborStructure,
   createLogMesh,
   createPlankMesh,
+  createCargoFreighterModel,
   syncBuildingEvolution,
   disposeObject3D
 } from './models.js';
@@ -53,6 +54,8 @@ export class WorldManager {
     this.waterMat = null;
     this.sawmill = null;
     this.harbor = null;
+    this.cargoFreighter = null;
+    this.harborBeaconLight = null;
     this.questRing = null;
     this.currentQuestTarget = ZONES.hopper;
 
@@ -229,6 +232,25 @@ export class WorldManager {
     this.harbor = createHarborStructure();
     this.harbor.position.set(2, 0, 24);
     this.worldGroup.add(this.harbor);
+
+    // Pre-built animated Cargo Freighter cruising the outer bay lane
+    this.cargoFreighter = createCargoFreighterModel(this.lowSpec);
+    this.cargoFreighter.position.set(-40, 0.05, 62);
+    this.worldGroup.add(this.cargoFreighter);
+
+    // Subtle pier point light gated OFF on <8GB RAM low-spec laptops
+    this.harborBeaconLight = new THREE.PointLight(0xfef08a, 1.8, 26, 1.6);
+    this.harborBeaconLight.position.set(8.5, 6.2, 34);
+    this.harborBeaconLight.visible = !this.lowSpec;
+    this.worldGroup.add(this.harborBeaconLight);
+  }
+
+  setLowSpec(isLow) {
+    this.lowSpec = Boolean(isLow);
+    if (this.harborBeaconLight) this.harborBeaconLight.visible = !this.lowSpec;
+    if (this.cargoFreighter?.userData?.mastBeacon) {
+      this.cargoFreighter.userData.mastBeacon.visible = !this.lowSpec;
+    }
   }
 
   syncEvolution(sawTier, harborTier) {
@@ -487,6 +509,15 @@ export class WorldManager {
       if (this.harbor.userData.tier2Group?.visible && this.harbor.userData.lhBeacon) {
         this.harbor.userData.lhBeacon.rotation.y += dt * 1.6;
       }
+    }
+
+    if (this.cargoFreighter) {
+      const phase = elapsed * 0.11;
+      const fx = Math.sin(phase) * 58;
+      const fz = 60 + Math.cos(phase * 0.5) * 8;
+      const dx = Math.cos(phase) * 58 * 0.11;
+      this.cargoFreighter.position.set(fx, 0.05 + Math.sin(elapsed * 1.2) * 0.12, fz);
+      this.cargoFreighter.rotation.y = dx >= 0 ? 0 : Math.PI;
     }
 
     for (const tree of this.trees) {

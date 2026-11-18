@@ -887,3 +887,46 @@ export function createWorkerModel(role = 'lumberjack') {
   m.scale.setScalar(0.86);
   return m;
 }
+
+export function createCargoFreighterModel(lowSpec = false) {
+  const g = new THREE.Group();
+  const hullMat = new THREE.MeshStandardMaterial({ color: 0x0f172a, roughness: 0.55, metalness: 0.35 });
+  const deckMat = new THREE.MeshStandardMaterial({ color: 0x991b1b, roughness: 0.65, metalness: 0.15 });
+  const bridgeMat = new THREE.MeshStandardMaterial({ color: 0xf8fafc, roughness: 0.4 });
+  const accentMat = new THREE.MeshStandardMaterial({ color: 0xf59e0b, roughness: 0.35, metalness: 0.5 });
+
+  const hull = new THREE.Mesh(new THREE.BoxGeometry(11.5, 1.8, 3.6), hullMat);
+  hull.position.y = 0.7;
+  hull.castShadow = !lowSpec;
+
+  const keel = new THREE.Mesh(new THREE.BoxGeometry(11.0, 0.65, 3.3), deckMat);
+  keel.position.y = -0.2;
+
+  const bridge = new THREE.Mesh(new THREE.BoxGeometry(2.6, 3.0, 3.0), bridgeMat);
+  bridge.position.set(-3.9, 2.7, 0);
+  bridge.castShadow = !lowSpec;
+
+  const funnel = new THREE.Mesh(new THREE.CylinderGeometry(0.42, 0.54, 1.3, 8), accentMat);
+  funnel.position.set(-4.3, 4.6, 0);
+
+  const mastBeacon = new THREE.Mesh(
+    new THREE.SphereGeometry(0.28, 8, 8),
+    new THREE.MeshStandardMaterial({ color: 0xfef08a, emissive: 0xfacc15, emissiveIntensity: 1.0 })
+  );
+  mastBeacon.position.set(5.2, 2.1, 0);
+  mastBeacon.visible = !lowSpec;
+
+  const contColors = [0x0ea5e9, 0x10b981, 0xf59e0b, 0xef4444];
+  const contGeo = markShared(new THREE.BoxGeometry(2.3, 1.15, 1.35));
+  for (let i = 0; i < 4; i++) {
+    const c = new THREE.Mesh(contGeo, new THREE.MeshStandardMaterial({ color: contColors[i], roughness: 0.5 }));
+    c.position.set(-0.8 + (i % 2) * 2.6, 2.1, i < 2 ? -0.78 : 0.78);
+    c.castShadow = !lowSpec;
+    g.add(c);
+  }
+
+  g.add(hull, keel, bridge, funnel, mastBeacon);
+  g.userData = { mastBeacon };
+  return g;
+}
+

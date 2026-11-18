@@ -10,7 +10,7 @@
   <link rel="preconnect" href="https://fonts.googleapis.com">
   <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
   <link href="https://fonts.googleapis.com/css2?family=JetBrains+Mono:wght@500;600;700&family=Outfit:wght@600;700&family=Plus+Jakarta+Sans:wght@400;500;600;700&display=swap" rel="stylesheet">
-  <link rel="stylesheet" href="/css/style.css?v=2.1.0">
+  <link rel="stylesheet" href="/css/style.css?v=2.2.0">
   <link rel="icon" href="data:image/svg+xml,<svg xmlns=%22http://www.w3.org/2000/svg%22 viewBox=%220 0 100 100%22><text y=%22.9em%22 font-size=%2290%22>🪵</text></svg>">
   <script type="importmap">
   {
@@ -50,8 +50,9 @@
 
     <!-- Zone 2: Clean Unboxed Resource Strip -->
     <div class="top-zone-resources tabular-nums" aria-label="Tài nguyên hiện có">
-      <span class="res-item res-cash" title="Tiền mặt">
+      <span class="res-item res-cash" title="Tiền mặt &amp; tốc độ doanh thu mỗi phút">
         <span class="res-val" id="val-cash">$100</span>
+        <span class="res-cpm" id="val-cpm">+$0/p</span>
       </span>
       <span class="meta-sep" aria-hidden="true">·</span>
       <span class="res-item" title="Gỗ trong Balo">
@@ -104,6 +105,15 @@
     <span class="meta-sep" aria-hidden="true">·</span>
     <span id="status-boost-text" class="tabular-nums">Bình thường</span>
   </div>
+
+  <!-- VIP Rush Order Countdown Strip (Top-Right Below Status, Click to Open Contracts) -->
+  <button type="button" id="vip-rush-strip" class="vip-rush-strip" title="Nhấn để xem hoặc giao Đơn Hàng VIP Khẩn Cấp" hidden>
+    <span class="rush-kicker">⚡ VIP Khẩn</span>
+    <span class="meta-sep" aria-hidden="true">·</span>
+    <span id="vip-rush-timer" class="rush-timer tabular-nums">01:35</span>
+    <span class="meta-sep hide-xs" aria-hidden="true">·</span>
+    <span id="vip-rush-reward" class="rush-reward tabular-nums hide-xs">+$2,400</span>
+  </button>
 
   <!-- Contextual Prompt for Vehicles / Harbor / Saw Hopper -->
   <button type="button" id="action-prompt" class="action-prompt" hidden>
@@ -180,12 +190,17 @@
       </div>
 
       <div class="hub-tabs" role="tablist">
-        <button type="button" class="hub-tab active" data-tab="upgrades" role="tab">🏭 Nâng cấp Xưởng</button>
-        <button type="button" class="hub-tab" data-tab="contracts" role="tab">🚢 Hợp đồng & Sàn giá</button>
-        <button type="button" class="hub-tab" data-tab="season" role="tab">🎫 Điểm danh & Vé Mùa</button>
-        <button type="button" class="hub-tab" data-tab="locker" role="tab">🚘 Tủ đồ & Siêu xe</button>
+        <button type="button" class="hub-tab active" data-tab="upgrades" role="tab">🏭 Xưởng &amp; Quản lý</button>
+        <button type="button" class="hub-tab" data-tab="contracts" role="tab">🚢 Hợp đồng &amp; Sàn giá</button>
+        <button type="button" class="hub-tab" data-tab="season" role="tab">🎡 Vòng quay &amp; Sự kiện</button>
+        <button type="button" class="hub-tab" data-tab="locker" role="tab">🚘 Tủ đồ &amp; Siêu xe</button>
         <button type="button" class="hub-tab" data-tab="achievements" role="tab">🏆 Thành tựu <span id="badge-ach" class="tab-badge tabular-nums" hidden>0</span></button>
-        <button type="button" class="hub-tab" data-tab="vip" role="tab">👑 Cửa hàng VIP</button>
+        <button type="button" class="hub-tab" data-tab="vip" role="tab">👑 VIP &amp; Chuyển sinh</button>
+      </div>
+
+      <!-- 4-Column Executive KPI Summary Header -->
+      <div id="hub-kpi-strip" class="hub-kpi-strip tabular-nums" aria-label="Tổng quan hiệu suất đế chế">
+        <!-- Populated dynamically by ui.js -->
       </div>
 
       <div id="hub-body" class="hub-body">
@@ -255,10 +270,16 @@
     </div>
   </div>
 
+  <!-- Reward Claim Celebration Banner -->
+  <div id="celebration-banner" class="celebration-banner" aria-live="polite" hidden>
+    <div class="celebration-title" id="celebration-title">Phần thưởng Thương Mại</div>
+    <div class="celebration-detail tabular-nums" id="celebration-detail">+$0</div>
+  </div>
+
   <!-- Toast Stack -->
   <div id="toast-container" class="toast-container" aria-live="polite"></div>
 
   <!-- Application Entry Point (Modern ES Modules) -->
-  <script type="module" src="/js/engine.js?v=2.1.0"></script>
+  <script type="module" src="/js/engine.js?v=2.2.0"></script>
 </body>
 </html>

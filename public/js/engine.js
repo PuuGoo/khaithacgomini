@@ -18,6 +18,9 @@ import {
   getActiveBranch,
   getSkinData,
   getRevenueMultiplier,
+  getContractMultiplier,
+  getManagerBonus,
+  getActiveEvent,
   getUpgradeCost,
   getSawmillVisualTier,
   getHarborVisualTier,
@@ -26,6 +29,8 @@ import {
   addSeasonXp,
   advanceDailyQuest,
   generateNextContract,
+  tickTimedEvents,
+  tickVipRushOrder,
   saveGameLocal,
   saveGameServer,
   loadGameLocal
@@ -230,6 +235,8 @@ class TimberPortEngine {
       onContextAction: () => this.handleContextAction(),
       onUpgrade: (id) => this.handleUpgradeEffect(id),
       onDeliverContract: (instant) => this.handleDeliverContract(instant),
+      onDeliverVipRush: () => this.handleDeliverVipRush(),
+      onPrestige: () => this.handlePrestigeReset(),
       onSellCommodity: (key) => this.sellCommodityAtMarket(key),
       onBranchChange: (br) => {
         this.applyBranchAtmosphere(br);
@@ -439,6 +446,7 @@ class TimberPortEngine {
     gameState.graphicsQuality = mode;
     this.activeProfile = this.resolveProfile(mode);
     this.applyGraphicsSettings();
+    this.world?.setLowSpec(this.activeProfile === 'low');
     this.rebuildVehicle();
     saveGameServer();
     this.ui.toast(`⚙️ Đã chuyển đồ họa: ${this.getGraphicsInfo().profileLabel}`);
@@ -903,7 +911,7 @@ class TimberPortEngine {
       ct.deliveredPallets >= ct.reqPallets &&
       ct.deliveredCanned >= ct.reqCanned
     ) {
-      const cashGain = Math.round(ct.rewardCash * getRevenueMultiplier());
+      const cashGain = Math.round(ct.rewardCash * getContractMultiplier());
       gameState.cash += cashGain;
       recordRevenue('contracts', cashGain);
       gameState.gems += ct.rewardGems;
@@ -923,6 +931,67 @@ class TimberPortEngine {
     saveGameServer();
     this.ui.refreshHUD();
     return true;
+  }
+
+  handleDeliverVipRush() {
+    const rush = gameState.vipRushOrder;
+    if (!rush) return false;
+    if (
+      gameState.planks < rush.reqPlanks ||
+      gameState.pallets < rush.reqPallets ||
+      gameState.cannedFish < rush.reqCanned
+    ) {
+      this.ui.toast('Kho chưa đủ hàng cho Đơn VIP Khẩn Cấp!');
+      return false;
+    }
+
+    gameState.planks -= rush.reqPlanks;
+    gameState.pallets -= rush.reqPallets;
+    gameState.cannedFish -= rush.reqCanned;
+    const totalAdd = rush.reqPlanks + rush.reqPallets + rush.reqCanned;
+    gameState.totalExported += totalAdd;
+    advanceDailyQuest('goodsExported', totalAdd);
+
+    const cashGain = Math.round(rush.rewardCash * getContractMultiplier());
+    gameState.cash += cashGain;
+    recordRevenue('contracts', cashGain);
+    gameState.gems += rush.rewardGems;
+    gameState.contractsCompleted += 1;
+    gameState.xp += 95;
+    if (gameState.xp >= gameState.level * 120) gameState.level++;
+    addVipXp(60);
+    addSeasonXp(45);
+
+    gameState.vipRushOrder = null;
+    gameState.vipRushCooldown = 50;
+
+    sound.playShipHorn();
+    this.world.spawnParticles(ZONES.harborExport, 0xfbbf24, 6);
+    this.spawnWorldText(ZONES.harborExport, `⚡ +$${cashGain.toLocaleString()} · +${rush.rewardGems}💎`, 'cash');
+    this.world.syncEvolution(getSawmillVisualTier(), getHarborVisualTier());
+    this.syncSawmillVisuals();
+    saveGameServer();
+    this.ui.refreshHUD();
+    return true;
+  }
+
+  handlePrestigeReset() {
+    this.playerPos.set(0, 0, 2);
+    this.playerYaw = 0;
+    this.inVehicle = false;
+    this.playerModel.visible = true;
+    syncPlayerBackLogs(this.playerModel, 0);
+    this.applyBranchAtmosphere(getActiveBranch());
+    this.rebuildWorkforce();
+    this.world.syncEvolution(getSawmillVisualTier(), getHarborVisualTier());
+    this.lastVisualBuffer = -1;
+    this.lastVisualPlanks = -1;
+    this.lastVisualPallets = -1;
+    this.syncSawmillVisuals();
+    for (const pad of this.world.arcadePads) {
+      this.world.refreshArcadePad(pad, true);
+    }
+    this.world.spawnParticles(this.playerPos, 0xfacc15, 6);
   }
 
   // -------------------------------------------------------------------------
@@ -1021,6 +1090,15 @@ class TimberPortEngine {
     if (gameState.boostTimer > 0) gameState.boostTimer = Math.max(0, gameState.boostTimer - dt);
     if (gameState.boostCooldown > 0) gameState.boostCooldown = Math.max(0, gameState.boostCooldown - dt);
     if (this.fullBagToastTimer > 0) this.fullBagToastTimer = Math.max(0, this.fullBagToastTimer - dt);
+
+    const newEv = tickTimedEvents(dt);
+    if (newEv) {
+      this.ui.toast(`🌟 Sự kiện mới: ${newEv.name} (${newEv.desc})`);
+    }
+    const rushEv = tickVipRushOrder(dt);
+    if (rushEv === 'spawned') {
+      this.ui.toast('⚡ Có Đơn Hàng VIP Khẩn Cấp mới tại Cảng!');
+    }
   }
 
   updatePlayerMovement(dt) {
@@ -1148,7 +1226,8 @@ class TimberPortEngine {
             this.spawnWorldText(this.playerPos, 'Đầy Balo! Về Phễu Xưởng', 'log');
           }
         } else {
-          this.chopCooldown = gameState.boostTimer > 0 ? 0.2 : 0.38;
+          const forestMgr = 1 + getManagerBonus('forestSpeed');
+          this.chopCooldown = (gameState.boostTimer > 0 ? 0.2 : 0.38) / forestMgr;
           this.chopSwing = 1.0;
 
           const dmg = gameState.boostTimer > 0 ? 2 : Math.max(1, Math.ceil((gameState.axeTier || 1) * 0.75));
@@ -1219,7 +1298,8 @@ class TimberPortEngine {
 
     if ((gameState.conveyorTier || 0) > 0 && gameState.planks >= 4) {
       this.palletTimer += dt;
-      const convInterval = Math.max(0.45, 2.0 - gameState.conveyorTier * 0.28);
+      const sawMgr = 1 + getManagerBonus('sawValue');
+      const convInterval = Math.max(0.35, (2.0 - gameState.conveyorTier * 0.28) / sawMgr);
       if (this.palletTimer >= convInterval) {
         this.palletTimer = 0;
         gameState.planks -= 4;
@@ -1312,7 +1392,10 @@ class TimberPortEngine {
       if (this.sellTimer >= 0.45 && (!gameState.activeContract || gameState.activeContract.deliveredCanned >= gameState.activeContract.reqCanned)) {
         this.sellTimer = 0;
         gameState.cannedFish -= 1;
-        const earn = Math.round(75 * getRevenueMultiplier());
+        const ev = getActiveEvent();
+        const fishEvMult = ev && ev.multTarget === 'fishery' ? 1 + ev.multBonus : 1.0;
+        const coldMgrMult = 1 + getManagerBonus('offlineBonus');
+        const earn = Math.round(75 * getRevenueMultiplier() * coldMgrMult * fishEvMult);
         gameState.cash += earn;
         recordRevenue('fishery', earn);
         sound.playCash();
@@ -1355,6 +1438,8 @@ class TimberPortEngine {
   }
 
   updateWorkforceAI(dt) {
+    const forestSpeedMult = 1 + getManagerBonus('forestSpeed');
+    const workerYield = forestSpeedMult >= 1.48 ? 3 : 2;
     for (const w of this.aiWorkers) {
       if (w.state === 'to_tree') {
         if (!w.targetTree || !w.targetTree.alive) {
@@ -1364,11 +1449,11 @@ class TimberPortEngine {
           const dist = w.pos.distanceTo(w.targetTree.pos);
           if (dist > 1.6) {
             this._tmpVec.subVectors(w.targetTree.pos, w.pos).normalize();
-            w.pos.addScaledVector(this._tmpVec, 4.4 * dt);
+            w.pos.addScaledVector(this._tmpVec, 4.4 * forestSpeedMult * dt);
             w.mesh.rotation.y = Math.atan2(this._tmpVec.x, this._tmpVec.z);
           } else {
             w.state = 'chopping';
-            w.timer = 1.4;
+            w.timer = 1.4 / forestSpeedMult;
           }
         }
       } else if (w.state === 'chopping') {
@@ -1377,18 +1462,18 @@ class TimberPortEngine {
         if (w.timer <= 0) {
           w.state = 'to_hopper';
           w.carrying = true;
-          syncPlayerBackLogs(w.mesh, 2);
+          syncPlayerBackLogs(w.mesh, workerYield);
         }
       } else if (w.state === 'to_hopper') {
         const dist = w.pos.distanceTo(ZONES.hopper);
         if (dist > 1.8) {
           this._tmpVec.subVectors(ZONES.hopper, w.pos).normalize();
-          w.pos.addScaledVector(this._tmpVec, 4.2 * dt);
+          w.pos.addScaledVector(this._tmpVec, 4.2 * forestSpeedMult * dt);
           w.mesh.rotation.y = Math.atan2(this._tmpVec.x, this._tmpVec.z);
         } else {
-          gameState.sawmillBuffer += 2;
-          gameState.totalLogsCut += 2;
-          advanceDailyQuest('logsCut', 2);
+          gameState.sawmillBuffer += workerYield;
+          gameState.totalLogsCut += workerYield;
+          advanceDailyQuest('logsCut', workerYield);
           syncPlayerBackLogs(w.mesh, 0);
           w.carrying = false;
           w.state = 'to_tree';
@@ -1399,17 +1484,18 @@ class TimberPortEngine {
       w.mesh.position.copy(w.pos);
     }
 
+    const harborSpeedMult = 1 + getManagerBonus('contractBonus');
     for (const f of this.aiForklifts) {
       const target = f.toHarbor ? ZONES.harborExport : ZONES.sawOutput;
       const dist = f.pos.distanceTo(target);
       if (dist > 1.6) {
         this._tmpVec.subVectors(target, f.pos).normalize();
-        f.pos.addScaledVector(this._tmpVec, 6.2 * dt);
+        f.pos.addScaledVector(this._tmpVec, 6.2 * harborSpeedMult * dt);
         f.mesh.rotation.y = Math.atan2(this._tmpVec.x, this._tmpVec.z);
         f.pos.y = f.pos.z > 24.5 ? 0.65 : 0;
       } else {
         if (f.toHarbor && f.carrying) {
-          const earn = Math.round(68 * getRevenueMultiplier());
+          const earn = Math.round(68 * getRevenueMultiplier() * harborSpeedMult);
           gameState.cash += earn;
           recordRevenue('sawmill', earn);
           f.carrying = false;

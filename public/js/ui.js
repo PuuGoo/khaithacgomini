@@ -16,17 +16,31 @@ import {
   DAILY_REWARDS,
   ACHIEVEMENTS,
   MARKET_COMMODITIES,
+  MANAGER_CATALOG,
+  WHEEL_SEGMENTS,
+  activeEventState,
   marketState,
   getBackpackCapacity,
   getActiveBranch,
   getRevenueMultiplier,
+  getContractMultiplier,
   getUpgradeCost,
   getSawmillVisualTier,
   getHarborVisualTier,
+  getCashPerMinute,
+  getManagerLevel,
+  getManagerCost,
+  getPrestigeMultiplier,
   canClaimDailyCheckIn,
   claimDailyCheckIn,
   isAchievementReady,
   getReadyAchievementCount,
+  canFreeSpin,
+  canPrestige,
+  getPrestigeRewardMedals,
+  performPrestige,
+  recordRevenue,
+  todayIsoDate,
   addVipXp,
   addSeasonXp,
   generateNextContract,
@@ -41,12 +55,17 @@ export class UIManager {
     this.cb = callbacks || {};
     this.activeTab = 'upgrades';
     this.dockCollapsed = false;
+    this.wheelSpinning = false;
+    this.wheelAngle = 0;
+    this.prestigeConfirmOpen = false;
+    this.celebrationTimer = null;
 
     this.els = {
       hudBranch: document.getElementById('hud-branch'),
       hudLevel: document.getElementById('hud-level'),
       hudUsername: document.getElementById('hud-username'),
       valCash: document.getElementById('val-cash'),
+      valCpm: document.getElementById('val-cpm'),
       valLogs: document.getElementById('val-logs'),
       valPlanks: document.getElementById('val-planks'),
       valPallets: document.getElementById('val-pallets'),
@@ -58,6 +77,9 @@ export class UIManager {
       statusStrip: document.getElementById('status-strip'),
       statusVip: document.getElementById('status-vip-text'),
       statusBoost: document.getElementById('status-boost-text'),
+      vipRushStrip: document.getElementById('vip-rush-strip'),
+      vipRushTimer: document.getElementById('vip-rush-timer'),
+      vipRushReward: document.getElementById('vip-rush-reward'),
       actionPrompt: document.getElementById('action-prompt'),
       actionPromptKey: document.getElementById('action-prompt-key'),
       actionPromptLabel: document.getElementById('action-prompt-label'),
@@ -78,7 +100,11 @@ export class UIManager {
       welcomeOfflineDesc: document.getElementById('welcome-offline-desc'),
       welcomeHwNote: document.getElementById('welcome-hw-note'),
       hubModal: document.getElementById('hub-modal'),
+      hubKpiStrip: document.getElementById('hub-kpi-strip'),
       hubBody: document.getElementById('hub-body'),
+      celebrationBanner: document.getElementById('celebration-banner'),
+      celebrationTitle: document.getElementById('celebration-title'),
+      celebrationDetail: document.getElementById('celebration-detail'),
       accountModal: document.getElementById('account-modal'),
       accountBody: document.getElementById('account-body'),
       lbModal: document.getElementById('leaderboard-modal'),
@@ -124,6 +150,10 @@ export class UIManager {
     });
 
     document.getElementById('quest-strip')?.addEventListener('click', () => {
+      this.openHub('contracts');
+    });
+
+    this.els.vipRushStrip?.addEventListener('click', () => {
       this.openHub('contracts');
     });
 
@@ -309,6 +339,20 @@ export class UIManager {
     this.refreshHUD();
   }
 
+  triggerCelebration(title, detail) {
+    const el = this.els.celebrationBanner;
+    if (!el) return;
+    this.els.celebrationTitle.textContent = title;
+    this.els.celebrationDetail.textContent = detail;
+    el.hidden = true;
+    void el.offsetWidth;
+    el.hidden = false;
+    clearTimeout(this.celebrationTimer);
+    this.celebrationTimer = setTimeout(() => {
+      el.hidden = true;
+    }, 2600);
+  }
+
   toast(msg) {
     while (this.els.toastContainer.children.length >= 3) {
       this.els.toastContainer.firstElementChild.remove();
@@ -350,6 +394,9 @@ export class UIManager {
     this.els.hudUsername.textContent = gameState.username || 'Chủ tịch';
 
     this.els.valCash.textContent = `$${Math.floor(gameState.cash).toLocaleString()}`;
+    if (this.els.valCpm) {
+      this.els.valCpm.textContent = `+$${getCashPerMinute().toLocaleString()}/p`;
+    }
     this.els.valLogs.textContent = `${gameState.logs}/${getBackpackCapacity()}`;
     this.els.valPlanks.textContent = gameState.planks.toLocaleString();
     this.els.valPallets.textContent = gameState.pallets.toLocaleString();
@@ -374,6 +421,21 @@ export class UIManager {
       this.els.statusStrip.hidden = true;
     }
 
+    // VIP Rush Order Countdown Strip
+    const rush = gameState.vipRushOrder;
+    if (this.els.vipRushStrip) {
+      if (rush) {
+        const sec = Math.max(0, Math.ceil(rush.timeLeft));
+        const mm = String(Math.floor(sec / 60)).padStart(2, '0');
+        const ss = String(sec % 60).padStart(2, '0');
+        this.els.vipRushTimer.textContent = `${mm}:${ss}`;
+        this.els.vipRushReward.textContent = `+$${Math.round(rush.rewardCash * getContractMultiplier()).toLocaleString()}`;
+        this.els.vipRushStrip.hidden = false;
+      } else {
+        this.els.vipRushStrip.hidden = true;
+      }
+    }
+
     // Boost button label
     if (gameState.boostTimer > 0) {
       this.els.btnBoost.classList.add('is-active');
@@ -386,8 +448,8 @@ export class UIManager {
       this.els.btnBoostLabel.textContent = 'Tăng tốc';
     }
 
-    // Claimable Daily Check-In + Quests + Season Pass badge count
-    let claimable = canClaimDailyCheckIn() ? 1 : 0;
+    // Claimable Daily Check-In + Free Wheel Spin + Quests + Season Pass badge count
+    let claimable = (canClaimDailyCheckIn() ? 1 : 0) + (canFreeSpin() ? 1 : 0);
     claimable += gameState.dailyQuests.filter((q) => !q.claimed && q.progress >= q.target).length;
     for (const tier of SEASON_PASS_TIERS) {
       if (gameState.seasonXp >= tier.xpReq) {
@@ -403,12 +465,52 @@ export class UIManager {
       this.els.badgeAch.textContent = readyAch;
       this.els.badgeAch.hidden = readyAch === 0;
     }
+
+    // Live-update Hub KPI strip & active timers cleanly without rebuilding DOM mid-click
+    if (this.els.hubModal && !this.els.hubModal.hidden) {
+      this.renderHubKpiStrip();
+      const evSpan = this.els.hubBody?.querySelector('[data-live-countdown="event"]');
+      if (evSpan) {
+        evSpan.textContent = activeEventState.current
+          ? `Còn ${Math.max(0, Math.ceil(activeEventState.timeLeft))}s`
+          : `Mở lại sau ${Math.max(0, Math.ceil(activeEventState.cooldown))}s`;
+      }
+      const rushSpan = this.els.hubBody?.querySelector('[data-live-countdown="rush"]');
+      if (rushSpan && rush) {
+        rushSpan.textContent = `Còn ${Math.max(0, Math.ceil(rush.timeLeft))}s`;
+      }
+    }
+  }
+
+  renderHubKpiStrip() {
+    if (!this.els.hubKpiStrip) return;
+    const ev = activeEventState.current;
+    const evText = ev ? `${ev.name} (${Math.max(0, Math.ceil(activeEventState.timeLeft))}s)` : `Chờ (${Math.max(0, Math.ceil(activeEventState.cooldown))}s)`;
+    this.els.hubKpiStrip.innerHTML = `
+      <div class="kpi-cell">
+        <span class="kpi-label">Thu nhập / phút</span>
+        <span class="kpi-val is-green">+$${getCashPerMinute().toLocaleString()}/p</span>
+      </div>
+      <div class="kpi-cell">
+        <span class="kpi-label">Tổng hệ số Đế chế</span>
+        <span class="kpi-val is-amber">x${getRevenueMultiplier().toFixed(2)}</span>
+      </div>
+      <div class="kpi-cell">
+        <span class="kpi-label">Chuyển sinh</span>
+        <span class="kpi-val is-sky">Cấp ${gameState.prestigeLevel || 0} · ${gameState.prestigeMedals || 0} 🏅</span>
+      </div>
+      <div class="kpi-cell">
+        <span class="kpi-label">Sự kiện giờ vàng</span>
+        <span class="kpi-val">${evText}</span>
+      </div>
+    `;
   }
 
   renderHub() {
     document.querySelectorAll('.hub-tab').forEach((t) => {
       t.classList.toggle('active', t.dataset.tab === this.activeTab);
     });
+    this.renderHubKpiStrip();
 
     const body = this.els.hubBody;
     body.innerHTML = '';
@@ -448,6 +550,54 @@ export class UIManager {
       </div>
     `;
     root.appendChild(evoSec);
+
+    // Star-Ranked Factory & Port Managers (1★-5★)
+    const mgrSec = document.createElement('section');
+    mgrSec.innerHTML = `<div class="section-heading"><h3>Quản Lý Xưởng &amp; Cảng Cấp Sao (1★–5★)</h3><span>Tăng tốc tự động hóa, sản lượng và giới hạn ngoại tuyến</span></div>`;
+    const mgrGrid = document.createElement('div');
+    mgrGrid.className = 'card-grid';
+
+    for (const mgr of MANAGER_CATALOG) {
+      const lv = getManagerLevel(mgr.id);
+      const cost = getManagerCost(mgr);
+      const stars = '★'.repeat(lv) + '☆'.repeat(mgr.maxStar - lv);
+      const card = document.createElement('div');
+      card.className = `hub-card ${lv > 0 ? 'is-equipped' : ''}`;
+      card.innerHTML = `
+        <div>
+          <div class="card-top">
+            <div class="card-title-row">
+              <span class="card-icon">${mgr.icon}</span>
+              <div>
+                <div class="card-title">${mgr.name}</div>
+                <div class="card-meta">${mgr.role}</div>
+              </div>
+            </div>
+            <div class="star-row" title="Cấp sao hiện tại">${stars}</div>
+          </div>
+          <p class="card-desc" style="margin-top:8px;">${lv === 0 ? `Chưa thuê · Nâng tối đa +${mgr.maxStar * Math.round(mgr.bonusPerStar * 100)}% hiệu suất.` : mgr.desc(lv)}</p>
+        </div>
+        <button type="button" class="btn-primary tabular-nums" ${cost === null || gameState.cash < cost ? 'disabled' : ''}>
+          ${cost === null ? 'Đạt 5★ Tối Đa' : lv === 0 ? `Thuê Quản lý · $${cost.toLocaleString()}` : `Nâng ${lv + 1}★ · $${cost.toLocaleString()}`}
+        </button>
+      `;
+      card.querySelector('button').addEventListener('click', () => {
+        if (cost === null || gameState.cash < cost) return;
+        gameState.cash -= cost;
+        if (!gameState.managers) gameState.managers = {};
+        gameState.managers[mgr.id] = lv + 1;
+        addVipXp(30);
+        sound.playUpgrade();
+        this.toast(`⭐ Đã nâng ${mgr.name} lên ${lv + 1}★!`);
+        if (this.cb.onUpgrade) this.cb.onUpgrade(mgr.id);
+        saveGameServer();
+        this.refreshHUD();
+        this.renderHub();
+      });
+      mgrGrid.appendChild(card);
+    }
+    mgrSec.appendChild(mgrGrid);
+    root.appendChild(mgrSec);
     const groups = [
       { key: 'player', title: 'Trang bị Cá nhân', sub: 'Khai thác nhanh hơn & mang nhiều gỗ hơn' },
       { key: 'sawmill', title: 'Dây chuyền Xưởng Cưa', sub: 'Tăng sản lượng & giá trị ván gỗ' },
@@ -504,6 +654,51 @@ export class UIManager {
   }
 
   renderContractsTab(root) {
+    // Timed VIP Rush Order Card
+    const rush = gameState.vipRushOrder;
+    const rushSec = document.createElement('section');
+    rushSec.innerHTML = `<div class="section-heading"><h3>Đơn Hàng VIP Khẩn Cấp</h3><span>Giao trước khi hết giờ để nhận thưởng lớn + Đá quý</span></div>`;
+    if (rush) {
+      const canRush = gameState.planks >= rush.reqPlanks
+        && gameState.pallets >= rush.reqPallets
+        && gameState.cannedFish >= rush.reqCanned;
+      const rushCash = Math.round(rush.rewardCash * getContractMultiplier());
+      const rushCard = document.createElement('div');
+      rushCard.className = 'hub-card is-value-highlight';
+      rushCard.innerHTML = `
+        <div class="card-top">
+          <div>
+            <div class="card-title">⚡ ${rush.title}</div>
+            <div class="card-meta tabular-nums">
+              Yêu cầu: ${rush.reqPlanks} Ván (${gameState.planks}) · ${rush.reqPallets} Pallet (${gameState.pallets}) · ${rush.reqCanned} Cá hộp (${gameState.cannedFish})
+            </div>
+            <div class="card-meta tabular-nums" style="color:#fda4af; margin-top:4px;" data-live-countdown="rush">
+              Còn ${Math.max(0, Math.ceil(rush.timeLeft))}s
+            </div>
+          </div>
+          <div class="tabular-nums" style="text-align:right; color:#34d399; font-weight:700;">
+            +$${rushCash.toLocaleString()}<br><span style="color:#38bdf8;">+${rush.rewardGems} 💎</span>
+          </div>
+        </div>
+        <button type="button" class="btn-primary" ${!canRush ? 'disabled' : ''}>
+          ${canRush ? 'Giao Đơn VIP Khẩn Ngay' : 'Chưa đủ hàng trong kho — Tiếp tục sản xuất'}
+        </button>
+      `;
+      rushCard.querySelector('button').addEventListener('click', () => {
+        if (this.cb.onDeliverVipRush && this.cb.onDeliverVipRush()) {
+          this.triggerCelebration('Hoàn thành Đơn VIP Khẩn Cấp!', `+$${rushCash.toLocaleString()} · +${rush.rewardGems} 💎`);
+          this.renderHub();
+        }
+      });
+      rushSec.appendChild(rushCard);
+    } else {
+      const waitCard = document.createElement('div');
+      waitCard.className = 'hub-card';
+      waitCard.innerHTML = `<div class="card-meta tabular-nums">Đơn VIP Khẩn Cấp tiếp theo sẽ cập cảng sau ${Math.max(1, Math.ceil(gameState.vipRushCooldown || 15))}s.</div>`;
+      rushSec.appendChild(waitCard);
+    }
+    root.appendChild(rushSec);
+
     const ct = gameState.activeContract;
     const ctSection = document.createElement('section');
     ctSection.innerHTML = `<div class="section-heading"><h3>Hợp đồng Xuất khẩu Hiện tại</h3><span>Hoàn thành tại Cẩu Xuất Cảng (Cầu tàu)</span></div>`;
@@ -527,7 +722,7 @@ export class UIManager {
             </div>
           </div>
           <div class="tabular-nums" style="text-align:right; color:#34d399; font-weight:700;">
-            +$${ct.rewardCash.toLocaleString()}<br><span style="color:#38bdf8;">+${ct.rewardGems} 💎</span>
+            +$${Math.round(ct.rewardCash * getContractMultiplier()).toLocaleString()}<br><span style="color:#38bdf8;">+${ct.rewardGems} 💎</span>
           </div>
         </div>
         <div class="progress-track"><div class="progress-fill" style="width:${pct}%"></div></div>
@@ -647,8 +842,167 @@ export class UIManager {
     root.appendChild(mkSec);
   }
 
+  drawLuckyWheelCanvas(canvas, rotAngle) {
+    if (!canvas) return;
+    const ctx = canvas.getContext('2d');
+    const size = canvas.width;
+    const cx = size / 2;
+    const cy = size / 2;
+    const r = size / 2 - 6;
+    const n = WHEEL_SEGMENTS.length;
+    const arc = (Math.PI * 2) / n;
+
+    ctx.clearRect(0, 0, size, size);
+    ctx.save();
+    ctx.translate(cx, cy);
+    ctx.rotate(rotAngle);
+
+    for (let i = 0; i < n; i++) {
+      const seg = WHEEL_SEGMENTS[i];
+      const start = i * arc;
+      const end = start + arc;
+
+      ctx.beginPath();
+      ctx.moveTo(0, 0);
+      ctx.arc(0, 0, r, start, end);
+      ctx.closePath();
+      ctx.fillStyle = seg.color;
+      ctx.fill();
+      ctx.strokeStyle = 'rgba(255,255,255,0.16)';
+      ctx.lineWidth = 1.5;
+      ctx.stroke();
+
+      ctx.save();
+      ctx.rotate(start + arc / 2);
+      ctx.textAlign = 'right';
+      ctx.fillStyle = seg.text;
+      ctx.font = 'bold 11.5px "JetBrains Mono", monospace';
+      ctx.fillText(seg.label, r - 12, 4);
+      ctx.restore();
+    }
+
+    ctx.beginPath();
+    ctx.arc(0, 0, 16, 0, Math.PI * 2);
+    ctx.fillStyle = '#f59e0b';
+    ctx.fill();
+    ctx.strokeStyle = '#0f172a';
+    ctx.lineWidth = 3;
+    ctx.stroke();
+    ctx.restore();
+  }
+
   renderSeasonTab(root) {
-    // 7-Day Login Streak Check-In Grid
+    // 1. Limited-Time Golden Event Banner
+    const ev = activeEventState.current;
+    const evSec = document.createElement('section');
+    evSec.innerHTML = `
+      <div class="event-banner">
+        <div>
+          <div class="card-title">${ev ? `🌟 Sự Kiện: ${ev.name}` : '⏳ Chuẩn bị Sự Kiện Giờ Vàng tiếp theo'}</div>
+          <div class="card-desc">${ev ? ev.desc : 'Đợi phiên thương mại mới kích hoạt trong giây lát.'}</div>
+        </div>
+        <div class="tabular-nums" style="font-weight:700; color:#38bdf8;" data-live-countdown="event">
+          ${ev ? `Còn ${Math.max(0, Math.ceil(activeEventState.timeLeft))}s` : `Mở lại sau ${Math.max(0, Math.ceil(activeEventState.cooldown))}s`}
+        </div>
+      </div>
+    `;
+    root.appendChild(evSec);
+
+    // 2. Lucky Wheel Stage
+    const wheelSec = document.createElement('section');
+    const freeReady = canFreeSpin();
+    wheelSec.innerHTML = `
+      <div class="section-heading"><h3>Vòng Quay May Mắn Thương Gia</h3><span>1 lượt miễn phí mỗi ngày hoặc quay thêm bằng Đá quý</span></div>
+      <div class="wheel-stage">
+        <div class="wheel-canvas-wrap">
+          <canvas id="wheel-canvas" width="220" height="220"></canvas>
+          <div class="wheel-pointer" aria-hidden="true"></div>
+        </div>
+        <div class="wheel-controls">
+          <div class="card-title">Thử vận may nhận Quà Thương Mại</div>
+          <p class="card-desc">Trúng trực tiếp Tiền mặt lớn, Đá quý, Điểm VIP hoặc Rìu Vàng x2 (40 giây).</p>
+          <div id="wheel-result-text" class="card-meta tabular-nums">Nhấn quay để nhận thưởng ngẫu nhiên</div>
+          <div class="wheel-btn-row">
+            <button type="button" id="btn-spin-free" class="btn-primary" ${!freeReady || this.wheelSpinning ? 'disabled' : ''}>
+              ${freeReady ? 'Quay Miễn Phí' : 'Đã quay hôm nay'}
+            </button>
+            <button type="button" id="btn-spin-gem" class="btn-gem" ${gameState.gems < 20 || this.wheelSpinning ? 'disabled' : ''}>
+              Quay Nhanh · 20 💎
+            </button>
+          </div>
+        </div>
+      </div>
+    `;
+    root.appendChild(wheelSec);
+
+    const wheelCanvas = wheelSec.querySelector('#wheel-canvas');
+    this.drawLuckyWheelCanvas(wheelCanvas, this.wheelAngle);
+
+    const startSpin = (useGems) => {
+      if (this.wheelSpinning) return;
+      if (useGems) {
+        if (gameState.gems < 20) return;
+        gameState.gems -= 20;
+      } else {
+        if (!canFreeSpin()) return;
+        gameState.lastFreeSpinDate = todayIsoDate();
+      }
+      this.wheelSpinning = true;
+      const btnFree = wheelSec.querySelector('#btn-spin-free');
+      const btnGem = wheelSec.querySelector('#btn-spin-gem');
+      if (btnFree) btnFree.disabled = true;
+      if (btnGem) btnGem.disabled = true;
+
+      const idx = Math.floor(Math.random() * WHEEL_SEGMENTS.length);
+      const n = WHEEL_SEGMENTS.length;
+      const arc = (Math.PI * 2) / n;
+      // Top pointer sits at -PI/2; align center of slice idx with -PI/2
+      const targetMod = (-Math.PI / 2 - (idx + 0.5) * arc);
+      const startAngle = this.wheelAngle;
+      const extraSpins = Math.PI * 2 * 5;
+      const endAngle = startAngle + extraSpins + (((targetMod - startAngle) % (Math.PI * 2) + Math.PI * 2) % (Math.PI * 2));
+      const t0 = performance.now();
+      const dur = 2400;
+
+      const animateSpin = (now) => {
+        const u = Math.min(1, (now - t0) / dur);
+        const eased = 1 - Math.pow(1 - u, 3);
+        this.wheelAngle = startAngle + (endAngle - startAngle) * eased;
+        this.drawLuckyWheelCanvas(wheelCanvas, this.wheelAngle);
+        if (u < 1) {
+          requestAnimationFrame(animateSpin);
+        } else {
+          this.wheelSpinning = false;
+          const seg = WHEEL_SEGMENTS[idx];
+          let detail = seg.label;
+          if (seg.type === 'cash') {
+            const cashWin = Math.round(seg.amount * Math.max(1, getRevenueMultiplier() * 0.45));
+            gameState.cash += cashWin;
+            recordRevenue('offline', cashWin);
+            detail = `+$${cashWin.toLocaleString()} Cash`;
+          } else if (seg.type === 'gems') {
+            gameState.gems += seg.amount;
+          } else if (seg.type === 'vip') {
+            addVipXp(seg.amount);
+          } else if (seg.type === 'boost') {
+            gameState.boostTimer = Math.max(gameState.boostTimer || 0, seg.amount);
+          }
+          sound.playUpgrade();
+          this.triggerCelebration('Vòng Quay May Mắn!', detail);
+          saveGameServer();
+          this.refreshHUD();
+          if (this.activeTab === 'season' && !this.els.hubModal.hidden) {
+            this.renderHub();
+          }
+        }
+      };
+      requestAnimationFrame(animateSpin);
+    };
+
+    wheelSec.querySelector('#btn-spin-free')?.addEventListener('click', () => startSpin(false));
+    wheelSec.querySelector('#btn-spin-gem')?.addEventListener('click', () => startSpin(true));
+
+    // 3. 7-Day Login Streak Check-In Grid
     const streakSec = document.createElement('section');
     const canCheckIn = canClaimDailyCheckIn();
     const claimedCount = gameState.loginStreakDay || 0;
@@ -958,6 +1312,60 @@ export class UIManager {
   }
 
   renderVipTab(root) {
+    // 1. Empire Prestige / Rebirth Panel
+    const prestigeReady = canPrestige();
+    const rewardMedals = getPrestigeRewardMedals();
+    const curMult = getPrestigeMultiplier();
+    const nextMult = 1 + ((gameState.prestigeLevel || 0) + 1) * 0.35 + ((gameState.prestigeMedals || 0) + rewardMedals) * 0.04;
+
+    const presSec = document.createElement('section');
+    presSec.innerHTML = `
+      <div class="section-heading"><h3>Chuyển Sinh Đế Chế (Prestige)</h3><span>Nhận Huy Hiệu Hoàng Kim &amp; hệ số thu nhập vĩnh viễn</span></div>
+      <div class="prestige-panel">
+        <div class="card-title">🏅 Cấp Chuyển Sinh ${gameState.prestigeLevel || 0} · ${gameState.prestigeMedals || 0} Huy Hiệu</div>
+        <div class="prestige-stats-row tabular-nums">
+          <span>Hệ số hiện tại: <b style="color:#fde68a;">x${curMult.toFixed(2)}</b></span>
+          <span class="meta-sep" aria-hidden="true">·</span>
+          <span>Sau chuyển sinh: <b style="color:#34d399;">x${nextMult.toFixed(2)} (+${rewardMedals} 🏅)</b></span>
+        </div>
+        <p class="card-desc">Điều kiện: Đạt Cấp 5, hoàn thành 3 Hợp đồng hoặc sở hữu $18,000. Khi Chuyển sinh, bạn giữ lại toàn bộ Đá quý, VIP, Skins, Thú cưng, Siêu xe và Thành tựu.</p>
+        ${!this.prestigeConfirmOpen ? `
+          <button type="button" id="btn-prestige-open" class="btn-primary" ${!prestigeReady ? 'disabled' : ''}>
+            ${prestigeReady ? `Chuyển Sinh Ngay · Nhận +${rewardMedals} 🏅` : 'Chưa đủ điều kiện Chuyển sinh'}
+          </button>
+        ` : `
+          <div class="prestige-confirm-box">
+            <div class="card-desc" style="color:#fda4af;">Xác nhận Chuyển sinh? Tiền mặt, nâng cấp Xưởng và Quản lý sẽ làm mới để bắt đầu đế chế mạnh hơn.</div>
+            <div style="display:flex; gap:8px;">
+              <button type="button" id="btn-prestige-cancel" class="btn-secondary">Hủy bỏ</button>
+              <button type="button" id="btn-prestige-confirm" class="btn-primary">Xác nhận Chuyển sinh</button>
+            </div>
+          </div>
+        `}
+      </div>
+    `;
+    presSec.querySelector('#btn-prestige-open')?.addEventListener('click', () => {
+      if (!prestigeReady) return;
+      this.prestigeConfirmOpen = true;
+      this.renderHub();
+    });
+    presSec.querySelector('#btn-prestige-cancel')?.addEventListener('click', () => {
+      this.prestigeConfirmOpen = false;
+      this.renderHub();
+    });
+    presSec.querySelector('#btn-prestige-confirm')?.addEventListener('click', () => {
+      const gained = performPrestige();
+      if (!gained) return;
+      this.prestigeConfirmOpen = false;
+      sound.playShipHorn();
+      this.triggerCelebration(`Chuyển Sinh Thành Công Cấp ${gameState.prestigeLevel}!`, `+${gained} Huy Hiệu Hoàng Kim · Hệ số x${getPrestigeMultiplier().toFixed(2)}`);
+      if (this.cb.onPrestige) this.cb.onPrestige();
+      saveGameServer(true);
+      this.refreshHUD();
+      this.renderHub();
+    });
+    root.appendChild(presSec);
+
     const curVip = gameState.vipLevel || 0;
     const nextVip = VIP_TIERS.find((v) => v.level === curVip + 1);
     const pct = nextVip ? Math.min(100, Math.round((gameState.vipXp / nextVip.xpReq) * 100)) : 100;
@@ -997,7 +1405,7 @@ export class UIManager {
 
     // Gem Packs
     const gemSec = document.createElement('section');
-    gemSec.innerHTML = `<div class="section-heading"><h3>Kho Đá Quý & Gói Thương Mại</h3><span>Dùng Đá quý để mở Vé Mùa, Skin & Siêu xe</span></div>`;
+    gemSec.innerHTML = `<div class="section-heading"><h3>Kho Đá Quý &amp; Gói Thương Mại</h3><span>Dùng Đá quý để mở Vé Mùa, Skin &amp; Siêu xe</span></div>`;
     const gemGrid = document.createElement('div');
     gemGrid.className = 'card-grid';
 
@@ -1007,7 +1415,7 @@ export class UIManager {
       const disabled = (isStarter && gameState.starterPackClaimed) || (!isStarter && gameState.cash < cashCost);
 
       const card = document.createElement('div');
-      card.className = 'hub-card';
+      card.className = `hub-card ${pack.id === 'pack_tycoon' || isStarter ? 'is-value-highlight' : ''}`;
       card.innerHTML = `
         <div>
           <div class="card-title">💎 ${pack.name}</div>
@@ -1025,7 +1433,7 @@ export class UIManager {
         gameState.gems += pack.gems;
         const lvUp = addVipXp(pack.vipXp);
         sound.playUpgrade();
-        this.toast(`💎 Nhận +${pack.gems} Đá quý & +${pack.vipXp} VIP XP!${lvUp ? ` Thăng hạng VIP ${lvUp}!` : ''}`);
+        this.triggerCelebration(`Nhận ${pack.name}!`, `+${pack.gems} 💎 · +${pack.vipXp} VIP XP`);
         if (lvUp && this.cb.onSkinChange) this.cb.onSkinChange();
         saveGameServer();
         this.refreshHUD();
