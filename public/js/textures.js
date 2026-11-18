@@ -247,6 +247,168 @@ export function getBoardwalkPlankTexture(repeatX = 12, repeatY = 1) {
   return tex;
 }
 
+export function getForestFloorTexture(repeatX = 4, repeatY = 4) {
+  const key = `forest_floor_${repeatX}_${repeatY}`;
+  if (cache.has(key)) return cache.get(key);
+
+  const cv = document.createElement('canvas');
+  cv.width = 256;
+  cv.height = 256;
+  const ctx = cv.getContext('2d');
+
+  ctx.fillStyle = '#4a3d28';
+  ctx.fillRect(0, 0, 256, 256);
+
+  // Moss & humus patches
+  for (let i = 0; i < 160; i++) {
+    const x = Math.random() * 256;
+    const y = Math.random() * 256;
+    const r = 6 + Math.random() * 14;
+    ctx.fillStyle = i % 3 === 0 ? 'rgba(54, 83, 42, 0.36)' : i % 2 === 0 ? 'rgba(92, 64, 38, 0.35)' : 'rgba(28, 22, 14, 0.22)';
+    ctx.beginPath();
+    ctx.arc(x, y, r, 0, Math.PI * 2);
+    ctx.fill();
+  }
+
+  // Scattered fallen pine needles & warm leaf flecks
+  for (let i = 0; i < 180; i++) {
+    ctx.fillStyle = i % 4 === 0 ? 'rgba(217, 155, 62, 0.42)' : 'rgba(132, 169, 76, 0.32)';
+    ctx.fillRect(Math.random() * 256, Math.random() * 256, 4, 2);
+  }
+
+  const tex = finalizeTexture(cv, repeatX, repeatY);
+  cache.set(key, tex);
+  return tex;
+}
+
+export function getWaterfallTexture() {
+  if (cache.has('waterfall_stream')) return cache.get('waterfall_stream');
+
+  const cv = document.createElement('canvas');
+  cv.width = 128;
+  cv.height = 256;
+  const ctx = cv.getContext('2d');
+
+  const grad = ctx.createLinearGradient(0, 0, 128, 0);
+  grad.addColorStop(0, '#38bdf8');
+  grad.addColorStop(0.5, '#7dd3fc');
+  grad.addColorStop(1, '#38bdf8');
+  ctx.fillStyle = grad;
+  ctx.fillRect(0, 0, 128, 256);
+
+  for (let i = 0; i < 42; i++) {
+    const x = Math.random() * 116;
+    const y = Math.random() * 220;
+    ctx.fillStyle = i % 2 === 0 ? 'rgba(248, 250, 252, 0.58)' : 'rgba(224, 242, 254, 0.42)';
+    ctx.fillRect(x, y, 4 + Math.random() * 5, 22 + Math.random() * 34);
+  }
+
+  const tex = finalizeTexture(cv, 1, 2);
+  cache.set('waterfall_stream', tex);
+  return tex;
+}
+
+export function getIlluminatedSignTexture(title, subtitle = '') {
+  const key = `sign_${title}_${subtitle}`;
+  if (cache.has(key)) return cache.get(key);
+
+  const cv = document.createElement('canvas');
+  cv.width = 512;
+  cv.height = 128;
+  const ctx = cv.getContext('2d');
+
+  ctx.fillStyle = '#0f172a';
+  ctx.fillRect(0, 0, 512, 128);
+
+  ctx.strokeStyle = '#f59e0b';
+  ctx.lineWidth = 6;
+  ctx.strokeRect(8, 8, 496, 112);
+
+  ctx.strokeStyle = 'rgba(253, 230, 138, 0.45)';
+  ctx.lineWidth = 2;
+  ctx.strokeRect(16, 16, 480, 96);
+
+  ctx.fillStyle = '#fef3c7';
+  ctx.font = '800 36px Outfit, sans-serif';
+  ctx.textAlign = 'center';
+  ctx.textBaseline = 'middle';
+  ctx.fillText(title, 256, subtitle ? 48 : 64);
+
+  if (subtitle) {
+    ctx.fillStyle = '#fbbf24';
+    ctx.font = '700 18px JetBrains Mono, monospace';
+    ctx.fillText(subtitle, 256, 88);
+  }
+
+  const tex = new THREE.CanvasTexture(cv);
+  tex.colorSpace = THREE.SRGBColorSpace;
+  tex.anisotropy = maxAnisotropy;
+  tex.needsUpdate = true;
+  cache.set(key, tex);
+  return tex;
+}
+
+export function getClockFaceTexture() {
+  if (cache.has('clock_face')) return cache.get('clock_face');
+
+  const cv = document.createElement('canvas');
+  cv.width = 256;
+  cv.height = 256;
+  const ctx = cv.getContext('2d');
+
+  ctx.fillStyle = '#1e293b';
+  ctx.fillRect(0, 0, 256, 256);
+
+  // Outer brass bezel + warm ivory clock face
+  ctx.beginPath();
+  ctx.arc(128, 128, 114, 0, Math.PI * 2);
+  ctx.fillStyle = '#f59e0b';
+  ctx.fill();
+
+  ctx.beginPath();
+  ctx.arc(128, 128, 102, 0, Math.PI * 2);
+  ctx.fillStyle = '#fef9ee';
+  ctx.fill();
+
+  // Hour tick marks
+  for (let i = 0; i < 12; i++) {
+    const ang = (i / 12) * Math.PI * 2;
+    ctx.save();
+    ctx.translate(128, 128);
+    ctx.rotate(ang);
+    ctx.fillStyle = i % 3 === 0 ? '#92400e' : '#334155';
+    ctx.fillRect(-3, -92, 6, i % 3 === 0 ? 18 : 11);
+    ctx.restore();
+  }
+
+  // Clock hands (10:10 classic luxury dial)
+  ctx.save();
+  ctx.translate(128, 128);
+  ctx.rotate(-Math.PI / 3);
+  ctx.fillStyle = '#0f172a';
+  ctx.fillRect(-4, -56, 8, 58);
+  ctx.restore();
+
+  ctx.save();
+  ctx.translate(128, 128);
+  ctx.rotate(Math.PI / 3);
+  ctx.fillStyle = '#0f172a';
+  ctx.fillRect(-3, -76, 6, 78);
+  ctx.restore();
+
+  ctx.beginPath();
+  ctx.arc(128, 128, 9, 0, Math.PI * 2);
+  ctx.fillStyle = '#d97706';
+  ctx.fill();
+
+  const tex = new THREE.CanvasTexture(cv);
+  tex.colorSpace = THREE.SRGBColorSpace;
+  tex.anisotropy = maxAnisotropy;
+  tex.needsUpdate = true;
+  cache.set('clock_face', tex);
+  return tex;
+}
+
 export function getWaterTexture(colorHex = '#0ea5e9') {
   const key = 'water_' + colorHex;
   if (cache.has(key)) return cache.get(key);

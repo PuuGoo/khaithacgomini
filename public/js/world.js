@@ -11,6 +11,10 @@ import {
   getTravertineTexture,
   getGraniteCobbleTexture,
   getBoardwalkPlankTexture,
+  getForestFloorTexture,
+  getWaterfallTexture,
+  getIlluminatedSignTexture,
+  getClockFaceTexture,
   getWaterTexture,
   drawRadialProgressToCanvas,
   drawWorldBadgeToCanvas,
@@ -100,6 +104,17 @@ export class WorldManager {
     this.fountainJetsGroup = new THREE.Group();
     this.fountainJets = [];
     this.fountainRipple = null;
+    this.ambientLifeGroup = new THREE.Group();
+    this.waterfallFoamGroup = new THREE.Group();
+    this.waterfallTex = null;
+    this.waterfallFoamPuffs = [];
+    this.seagulls = [];
+    this.flags = [];
+    this.smokePuffs = null;
+    this.smokeData = [];
+    this.forestLeaves = null;
+    this.leafData = [];
+    this._lifeDummy = new THREE.Object3D();
     this.questRing = null;
     this.currentQuestTarget = ZONES.hopper;
 
@@ -107,6 +122,10 @@ export class WorldManager {
     this.buildLuxuryBoulevardsAndParking();
     this.buildExecutivePlazaAndFountain();
     this.buildCoastalPromenadeAndFishery();
+    this.buildForestEcology();
+    this.buildMountainWaterfallPond();
+    this.buildLandmarksAndSignage();
+    this.buildLivingWorldEffects();
     this.buildPerimeterNature();
     this.buildSawmillAndHarbor();
     this.buildHarvestableForest();
@@ -447,20 +466,30 @@ export class WorldManager {
     fountain.add(this.fountainJetsGroup);
     this.worldGroup.add(fountain);
 
-    // 3D Maritime Compass Monument Sign at Plaza NW Corner
+    // 3D Maritime Compass Monument Sign at Plaza NW Corner with Glowing Plaque
     const monument = new THREE.Group();
     monument.position.set(7.2, 0.09, 1.95);
     monument.rotation.y = -0.32;
-    const monPlinth = new THREE.Mesh(new THREE.BoxGeometry(2.2, 0.65, 0.85), travMat);
+    const monPlinth = new THREE.Mesh(new THREE.BoxGeometry(2.3, 0.65, 0.85), travMat);
     monPlinth.position.y = 0.325;
     monPlinth.castShadow = !this.lowSpec;
-    const monSlab = new THREE.Mesh(new THREE.BoxGeometry(1.9, 1.05, 0.24), ironMat);
+    const monSlab = new THREE.Mesh(new THREE.BoxGeometry(2.08, 1.05, 0.24), ironMat);
     monSlab.position.y = 1.15;
-    const monFrame = new THREE.Mesh(new THREE.BoxGeometry(2.02, 0.14, 0.3), brassMat);
-    monFrame.position.y = 1.68;
-    const emblem = new THREE.Mesh(new THREE.TorusGeometry(0.28, 0.06, 6, 16), brassMat);
-    emblem.position.set(0, 1.15, 0.15);
-    monument.add(monPlinth, monSlab, monFrame, emblem);
+    const monSignTex = getIlluminatedSignTexture('TIMBERPORT PLAZA', 'TÀI CHÍNH · THƯƠNG MẠI');
+    const monSignMat = new THREE.MeshStandardMaterial({
+      map: monSignTex,
+      emissiveMap: monSignTex,
+      emissive: new THREE.Color(0xffffff),
+      emissiveIntensity: 0.68,
+      roughness: 0.35
+    });
+    const monFace = new THREE.Mesh(new THREE.PlaneGeometry(1.94, 0.88), monSignMat);
+    monFace.position.set(0, 1.15, 0.13);
+    const monFrame = new THREE.Mesh(new THREE.BoxGeometry(2.16, 0.14, 0.3), brassMat);
+    monFrame.position.y = 1.7;
+    const emblem = new THREE.Mesh(new THREE.TorusGeometry(0.22, 0.05, 6, 16), brassMat);
+    emblem.position.set(0, 1.96, 0);
+    monument.add(monPlinth, monSlab, monFace, monFrame, emblem);
     this.worldGroup.add(monument);
 
     // Park Benches flanking Fountain Courtyard (preserving clear central walkway)
@@ -656,28 +685,413 @@ export class WorldManager {
     this.worldGroup.add(pTrunks, pCrowns);
   }
 
+  buildForestEcology() {
+    const forestPadMat = new THREE.MeshStandardMaterial({
+      map: getForestFloorTexture(4, 4),
+      roughness: 0.94,
+      metalness: 0.0
+    });
+    const forestPad = new THREE.Mesh(new THREE.CylinderGeometry(14.5, 15.2, 0.04, 14), forestPadMat);
+    forestPad.scale.set(1.06, 1, 0.86);
+    forestPad.position.set(-26, 0.012, -25);
+    forestPad.receiveShadow = !this.lowSpec;
+    this.worldGroup.add(forestPad);
+
+    const dummy = new THREE.Object3D();
+    // Mossy forest boulders along edge & clearings
+    const rockGeo = new THREE.DodecahedronGeometry(0.75, 0);
+    const rockMat = new THREE.MeshStandardMaterial({ color: 0x64748b, roughness: 0.9, flatShading: true });
+    const rockSpots = [
+      [-40.2, -35.0, 1.1], [-36.5, -36.5, 0.9], [-28.0, -36.8, 1.2], [-19.5, -36.2, 0.85],
+      [-40.5, -26.0, 1.25], [-40.0, -18.0, 0.95], [-34.0, -13.2, 0.8], [-22.5, -13.5, 0.9],
+      [-31.5, -28.0, 0.55], [-24.5, -21.5, 0.52], [-14.2, -32.0, 0.72]
+    ];
+    const forestRocks = new THREE.InstancedMesh(rockGeo, rockMat, rockSpots.length);
+    rockSpots.forEach(([rx, rz, sc], i) => {
+      dummy.position.set(rx, sc * 0.32, rz);
+      dummy.rotation.set(i * 0.4, i * 1.1, 0);
+      dummy.scale.set(sc * 1.25, sc * 0.75, sc);
+      dummy.updateMatrix();
+      forestRocks.setMatrixAt(i, dummy.matrix);
+    });
+    forestRocks.instanceMatrix.needsUpdate = true;
+    this.worldGroup.add(forestRocks);
+
+    // Forest ferns & low shrubs (InstancedMesh)
+    const fernGeo = new THREE.DodecahedronGeometry(0.55, 0);
+    const fernMat = new THREE.MeshStandardMaterial({ color: 0x166534, roughness: 0.86, flatShading: true });
+    const fernSpots = [
+      [-39.2, -33.2], [-34.5, -35.8], [-25.0, -36.0], [-16.5, -35.2],
+      [-39.6, -23.0], [-39.0, -15.5], [-29.0, -13.0], [-19.0, -13.2],
+      [-35.0, -25.5], [-26.5, -31.0], [-21.0, -19.5], [-13.8, -28.5],
+      [-14.5, -40.5], [-8.0, -40.0], [-16.5, -43.5], [-6.5, -44.2]
+    ];
+    const ferns = new THREE.InstancedMesh(fernGeo, fernMat, fernSpots.length);
+    fernSpots.forEach(([fx, fz], i) => {
+      dummy.position.set(fx, 0.24, fz);
+      dummy.rotation.set(0, i * 0.85, 0);
+      const s = 0.8 + (i % 3) * 0.22;
+      dummy.scale.set(s * 1.25, s * 0.65, s * 1.15);
+      dummy.updateMatrix();
+      ferns.setMatrixAt(i, dummy.matrix);
+    });
+    ferns.instanceMatrix.needsUpdate = true;
+    this.worldGroup.add(ferns);
+
+    // Wildflower blossoms in forest & lakeside (gated in landDetailGroup for <8GB RAM)
+    const wildGeo = new THREE.DodecahedronGeometry(0.16, 0);
+    const wildMat = new THREE.MeshStandardMaterial({ color: 0xfacc15, roughness: 0.7, flatShading: true });
+    const wildSpots = [];
+    for (let i = 0; i < 32; i++) {
+      const ang = (i / 32) * Math.PI * 2;
+      const rx = -26 + Math.cos(ang) * (11.5 + (i % 3) * 1.4);
+      const rz = -25 + Math.sin(ang) * (9.5 + (i % 2) * 1.3);
+      wildSpots.push([rx, 0.16, rz]);
+    }
+    for (let i = 0; i < 10; i++) {
+      wildSpots.push([-16.5 + i * 1.15, 0.16, -38.8 - (i % 2) * 0.9]);
+    }
+    const wildflowers = new THREE.InstancedMesh(wildGeo, wildMat, wildSpots.length);
+    const flowerColor = new THREE.Color();
+    wildSpots.forEach(([wx, wy, wz], i) => {
+      dummy.position.set(wx, wy, wz);
+      dummy.rotation.set(0, i * 0.6, 0);
+      dummy.scale.set(1, 0.75, 1);
+      dummy.updateMatrix();
+      wildflowers.setMatrixAt(i, dummy.matrix);
+      flowerColor.setHex(i % 3 === 0 ? 0xfbbf24 : i % 3 === 1 ? 0xf8fafc : 0xfb7185);
+      wildflowers.setColorAt(i, flowerColor);
+    });
+    wildflowers.instanceMatrix.needsUpdate = true;
+    if (wildflowers.instanceColor) wildflowers.instanceColor.needsUpdate = true;
+    this.landDetailGroup.add(wildflowers);
+  }
+
+  buildMountainWaterfallPond() {
+    const lakeMat = new THREE.MeshStandardMaterial({
+      color: 0x0ea5e9,
+      emissive: 0x0284c7,
+      emissiveIntensity: 0.25,
+      roughness: 0.12,
+      metalness: 0.22
+    });
+    const cliffMat = new THREE.MeshStandardMaterial({ color: 0x475569, roughness: 0.9, flatShading: true });
+    const shoreMat = new THREE.MeshStandardMaterial({ color: 0x94a3b8, roughness: 0.88, flatShading: true });
+
+    // Emerald Pond nestled in northern valley (-11.5, -41.8)
+    const pond = new THREE.Mesh(new THREE.CylinderGeometry(5.6, 6.0, 0.12, 18), lakeMat);
+    pond.scale.set(1.35, 1, 0.82);
+    pond.position.set(-11.5, 0.04, -41.8);
+    this.worldGroup.add(pond);
+
+    // Shoreline river stones bordering the pond
+    const pebbleGeo = new THREE.DodecahedronGeometry(0.55, 0);
+    const pebbleInst = new THREE.InstancedMesh(pebbleGeo, shoreMat, 20);
+    const dummy = new THREE.Object3D();
+    for (let i = 0; i < 20; i++) {
+      const a = (i / 20) * Math.PI * 2;
+      const px = -11.5 + Math.cos(a) * 7.4;
+      const pz = -41.8 + Math.sin(a) * 4.7;
+      dummy.position.set(px, 0.18, pz);
+      dummy.rotation.set(i * 0.3, a, 0);
+      const s = 0.75 + (i % 3) * 0.28;
+      dummy.scale.set(s * 1.2, s * 0.65, s);
+      dummy.updateMatrix();
+      pebbleInst.setMatrixAt(i, dummy.matrix);
+    }
+    pebbleInst.instanceMatrix.needsUpdate = true;
+    this.worldGroup.add(pebbleInst);
+
+    // Basalt Cliff Wall behind pond with Waterfall Cascade
+    const cliffCenter = new THREE.Mesh(new THREE.BoxGeometry(7.2, 11.2, 4.4), cliffMat);
+    cliffCenter.position.set(-11.5, 5.2, -47.4);
+    cliffCenter.castShadow = !this.lowSpec;
+    const cliffL = new THREE.Mesh(new THREE.ConeGeometry(4.6, 13.5, 6), cliffMat);
+    cliffL.position.set(-15.5, 6.4, -46.8);
+    const cliffR = new THREE.Mesh(new THREE.ConeGeometry(4.4, 12.8, 6), cliffMat);
+    cliffR.position.set(-7.5, 6.1, -46.8);
+    this.worldGroup.add(cliffCenter, cliffL, cliffR);
+
+    this.waterfallTex = getWaterfallTexture();
+    const fallMat = new THREE.MeshBasicMaterial({
+      map: this.waterfallTex,
+      transparent: true,
+      opacity: 0.88,
+      side: THREE.DoubleSide
+    });
+    const cascade = new THREE.Mesh(new THREE.PlaneGeometry(2.6, 10.6), fallMat);
+    cascade.position.set(-11.5, 5.1, -44.4);
+    cascade.rotation.x = 0.16;
+    this.worldGroup.add(cascade);
+
+    // Animated Splash Foam Puffs at Waterfall Base (gated OFF on <8GB RAM)
+    const foamMat = new THREE.MeshBasicMaterial({ color: 0xf0f9ff, transparent: true, opacity: 0.78 });
+    const foamGeo = new THREE.DodecahedronGeometry(0.48, 0);
+    for (let i = 0; i < 6; i++) {
+      const puff = new THREE.Mesh(foamGeo, foamMat);
+      puff.position.set(-12.6 + i * 0.45, 0.35, -43.5 + (i % 2) * 0.4);
+      this.waterfallFoamGroup.add(puff);
+      this.waterfallFoamPuffs.push(puff);
+    }
+    this.worldGroup.add(this.waterfallFoamGroup);
+  }
+
+  buildLandmarksAndSignage() {
+    const travMat = new THREE.MeshStandardMaterial({ map: getTravertineTexture(2, 4), roughness: 0.75 });
+    const slateMat = new THREE.MeshStandardMaterial({ color: 0x1e293b, roughness: 0.48, metalness: 0.55 });
+    const brassMat = new THREE.MeshStandardMaterial({ color: 0xf59e0b, roughness: 0.24, metalness: 0.85 });
+    const timberMat = new THREE.MeshStandardMaterial({ color: 0x92400e, roughness: 0.65 });
+    const warmLightMat = new THREE.MeshStandardMaterial({
+      color: 0xfef3c7,
+      emissive: 0xfbbf24,
+      emissiveIntensity: 1.05,
+      roughness: 0.25
+    });
+
+    // 1. Harbor Gateway Archway at (2.0, 0, 19.8) spanning Road NS cleanly
+    const archGroup = new THREE.Group();
+    archGroup.position.set(2.0, 0, 19.8);
+
+    [-3.75, 3.75].forEach((px) => {
+      const pierBase = new THREE.Mesh(new THREE.BoxGeometry(1.3, 0.7, 1.3), travMat);
+      pierBase.position.set(px, 0.35, 0);
+      const pierCol = new THREE.Mesh(new THREE.BoxGeometry(0.96, 5.0, 0.96), travMat);
+      pierCol.position.set(px, 2.8, 0);
+      pierCol.castShadow = !this.lowSpec;
+      const collar = new THREE.Mesh(new THREE.BoxGeometry(1.12, 0.24, 1.12), brassMat);
+      collar.position.set(px, 5.2, 0);
+      const sconce = new THREE.Mesh(new THREE.BoxGeometry(0.24, 0.42, 0.22), warmLightMat);
+      sconce.position.set(px, 3.2, -0.56);
+      archGroup.add(pierBase, pierCol, collar, sconce);
+    });
+
+    const archBeam = new THREE.Mesh(new THREE.BoxGeometry(8.8, 0.72, 1.15), slateMat);
+    archBeam.position.set(0, 5.58, 0);
+    archBeam.castShadow = !this.lowSpec;
+    const archRoof = new THREE.Mesh(new THREE.BoxGeometry(9.2, 0.28, 1.45), timberMat);
+    archRoof.position.set(0, 6.08, 0);
+    const archTrim = new THREE.Mesh(new THREE.BoxGeometry(9.28, 0.12, 1.52), brassMat);
+    archTrim.position.set(0, 5.22, 0);
+    archGroup.add(archBeam, archRoof, archTrim);
+
+    const harborSignTex = getIlluminatedSignTexture('TIMBERPORT HARBOR', 'CẢNG THƯƠNG MẠI QUỐC TẾ');
+    const harborSignMat = new THREE.MeshStandardMaterial({
+      map: harborSignTex,
+      emissiveMap: harborSignTex,
+      emissive: new THREE.Color(0xffffff),
+      emissiveIntensity: 0.75,
+      roughness: 0.32
+    });
+    const signNorth = new THREE.Mesh(new THREE.PlaneGeometry(5.6, 1.05), harborSignMat);
+    signNorth.position.set(0, 5.62, -0.6);
+    signNorth.rotation.y = Math.PI;
+    const signSouth = new THREE.Mesh(new THREE.PlaneGeometry(5.6, 1.05), harborSignMat);
+    signSouth.position.set(0, 5.62, 0.6);
+    archGroup.add(signNorth, signSouth);
+    this.worldGroup.add(archGroup);
+
+    // 2. Plaza Clock Tower at SW Executive Plaza (7.5, 0.09, 12.1)
+    const clockTower = new THREE.Group();
+    clockTower.position.set(7.5, 0.09, 12.1);
+
+    const cBase = new THREE.Mesh(new THREE.BoxGeometry(1.75, 1.15, 1.75), travMat);
+    cBase.position.y = 0.575;
+    cBase.castShadow = !this.lowSpec;
+    const cShaft = new THREE.Mesh(new THREE.BoxGeometry(1.3, 4.1, 1.3), travMat);
+    cShaft.position.y = 3.2;
+    cShaft.castShadow = !this.lowSpec;
+    const cCornice = new THREE.Mesh(new THREE.BoxGeometry(1.68, 0.22, 1.68), brassMat);
+    cCornice.position.y = 5.32;
+    const cHead = new THREE.Mesh(new THREE.BoxGeometry(1.48, 1.48, 1.48), slateMat);
+    cHead.position.y = 6.15;
+    cHead.castShadow = !this.lowSpec;
+
+    const clockTex = getClockFaceTexture();
+    const clockFaceMat = new THREE.MeshStandardMaterial({
+      map: clockTex,
+      emissiveMap: clockTex,
+      emissive: new THREE.Color(0xfffbeb),
+      emissiveIntensity: 0.55,
+      roughness: 0.35
+    });
+    const dialGeo = new THREE.PlaneGeometry(1.18, 1.18);
+    [
+      [0, 6.15, 0.76, 0],
+      [0, 6.15, -0.76, Math.PI],
+      [-0.76, 6.15, 0, -Math.PI / 2],
+      [0.76, 6.15, 0, Math.PI / 2]
+    ].forEach(([dx, dy, dz, ry]) => {
+      const dial = new THREE.Mesh(dialGeo, clockFaceMat);
+      dial.position.set(dx, dy, dz);
+      dial.rotation.y = ry;
+      clockTower.add(dial);
+    });
+
+    const cRoof = new THREE.Mesh(new THREE.ConeGeometry(1.25, 1.65, 4), brassMat);
+    cRoof.rotation.y = Math.PI / 4;
+    cRoof.position.y = 7.72;
+    const cSpire = new THREE.Mesh(new THREE.CylinderGeometry(0.05, 0.1, 0.9, 6), brassMat);
+    cSpire.position.y = 8.85;
+    clockTower.add(cBase, cShaft, cCornice, cHead, cRoof, cSpire);
+    this.worldGroup.add(clockTower);
+  }
+
+  buildLivingWorldEffects() {
+    this.worldGroup.add(this.ambientLifeGroup);
+
+    // 1. Coastal Soaring Seagulls (7 lightweight composite birds)
+    const birdBodyMat = new THREE.MeshStandardMaterial({ color: 0xf8fafc, roughness: 0.55 });
+    const birdWingMat = new THREE.MeshStandardMaterial({ color: 0xe2e8f0, roughness: 0.6 });
+    const bodyGeo = new THREE.BoxGeometry(0.24, 0.16, 0.62);
+    const wingGeo = new THREE.BoxGeometry(0.58, 0.04, 0.22);
+
+    for (let i = 0; i < 7; i++) {
+      const bird = new THREE.Group();
+      const body = new THREE.Mesh(bodyGeo, birdBodyMat);
+      const wingL = new THREE.Mesh(wingGeo, birdWingMat);
+      wingL.position.set(-0.32, 0.04, 0);
+      const wingR = new THREE.Mesh(wingGeo, birdWingMat);
+      wingR.position.set(0.32, 0.04, 0);
+      bird.add(body, wingL, wingR);
+      this.ambientLifeGroup.add(bird);
+      this.seagulls.push({
+        group: bird,
+        wingL,
+        wingR,
+        cx: -6 + (i % 3) * 10,
+        cz: 28 + (i % 2) * 8,
+        rx: 22 + (i % 4) * 5,
+        rz: 9 + (i % 3) * 3,
+        alt: 9.5 + (i % 4) * 1.4,
+        speed: 0.24 + (i % 3) * 0.06,
+        phase: i * 0.95
+      });
+    }
+
+    // 2. Waving Maritime Flags at Plaza & Harbor Arch Piers
+    const poleMat = new THREE.MeshStandardMaterial({ color: 0xe2e8f0, metalness: 0.75, roughness: 0.28 });
+    const flagColors = [0xf59e0b, 0x0ea5e9, 0x10b981];
+    const flagCoords = [
+      [9.4, 0.09, 1.8, 4.4],
+      [-1.75, 5.4, 19.8, 2.8],
+      [5.75, 5.4, 19.8, 2.8]
+    ];
+    flagCoords.forEach(([fx, fy, fz, h], idx) => {
+      const pole = new THREE.Mesh(new THREE.CylinderGeometry(0.05, 0.08, h, 6), poleMat);
+      pole.position.set(fx, fy + h * 0.5, fz);
+      const flagGroup = new THREE.Group();
+      flagGroup.position.set(fx, fy + h - 0.35, fz);
+      const cloth = new THREE.Mesh(
+        new THREE.BoxGeometry(1.15, 0.56, 0.04),
+        new THREE.MeshStandardMaterial({ color: flagColors[idx % flagColors.length], roughness: 0.6 })
+      );
+      cloth.position.x = 0.58;
+      flagGroup.add(cloth);
+      this.ambientLifeGroup.add(pole, flagGroup);
+      this.flags.push({ group: flagGroup, phase: idx * 1.3 });
+    });
+
+    // 3. Industrial Chimney Smoke Puffs (InstancedMesh, Zero-GC)
+    const smokeGeo = new THREE.DodecahedronGeometry(0.45, 0);
+    const smokeMat = new THREE.MeshBasicMaterial({ color: 0xf1f5f9, transparent: true, opacity: 0.42 });
+    const smokeCount = 14;
+    this.smokePuffs = new THREE.InstancedMesh(smokeGeo, smokeMat, smokeCount);
+    for (let i = 0; i < smokeCount; i++) {
+      const atMill = i >= 7;
+      this.smokeData.push({
+        baseX: atMill ? 17.8 : 1.5,
+        baseY: atMill ? 4.8 : 6.1,
+        baseZ: atMill ? -27.5 : -14.2,
+        phase: (i % 7) / 7,
+        speed: 0.22 + (i % 3) * 0.03
+      });
+    }
+    this.ambientLifeGroup.add(this.smokePuffs);
+
+    // 4. Drifting Forest Leaves (InstancedMesh, Zero-GC)
+    const leafGeo = new THREE.BoxGeometry(0.24, 0.04, 0.16);
+    const leafMat = new THREE.MeshBasicMaterial({ color: 0xfbbf24 });
+    const leafCount = 26;
+    this.forestLeaves = new THREE.InstancedMesh(leafGeo, leafMat, leafCount);
+    const leafColor = new THREE.Color();
+    for (let i = 0; i < leafCount; i++) {
+      this.leafData.push({
+        x: -37 + (i % 6) * 4.3 + Math.random() * 1.5,
+        z: -34 + Math.floor(i / 6) * 4.5 + Math.random() * 1.5,
+        y: 0.6 + Math.random() * 5.2,
+        fallSpeed: 0.55 + (i % 4) * 0.14,
+        phase: i * 0.7
+      });
+      leafColor.setHex(i % 3 === 0 ? 0xf59e0b : i % 3 === 1 ? 0x84cc16 : 0xfde047);
+      this.forestLeaves.setColorAt(i, leafColor);
+    }
+    if (this.forestLeaves.instanceColor) this.forestLeaves.instanceColor.needsUpdate = true;
+    this.ambientLifeGroup.add(this.forestLeaves);
+  }
+
   buildPerimeterNature() {
-    const rockGeo = new THREE.DodecahedronGeometry(3.5, 0);
-    const rockMat = new THREE.MeshStandardMaterial({ color: 0x64748b, roughness: 0.88, flatShading: true });
-    const rockCount = this.lowSpec ? 18 : 34;
-    const rocks = new THREE.InstancedMesh(rockGeo, rockMat, rockCount);
     const dummy = new THREE.Object3D();
     const color = new THREE.Color();
+
+    // 3-Tier Layered Low-Poly Mountain Ranges framing North, West & East Horizon
+    const mtnGeo = new THREE.ConeGeometry(11.5, 18.0, 7);
+    mtnGeo.translate(0, 9.0, 0);
+    const mtnMat = new THREE.MeshStandardMaterial({ color: 0x475569, roughness: 0.9, flatShading: true });
+
+    const mtnSpots = [
+      // Far North Grand Ridge (leaving central waterfall canyon open around x=-16..-6)
+      [-82, -62, 1.45, 1.35], [-64, -60, 1.35, 1.25], [-46, -61, 1.5, 1.4], [-30, -58, 1.25, 1.15],
+      [6, -59, 1.35, 1.25], [24, -61, 1.5, 1.4], [44, -60, 1.35, 1.25], [64, -62, 1.45, 1.35], [82, -60, 1.3, 1.2],
+      // Mid North Foothills
+      [-55, -50, 0.95, 0.85], [-38, -49, 0.9, 0.8], [-22, -49, 0.85, 0.75],
+      [0, -49, 0.9, 0.8], [16, -50, 0.95, 0.85], [34, -49, 0.9, 0.82], [52, -50, 1.0, 0.88],
+      // Flanking West & East Coastal Cliffs
+      [-62, -32, 1.15, 0.95], [-60, -10, 1.05, 0.85], [-64, 10, 0.95, 0.75],
+      [62, -32, 1.15, 0.95], [60, -10, 1.05, 0.85], [64, 10, 0.95, 0.75]
+    ];
+    const mountains = new THREE.InstancedMesh(mtnGeo, mtnMat, mtnSpots.length);
+    mtnSpots.forEach(([mx, mz, sx, sy], i) => {
+      dummy.position.set(mx, -0.4, mz);
+      dummy.rotation.set(0, i * 0.8, 0);
+      dummy.scale.set(sx, sy, sx * 0.9);
+      dummy.updateMatrix();
+      mountains.setMatrixAt(i, dummy.matrix);
+      color.setHSL(0.58, 0.14, 0.28 + (i % 4) * 0.045);
+      mountains.setColorAt(i, color);
+    });
+    mountains.instanceMatrix.needsUpdate = true;
+    if (mountains.instanceColor) mountains.instanceColor.needsUpdate = true;
+    mountains.computeBoundingSphere();
+    this.worldGroup.add(mountains);
+
+    // Granite perimeter rocks
+    const rockGeo = new THREE.DodecahedronGeometry(3.2, 0);
+    const rockMat = new THREE.MeshStandardMaterial({ color: 0x64748b, roughness: 0.88, flatShading: true });
+    const rockCount = this.lowSpec ? 16 : 30;
+    const rocks = new THREE.InstancedMesh(rockGeo, rockMat, rockCount);
 
     for (let i = 0; i < rockCount; i++) {
       const side = i % 3;
       let rx = 0, rz = 0;
-      if (side === 0) { rx = -46 + (i / rockCount) * 92; rz = -46 - Math.random() * 14; }
-      else if (side === 1) { rx = -48 - Math.random() * 14; rz = -42 + Math.random() * 60; }
-      else { rx = 48 + Math.random() * 14; rz = -42 + Math.random() * 60; }
+      if (side === 0) {
+        rx = -46 + (i / rockCount) * 92;
+        if (rx > -18 && rx < -5) rx -= 14; // keep waterfall lake vista clear
+        rz = -47 - Math.random() * 10;
+      } else if (side === 1) {
+        rx = -48 - Math.random() * 12;
+        rz = -42 + Math.random() * 58;
+      } else {
+        rx = 48 + Math.random() * 12;
+        rz = -42 + Math.random() * 58;
+      }
 
-      dummy.position.set(rx, 0.8 + Math.random() * 1.4, rz);
+      dummy.position.set(rx, 0.7 + Math.random() * 1.2, rz);
       dummy.rotation.set(Math.random(), Math.random() * Math.PI, Math.random());
-      const s = 0.8 + Math.random() * 1.5;
+      const s = 0.75 + Math.random() * 1.3;
       dummy.scale.set(s * 1.3, s * 0.9, s);
       dummy.updateMatrix();
       rocks.setMatrixAt(i, dummy.matrix);
-      color.setHSL(0.6, 0.1, 0.38 + Math.random() * 0.14);
+      color.setHSL(0.6, 0.1, 0.36 + Math.random() * 0.14);
       rocks.setColorAt(i, color);
     }
     rocks.instanceMatrix.needsUpdate = true;
@@ -707,12 +1121,13 @@ export class WorldManager {
       let tx = 0, tz = 0;
       if (i < northCount) {
         tx = -58 + (i / northCount) * 116 + (Math.random() - 0.5) * 3;
-        tz = -44 - Math.random() * 18;
+        if (tx > -19 && tx < -4) tx += 17; // avoid spawning pines inside pond/waterfall
+        tz = -45 - Math.random() * 14;
       } else if (i < northCount + westCount) {
-        tx = -46 - Math.random() * 18;
+        tx = -46 - Math.random() * 16;
         tz = -40 + ((i - northCount) / westCount) * 58;
       } else {
-        tx = 46 + Math.random() * 18;
+        tx = 46 + Math.random() * 16;
         tz = -40 + ((i - northCount - westCount) / Math.max(1, count - northCount - westCount)) * 58;
       }
       const scale = 0.85 + Math.random() * 0.32;
@@ -934,6 +1349,8 @@ export class WorldManager {
     }
     if (this.landDetailGroup) this.landDetailGroup.visible = !this.lowSpec;
     if (this.fountainJetsGroup) this.fountainJetsGroup.visible = !this.lowSpec;
+    if (this.ambientLifeGroup) this.ambientLifeGroup.visible = !this.lowSpec;
+    if (this.waterfallFoamGroup) this.waterfallFoamGroup.visible = !this.lowSpec;
     if (this.cargoFreighter?.userData?.mastBeacon) {
       this.cargoFreighter.userData.mastBeacon.visible = !this.lowSpec;
     }
@@ -1243,8 +1660,73 @@ export class WorldManager {
       this.airport.userData.radar.rotation.y += dt * 1.4;
     }
 
-    // Fountain animated jets, Furniture turntable, Lighthouse rotating beacon & Deep-Port (gated OFF on <8GB RAM lowSpec)
+    // Fountain jets, Waterfall scroll, Seagulls, Flags, Chimney Smoke & Falling Leaves (gated OFF on <8GB RAM lowSpec)
     if (!this.lowSpec) {
+      if (this.waterfallTex) {
+        this.waterfallTex.offset.y = (elapsed * 0.85) % 1;
+      }
+      if (this.waterfallFoamGroup?.visible) {
+        for (let i = 0; i < this.waterfallFoamPuffs.length; i++) {
+          const p = this.waterfallFoamPuffs[i];
+          const s = 0.72 + Math.sin(elapsed * 5.0 + i * 1.1) * 0.26;
+          p.scale.setScalar(s);
+          p.position.y = 0.25 + Math.abs(Math.sin(elapsed * 3.8 + i)) * 0.28;
+        }
+      }
+      if (this.ambientLifeGroup?.visible) {
+        for (let i = 0; i < this.seagulls.length; i++) {
+          const b = this.seagulls[i];
+          const ang = elapsed * b.speed + b.phase;
+          const bx = b.cx + Math.cos(ang) * b.rx;
+          const bz = b.cz + Math.sin(ang) * b.rz;
+          const nx = b.cx + Math.cos(ang + 0.05) * b.rx;
+          const nz = b.cz + Math.sin(ang + 0.05) * b.rz;
+          b.group.position.set(bx, b.alt + Math.sin(elapsed * 1.8 + b.phase) * 0.7, bz);
+          b.group.rotation.y = Math.atan2(nx - bx, nz - bz);
+          const flap = Math.sin(elapsed * 7.5 + b.phase) * 0.45;
+          b.wingL.rotation.z = flap;
+          b.wingR.rotation.z = -flap;
+        }
+        for (let i = 0; i < this.flags.length; i++) {
+          const fl = this.flags[i];
+          fl.group.rotation.y = Math.sin(elapsed * 3.4 + fl.phase) * 0.28;
+          fl.group.rotation.z = Math.sin(elapsed * 5.2 + fl.phase) * 0.06;
+        }
+        if (this.smokePuffs) {
+          for (let i = 0; i < this.smokeData.length; i++) {
+            const sd = this.smokeData[i];
+            const cycle = (elapsed * sd.speed + sd.phase) % 1;
+            this._lifeDummy.position.set(
+              sd.baseX + Math.sin(elapsed * 1.4 + i) * 0.45 + cycle * 0.6,
+              sd.baseY + cycle * 4.8,
+              sd.baseZ + Math.cos(elapsed * 1.1 + i) * 0.35
+            );
+            const s = (0.45 + cycle * 1.15) * (1 - cycle * 0.55);
+            this._lifeDummy.rotation.set(cycle * 2, i, 0);
+            this._lifeDummy.scale.setScalar(Math.max(0.05, s));
+            this._lifeDummy.updateMatrix();
+            this.smokePuffs.setMatrixAt(i, this._lifeDummy.matrix);
+          }
+          this.smokePuffs.instanceMatrix.needsUpdate = true;
+        }
+        if (this.forestLeaves) {
+          for (let i = 0; i < this.leafData.length; i++) {
+            const ld = this.leafData[i];
+            ld.y -= ld.fallSpeed * dt;
+            if (ld.y < 0.2) ld.y = 5.8;
+            this._lifeDummy.position.set(
+              ld.x + Math.sin(elapsed * 1.6 + ld.phase) * 0.55,
+              ld.y,
+              ld.z + Math.cos(elapsed * 1.3 + ld.phase) * 0.55
+            );
+            this._lifeDummy.rotation.set(elapsed * 1.8 + ld.phase, elapsed * 2.2, Math.sin(elapsed + ld.phase) * 0.6);
+            this._lifeDummy.scale.setScalar(1);
+            this._lifeDummy.updateMatrix();
+            this.forestLeaves.setMatrixAt(i, this._lifeDummy.matrix);
+          }
+          this.forestLeaves.instanceMatrix.needsUpdate = true;
+        }
+      }
       if (this.fountainJetsGroup?.visible) {
         for (let i = 0; i < this.fountainJets.length; i++) {
           const j = this.fountainJets[i];
