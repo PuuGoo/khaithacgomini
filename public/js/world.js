@@ -25,10 +25,13 @@ import {
   createAirportRunwayModel,
   createIslandOutpostModel,
   createSeaTreasureModel,
+  createCorporateHqModel,
+  createCloudsAndStormGroup,
+  createStormBeaconModel,
   syncBuildingEvolution,
   disposeObject3D
 } from './models.js';
-import { gameState, fleetMissionState, getUpgradeCost, UPGRADE_CATALOG } from './state.js';
+import { gameState, fleetMissionState, stormState, getUpgradeCost, UPGRADE_CATALOG } from './state.js';
 
 export const WORLD_BOUNDS = { minX: -42, maxX: 42, minZ: -38, maxZ: 34 };
 export const SEA_BOUNDS = { minX: -115, maxX: 115, minZ: 27.5, maxZ: 145 };
@@ -42,6 +45,7 @@ export const ZONES = {
   canneryDock: new THREE.Vector3(-6.5, 0.5, 29),
   yachtBerth: new THREE.Vector3(14.5, 0.5, 29),
   runwayStart: new THREE.Vector3(30, 0.14, 13),
+  hqPlaza: new THREE.Vector3(15, 0, 7),
   islandDock: new THREE.Vector3(41, 0.5, 86),
   islandAirDrop: new THREE.Vector3(52, 12, 92),
   harborAirDrop: new THREE.Vector3(2, 12, 32)
@@ -71,6 +75,10 @@ export class WorldManager {
     this.gantryCrane = null;
     this.airport = null;
     this.islandOutpost = null;
+    this.corporateHq = null;
+    this.weatherGroup = null;
+    this.stormBeacon = null;
+    this._weatherDummy = new THREE.Object3D();
     this.seaTreasures = [];
     this.seaBeaconRing = null;
     this.airBeaconRing = null;
@@ -143,6 +151,7 @@ export class WorldManager {
     this.addFloorMarker(ZONES.canneryDock, 2.5, '#38bdf8', 'CẢNG CÁ HỘP', '🐟 Thu hoạch cá');
     this.addFloorMarker(ZONES.yachtBerth, 2.6, '#06b6d4', 'BẾN DU THUYỀN VIP', '🚤 Lái ra khơi [E]');
     this.addFloorMarker(ZONES.runwayStart, 2.8, '#f59e0b', 'ĐƯỜNG BĂNG SÂN BAY', '✈️ Cất cánh [E]');
+    this.addFloorMarker(ZONES.hqPlaza, 2.5, '#a855f7', 'TRỤ SỞ TẬP ĐOÀN', '🏢 Cổ phiếu & Tài chính');
   }
 
   addFloorMarker(pos, radius, colorHex, title, sub) {
@@ -288,6 +297,22 @@ export class WorldManager {
     this.islandOutpost.position.set(52, -0.35, 92);
     this.worldGroup.add(this.islandOutpost);
     this.syncIslandTier(gameState.islandStationTier || 0);
+    this.syncResortTier(gameState.islandResortTier || 0);
+
+    // Pre-built Corporate HQ Tower at East Plaza (15, 0, 7)
+    this.corporateHq = createCorporateHqModel(this.lowSpec);
+    this.corporateHq.position.copy(ZONES.hqPlaza);
+    this.corporateHq.rotation.y = -Math.PI * 0.5;
+    this.worldGroup.add(this.corporateHq);
+    this.syncHqTier(gameState.hqTier || 0);
+
+    // Pre-built Instanced Clouds & Storm Rain (auto-gated OFF on <8GB RAM)
+    this.weatherGroup = createCloudsAndStormGroup(this.lowSpec);
+    this.worldGroup.add(this.weatherGroup);
+
+    // Pre-built Storm Relief Challenge Beacon (visible on all hardware when stormState.active)
+    this.stormBeacon = createStormBeaconModel();
+    this.worldGroup.add(this.stormBeacon);
 
     // Pre-built Sea Treasure Pool (4 floating crates across the bay)
     const treasureSpots = [
@@ -347,6 +372,24 @@ export class WorldManager {
     if (this.islandOutpost.userData?.tier3Group) this.islandOutpost.userData.tier3Group.visible = tier >= 3;
   }
 
+  syncResortTier(tier = 0) {
+    const u = this.islandOutpost?.userData;
+    if (!u) return;
+    if (u.resortTier1) u.resortTier1.visible = tier >= 1;
+    if (u.resortTier2) u.resortTier2.visible = tier >= 2;
+    if (u.resortTier3) u.resortTier3.visible = tier >= 3;
+  }
+
+  syncHqTier(tier = 0) {
+    if (!this.corporateHq) return;
+    const u = this.corporateHq.userData;
+    this.corporateHq.visible = tier > 0;
+    if (u?.tier1Group) u.tier1Group.visible = tier >= 1;
+    if (u?.tier2Group) u.tier2Group.visible = tier >= 2;
+    if (u?.tier3Group) u.tier3Group.visible = tier >= 3;
+    if (u?.facadeLight) u.facadeLight.visible = !this.lowSpec && tier >= 1;
+  }
+
   setLowSpec(isLow) {
     this.lowSpec = Boolean(isLow);
     if (this.harborBeaconLight) this.harborBeaconLight.visible = !this.lowSpec;
@@ -358,6 +401,15 @@ export class WorldManager {
     }
     if (this.gantryCrane?.userData?.beacon) {
       this.gantryCrane.userData.beacon.visible = !this.lowSpec;
+    }
+    if (this.corporateHq?.userData?.facadeLight) {
+      this.corporateHq.userData.facadeLight.visible = !this.lowSpec && (gameState.hqTier || 0) >= 1;
+    }
+    if (this.weatherGroup?.userData?.clouds) {
+      this.weatherGroup.userData.clouds.visible = !this.lowSpec;
+    }
+    if (this.weatherGroup?.userData?.rain) {
+      this.weatherGroup.userData.rain.visible = !this.lowSpec && stormState.active;
     }
   }
 
@@ -669,6 +721,65 @@ export class WorldManager {
       if (am) {
         this.airBeaconRing.position.set(am.targetX, am.targetY, am.targetZ);
         this.airBeaconRing.rotation.y += dt * 1.4;
+      }
+    }
+
+    // Storm Relief Challenge Beacon (visible on all hardware profiles)
+    if (this.stormBeacon) {
+      this.stormBeacon.visible = stormState.active;
+      if (stormState.active) {
+        this.stormBeacon.position.set(stormState.targetX, stormState.targetY, stormState.targetZ);
+        const torus = this.stormBeacon.userData?.torus;
+        if (torus) {
+          torus.rotation.y += dt * 2.4;
+          torus.rotation.x = stormState.kind === 'sea' ? Math.PI / 2 : 0;
+        }
+        const pulse = 1 + Math.sin(elapsed * 5.2) * 0.12;
+        this.stormBeacon.scale.set(pulse, 1, pulse);
+      }
+    }
+
+    // Instanced Sky Clouds & Storm Rain (hardware-gated OFF on <8GB RAM lowSpec)
+    if (this.weatherGroup) {
+      const { clouds, rain, cloudBases, rainOffsets, cloudMat } = this.weatherGroup.userData;
+      if (!this.lowSpec) {
+        if (clouds) {
+          clouds.visible = true;
+          const speedBoost = stormState.active ? 2.4 : 1.0;
+          if (cloudMat) {
+            cloudMat.color.setHex(stormState.active ? 0x64748b : 0xf8fafc);
+          }
+          for (let i = 0; i < cloudBases.length; i++) {
+            const cb = cloudBases[i];
+            let cx = cb.x + elapsed * cb.speed * speedBoost;
+            cx = ((cx + 120) % 240) - 120;
+            this._weatherDummy.position.set(cx, cb.y, cb.z);
+            this._weatherDummy.rotation.set(0, i * 0.6, 0);
+            this._weatherDummy.scale.set(cb.sx, cb.sy, cb.sz);
+            this._weatherDummy.updateMatrix();
+            clouds.setMatrixAt(i, this._weatherDummy.matrix);
+          }
+          clouds.instanceMatrix.needsUpdate = true;
+        }
+        if (rain) {
+          rain.visible = stormState.active;
+          if (stormState.active) {
+            for (let i = 0; i < rainOffsets.length; i++) {
+              const ro = rainOffsets[i];
+              ro.y -= ro.speed * dt;
+              if (ro.y < 0.5) ro.y = 28;
+              this._weatherDummy.position.set(ro.x, ro.y, ro.z);
+              this._weatherDummy.rotation.set(0, 0, 0.14);
+              this._weatherDummy.scale.set(1, 1, 1);
+              this._weatherDummy.updateMatrix();
+              rain.setMatrixAt(i, this._weatherDummy.matrix);
+            }
+            rain.instanceMatrix.needsUpdate = true;
+          }
+        }
+      } else {
+        if (clouds) clouds.visible = false;
+        if (rain) rain.visible = false;
       }
     }
 

@@ -968,7 +968,10 @@ export function createVipYachtModel(lowSpec = false) {
   deckLight.visible = !lowSpec;
 
   g.add(hull, bow, deck, cabin, visor, upperDeck, goldStripe, deckLight);
-  g.userData = { deckLight };
+  g.userData = {
+    deckLight,
+    liveryMats: { hullMat, trimMat: goldMat }
+  };
   return g;
 }
 
@@ -1040,14 +1043,15 @@ export function createDrivableYachtModel(tier = 1, lowSpec = false) {
   const stripe = new THREE.Mesh(new THREE.BoxGeometry(2.86, 0.14, 7.65), trimMat);
   stripe.position.set(0, 0.85, -0.3);
 
-  const cabin = new THREE.Mesh(new THREE.BoxGeometry(2.05, 0.95, 3.6), new THREE.MeshStandardMaterial({ color: 0xf8fafc, roughness: 0.25 }));
+  const cabinMat = new THREE.MeshStandardMaterial({ color: 0xf8fafc, roughness: 0.25 });
+  const cabin = new THREE.Mesh(new THREE.BoxGeometry(2.05, 0.95, 3.6), cabinMat);
   cabin.position.set(0, 1.6, -0.5);
   cabin.castShadow = !lowSpec;
 
   const visor = new THREE.Mesh(new THREE.BoxGeometry(2.14, 0.45, 3.72), glassMat);
   visor.position.set(0, 1.68, -0.4);
 
-  const flybridge = new THREE.Mesh(new THREE.BoxGeometry(1.65, 0.55, 2.1), new THREE.MeshStandardMaterial({ color: 0xf8fafc, roughness: 0.25 }));
+  const flybridge = new THREE.Mesh(new THREE.BoxGeometry(1.65, 0.55, 2.1), cabinMat);
   flybridge.position.set(0, 2.35, -0.85);
 
   const radarArch = new THREE.Mesh(new THREE.BoxGeometry(1.85, 0.14, 0.25), trimMat);
@@ -1058,7 +1062,10 @@ export function createDrivableYachtModel(tier = 1, lowSpec = false) {
   deckLight.visible = !lowSpec;
 
   g.add(hull, bow, teakDeck, stripe, cabin, visor, flybridge, radarArch, deckLight);
-  g.userData = { deckLight };
+  g.userData = {
+    deckLight,
+    liveryMats: { hullMat, trimMat, cabinMat }
+  };
   return g;
 }
 
@@ -1155,7 +1162,11 @@ export function createAirplaneModel(planeId = 'bush_plane', lowSpec = false) {
   }
 
   g.add(fuselage, nose, canopy, vTail, hTail);
-  g.userData = { propellers, isJet };
+  g.userData = {
+    propellers,
+    isJet,
+    liveryMats: { bodyMat, accentMat }
+  };
   return g;
 }
 
@@ -1307,7 +1318,46 @@ export function createIslandOutpostModel(lowSpec = false) {
   tier3Group.add(spire);
   g.add(tier3Group);
 
-  g.userData = { tier2Group, tier3Group };
+  // Phase 5: Island VIP Yacht Resort Tiers (1..3)
+  const resortWallMat = new THREE.MeshStandardMaterial({ color: 0xf8fafc, roughness: 0.42 });
+  const resortRoofMat = new THREE.MeshStandardMaterial({ color: 0xea580c, roughness: 0.58, flatShading: true });
+  const poolMat = new THREE.MeshStandardMaterial({ color: 0x06b6d4, roughness: 0.12, metalness: 0.25, emissive: 0x0369a1, emissiveIntensity: 0.25 });
+
+  const resortTier1 = new THREE.Group();
+  resortTier1.visible = false;
+  [-6.2, -2.2].forEach((vx) => {
+    const villa = new THREE.Mesh(new THREE.BoxGeometry(2.8, 1.9, 2.6), resortWallMat);
+    villa.position.set(vx, 2.2, 5.8);
+    villa.castShadow = !lowSpec;
+    const vRoof = new THREE.Mesh(new THREE.ConeGeometry(2.2, 1.2, 4), resortRoofMat);
+    vRoof.rotation.y = Math.PI / 4;
+    vRoof.position.set(vx, 3.75, 5.8);
+    resortTier1.add(villa, vRoof);
+  });
+  g.add(resortTier1);
+
+  const resortTier2 = new THREE.Group();
+  resortTier2.visible = false;
+  const poolDeck = new THREE.Mesh(new THREE.BoxGeometry(6.8, 0.3, 4.0), resortWallMat);
+  poolDeck.position.set(4.5, 1.5, 5.8);
+  const poolWater = new THREE.Mesh(new THREE.BoxGeometry(5.6, 0.18, 2.8), poolMat);
+  poolWater.position.set(4.5, 1.62, 5.8);
+  resortTier2.add(poolDeck, poolWater);
+  g.add(resortTier2);
+
+  const resortTier3 = new THREE.Group();
+  resortTier3.visible = false;
+  const pavilion = new THREE.Mesh(new THREE.CylinderGeometry(2.8, 3.1, 2.6, 8), resortWallMat);
+  pavilion.position.set(-7.5, 2.6, -0.5);
+  pavilion.castShadow = !lowSpec;
+  const pavCrown = new THREE.Mesh(new THREE.ConeGeometry(3.4, 1.6, 8), goldMat);
+  pavCrown.position.set(-7.5, 4.7, -0.5);
+  const yachtLoungePier = new THREE.Mesh(new THREE.BoxGeometry(4.5, 0.35, 3.2), woodMat);
+  yachtLoungePier.position.set(-12.2, 0.45, 3.2);
+  resortTier3.add(pavilion, pavCrown, yachtLoungePier);
+  g.add(resortTier3);
+
+  g.userData = { tier2Group, tier3Group, resortTier1, resortTier2, resortTier3 };
   return g;
 }
 
@@ -1337,6 +1387,154 @@ export function createSeaTreasureModel() {
   g.userData = { beaconRing };
   return g;
 }
+
+export function applyLiveryToModel(model, livery, isPlane = false) {
+  const mats = model?.userData?.liveryMats;
+  if (!mats || !livery) return;
+  if (isPlane) {
+    mats.bodyMat?.color?.setHex(livery.hull);
+    mats.accentMat?.color?.setHex(livery.trim);
+  } else {
+    mats.hullMat?.color?.setHex(livery.hull);
+    mats.trimMat?.color?.setHex(livery.trim);
+    mats.cabinMat?.color?.setHex(livery.cabin);
+  }
+}
+
+export function createCorporateHqModel(lowSpec = false) {
+  const g = new THREE.Group();
+  const graniteMat = new THREE.MeshStandardMaterial({ color: 0x334155, roughness: 0.75, metalness: 0.15 });
+  const glassMat = new THREE.MeshStandardMaterial({ color: 0x0284c7, roughness: 0.15, metalness: 0.68 });
+  const steelMat = new THREE.MeshStandardMaterial({ color: 0xf8fafc, roughness: 0.32, metalness: 0.45 });
+  const goldMat = new THREE.MeshStandardMaterial({ color: 0xf59e0b, roughness: 0.24, metalness: 0.85, emissive: 0x78350f, emissiveIntensity: 0.25 });
+
+  // Tier 1: Granite Plaza + 2-Story TimberPort Lobby
+  const tier1Group = new THREE.Group();
+  tier1Group.visible = false;
+  const plaza = new THREE.Mesh(new THREE.BoxGeometry(8.8, 0.4, 8.8), graniteMat);
+  plaza.position.y = 0.2;
+  plaza.receiveShadow = !lowSpec;
+  const lobby = new THREE.Mesh(new THREE.BoxGeometry(6.6, 4.2, 6.2), steelMat);
+  lobby.position.y = 2.4;
+  lobby.castShadow = !lowSpec;
+  const lobbyGlass = new THREE.Mesh(new THREE.BoxGeometry(6.8, 2.5, 5.4), glassMat);
+  lobbyGlass.position.y = 2.5;
+  const canopy = new THREE.Mesh(new THREE.BoxGeometry(3.2, 0.25, 2.2), goldMat);
+  canopy.position.set(0, 2.8, 3.6);
+  tier1Group.add(plaza, lobby, lobbyGlass, canopy);
+  g.add(tier1Group);
+
+  // Tier 2: Corporate Financial Tower + Golden Crown Band
+  const tier2Group = new THREE.Group();
+  tier2Group.visible = false;
+  const tower = new THREE.Mesh(new THREE.BoxGeometry(5.2, 6.5, 5.0), glassMat);
+  tower.position.y = 7.7;
+  tower.castShadow = !lowSpec;
+  const ribs = new THREE.Mesh(new THREE.BoxGeometry(5.5, 6.4, 3.4), steelMat);
+  ribs.position.y = 7.7;
+  const crownBand = new THREE.Mesh(new THREE.BoxGeometry(5.7, 0.55, 5.4), goldMat);
+  crownBand.position.y = 11.1;
+  tier2Group.add(tower, ribs, crownBand);
+  g.add(tier2Group);
+
+  // Tier 3: Penthouse Spire + Helipad + Warm Facade PointLight (gated off on <8GB RAM)
+  const tier3Group = new THREE.Group();
+  tier3Group.visible = false;
+  const penthouse = new THREE.Mesh(new THREE.BoxGeometry(4.2, 2.8, 4.0), glassMat);
+  penthouse.position.y = 12.7;
+  const helipadDeck = new THREE.Mesh(new THREE.CylinderGeometry(2.3, 2.3, 0.25, 16), graniteMat);
+  helipadDeck.position.y = 14.25;
+  const heliRing = new THREE.Mesh(
+    new THREE.RingGeometry(1.4, 1.75, 20),
+    new THREE.MeshBasicMaterial({ color: 0xfacc15, side: THREE.DoubleSide })
+  );
+  heliRing.rotation.x = -Math.PI / 2;
+  heliRing.position.y = 14.4;
+  const spire = new THREE.Mesh(new THREE.CylinderGeometry(0.1, 0.24, 3.4, 6), goldMat);
+  spire.position.set(-1.6, 15.8, -1.4);
+  tier3Group.add(penthouse, helipadDeck, heliRing, spire);
+  g.add(tier3Group);
+
+  const facadeLight = new THREE.PointLight(0xfde68a, 1.8, 22, 1.6);
+  facadeLight.position.set(0, 5.5, 4.8);
+  facadeLight.visible = false;
+  g.add(facadeLight);
+
+  g.userData = { tier1Group, tier2Group, tier3Group, facadeLight };
+  return g;
+}
+
+export function createCloudsAndStormGroup(lowSpec = false) {
+  const g = new THREE.Group();
+
+  // 14 low-poly drifting cloud puffs in 1 InstancedMesh (Zero GC)
+  const cloudCount = 14;
+  const cloudGeo = new THREE.DodecahedronGeometry(3.2, 0);
+  const cloudMat = new THREE.MeshStandardMaterial({
+    color: 0xf8fafc,
+    roughness: 0.92,
+    flatShading: true,
+    transparent: true,
+    opacity: 0.88
+  });
+  const clouds = new THREE.InstancedMesh(cloudGeo, cloudMat, cloudCount);
+  const cloudBases = [];
+  for (let i = 0; i < cloudCount; i++) {
+    cloudBases.push({
+      x: -110 + (i / cloudCount) * 220 + (Math.random() - 0.5) * 18,
+      y: 25 + (i % 3) * 4.5,
+      z: -38 + (i % 5) * 34,
+      sx: 1.4 + (i % 3) * 0.55,
+      sy: 0.55 + (i % 2) * 0.18,
+      sz: 1.1 + (i % 4) * 0.28,
+      speed: 1.4 + (i % 4) * 0.45
+    });
+  }
+  clouds.visible = !lowSpec;
+  g.add(clouds);
+
+  // 90 thin storm rain streaks in 1 InstancedMesh (visible only when !lowSpec && stormState.active)
+  const rainCount = 90;
+  const rainGeo = new THREE.BoxGeometry(0.06, 2.4, 0.06);
+  const rainMat = new THREE.MeshBasicMaterial({
+    color: 0xbae6fd,
+    transparent: true,
+    opacity: 0.48
+  });
+  const rain = new THREE.InstancedMesh(rainGeo, rainMat, rainCount);
+  const rainOffsets = [];
+  for (let i = 0; i < rainCount; i++) {
+    rainOffsets.push({
+      x: (Math.random() - 0.5) * 140,
+      y: 2 + Math.random() * 26,
+      z: -20 + Math.random() * 140,
+      speed: 26 + Math.random() * 12
+    });
+  }
+  rain.visible = false;
+  g.add(rain);
+
+  g.userData = { clouds, rain, cloudBases, rainOffsets, cloudMat };
+  return g;
+}
+
+export function createStormBeaconModel() {
+  const g = new THREE.Group();
+  const ringMat = new THREE.MeshBasicMaterial({ color: 0xf43f5e, transparent: true, opacity: 0.9, side: THREE.DoubleSide });
+  const pillarMat = new THREE.MeshBasicMaterial({ color: 0xfb7185, transparent: true, opacity: 0.35 });
+
+  const torus = new THREE.Mesh(new THREE.TorusGeometry(4.8, 0.42, 10, 28), ringMat);
+  const innerRing = new THREE.Mesh(new THREE.RingGeometry(3.2, 4.2, 24), ringMat);
+  innerRing.rotation.x = -Math.PI / 2;
+  const pillar = new THREE.Mesh(new THREE.CylinderGeometry(0.45, 1.4, 18, 10), pillarMat);
+  pillar.position.y = 9;
+
+  g.add(torus, innerRing, pillar);
+  g.visible = false;
+  g.userData = { torus, pillar };
+  return g;
+}
+
 
 
 

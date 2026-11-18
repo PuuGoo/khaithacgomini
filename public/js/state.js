@@ -235,6 +235,70 @@ export const fleetMissionState = {
   airCooldown: 2
 };
 
+// Phase 5: Corporate HQ, Island Resort, Paint Liveries, Engine Tiers, Stock Exchange & Storm Challenge
+export const HQ_TIERS = [
+  { tier: 1, name: 'Tòa Nhà Điều Hành Tập Đoàn', costCash: 5500, revBonus: 0.18, dividend45s: 180, desc: 'Trụ sở trung tâm tại Quảng trường Đông, +18% doanh thu & chia cổ tức định kỳ.' },
+  { tier: 2, name: 'Tháp Tài Chính TimberPort', costCash: 19500, revBonus: 0.38, dividend45s: 520, desc: 'Tháp kính tài chính mở rộng, +38% toàn bộ doanh thu & tăng cổ tức sàn cổ phiếu.' },
+  { tier: 3, name: 'Trung Tâm Chỉ Huy Đế Chế', costCash: 64000, revBonus: 0.68, dividend45s: 1450, desc: 'Tổng hành dinh tối thượng với bãi đáp trực thăng, +68% doanh thu toàn đế chế.' }
+];
+
+export const ISLAND_RESORT_TIERS = [
+  { tier: 1, name: 'Biệt Thự Biển Du Thuyền', costCash: 6200, cashPer10s: 165, gemChance: 0.25, desc: 'Phát triển khu villa bãi cát trên Đảo Tiền Đồn, sinh tiền thụ động & hút khách du thuyền.' },
+  { tier: 2, name: 'Khu Nghỉ Dưỡng Hồ Bơi Vô Cực', costCash: 21000, cashPer10s: 450, gemChance: 0.45, desc: 'Hồ bơi vô cực hướng biển & nhà hàng hải sản, x2.7 lợi tức nghỉ dưỡng.' },
+  { tier: 3, name: 'Quần Thể Resort Hoàng Gia VIP', costCash: 58000, cashPer10s: 1180, gemChance: 0.72, desc: 'Khu nghỉ dưỡng 5 sao tối thượng trên đảo riêng, sinh Cash & Đá quý liên tục.' }
+];
+
+export const FLEET_LIVERIES = [
+  { id: 'pearl_sky', name: 'Trắng Ngọc Trai', tierLabel: 'Tiêu chuẩn', costType: 'free', cost: 0, hull: 0xf8fafc, trim: 0x0ea5e9, cabin: 0xf8fafc, desc: 'Sơn trắng hải quân nguyên bản kết hợp đường viền xanh dương.' },
+  { id: 'sapphire_ocean', name: 'Xanh Hải Vương', tierLabel: 'Tiêu chuẩn', costType: 'cash', cost: 3400, hull: 0x0369a1, trim: 0x38bdf8, cabin: 0xe0f2fe, desc: 'Lớp sơn xanh biển sâu bóng bẩy chống muối biển.' },
+  { id: 'emerald_jade', name: 'Lục Bảo Đảo Ngọc', tierLabel: 'Điều hành', costType: 'cash', cost: 8800, hull: 0x047857, trim: 0x34d399, cabin: 0xecfdf5, desc: 'Phiên bản thương gia ngọc lục bảo đặc trưng Quần Đảo Ngọc.' },
+  { id: 'crimson_viper', name: 'Đỏ Đô Đốc Thể Thao', tierLabel: 'Điều hành', costType: 'gems', cost: 55, hull: 0xb91c1c, trim: 0xfef08a, cabin: 0xf8fafc, desc: 'Sơn đỏ rực thể thao nổi bật cả trên vịnh và bầu trời.' },
+  { id: 'obsidian_gold', name: 'Hắc Kim Đế Chế', tierLabel: 'Hoàng gia', costType: 'gems', cost: 115, hull: 0x0f172a, trim: 0xf59e0b, cabin: 0x1e293b, desc: 'Đen nhám Obsidian viền vàng 24K dành riêng cho Chủ tịch Tập đoàn.' }
+];
+
+export const ENGINE_MAX_TIER = 5;
+
+export const STOCK_TICKERS = [
+  { symbol: 'TMBR', name: 'Tập Đoàn Gỗ Timber', sector: 'Lâm nghiệp & Xưởng', basePrice: 85, color: '#f59e0b' },
+  { symbol: 'PORT', name: 'Thương Cảng Xuất Khẩu', sector: 'Logistics & Cảng', basePrice: 140, color: '#10b981' },
+  { symbol: 'AERO', name: 'Hàng Không & Du Thuyền', sector: 'Hạm đội Biển - Không', basePrice: 210, color: '#38bdf8' },
+  { symbol: 'RESO', name: 'Nghỉ Dưỡng Hải Đảo', sector: 'Du lịch Resort VIP', basePrice: 175, color: '#a855f7' }
+];
+
+export const stockMarketState = {
+  lastUpdateMs: Date.now(),
+  items: {
+    TMBR: { price: 88, prevPrice: 85, history: [80, 82, 84, 83, 86, 85, 87, 86, 85, 88] },
+    PORT: { price: 146, prevPrice: 141, history: [134, 136, 138, 137, 140, 142, 139, 143, 141, 146] },
+    AERO: { price: 214, prevPrice: 210, history: [198, 202, 205, 201, 208, 212, 209, 211, 210, 214] },
+    RESO: { price: 178, prevPrice: 175, history: [168, 170, 172, 169, 174, 176, 173, 175, 175, 178] }
+  }
+};
+
+export const stormState = {
+  active: false,
+  kind: 'sea', // 'sea' | 'air'
+  timeLeft: 0,
+  cooldown: 26,
+  targetX: -28,
+  targetY: 0.4,
+  targetZ: 74,
+  targetLabel: 'Vùng Bão Vịnh Tây',
+  rewardCash: 0,
+  rewardGems: 0
+};
+
+export const revenueHistory = [];
+
+export const shiftSession = {
+  startedAt: Date.now(),
+  cashEarned: 0,
+  logsCut: 0,
+  contractsDone: 0,
+  stormRescues: 0,
+  peakCpm: 0
+};
+
 export const LOGISTICS_TIERS = [
   { tier: 1, name: 'Drone Gom Phôi Gỗ', costCash: 1600, desc: 'Tự động thu 1 khúc gỗ trực tiếp vào Phễu Xưởng mỗi 4.5 giây.' },
   { tier: 2, name: 'Băng Tải Thông Minh', costCash: 4800, desc: 'Tăng tốc gom gỗ mỗi 3.0s & tự động đóng đai Pallet khi đủ phôi.' },
@@ -341,6 +405,10 @@ export function getCashPerMinute() {
   }
   const yachtDef = YACHT_TIERS.find((y) => y.tier === (gameState.yachtTier || 0));
   const yachtPerMin = yachtDef ? yachtDef.cashPer10s * 6 * getPrestigeMultiplier() : 0;
+  const resortDef = ISLAND_RESORT_TIERS.find((r) => r.tier === (gameState.islandResortTier || 0));
+  const resortPerMin = resortDef ? resortDef.cashPer10s * 6 * getPrestigeMultiplier() : 0;
+  const hqDef = HQ_TIERS.find((h) => h.tier === (gameState.hqTier || 0));
+  const hqDivPerMin = hqDef ? Math.round((hqDef.dividend45s * (60 / 45)) * getPrestigeMultiplier()) : 0;
   const logisticsPerMin = (gameState.logisticsTier || 0) * 140 * getRevenueMultiplier();
   const autoFleetPerMin = ((gameState.autoSeaFleet || 0) * 320 + (gameState.autoAirFleet || 0) * 480) * getRevenueMultiplier();
   const passiveEstimate = Math.round(
@@ -348,10 +416,17 @@ export function getCashPerMinute() {
     * getRevenueMultiplier()
     * (1 + getManagerBonus('contractBonus'))
     + yachtPerMin
+    + resortPerMin
+    + hqDivPerMin
     + logisticsPerMin
     + autoFleetPerMin
   );
-  return Math.max(total, passiveEstimate);
+  const cpm = Math.max(total, passiveEstimate);
+  if (cpm > shiftSession.peakCpm) shiftSession.peakCpm = cpm;
+  if (gameState.personalBests && cpm > (gameState.personalBests.bestCpm || 0)) {
+    gameState.personalBests.bestCpm = cpm;
+  }
+  return cpm;
 }
 
 export function createDefaultState() {
@@ -424,7 +499,9 @@ export function createDefaultState() {
       contracts: 0,
       fishery: 0,
       market: 0,
-      offline: 0
+      offline: 0,
+      stocks: 0,
+      resort: 0
     },
 
     // Managers (1★-5★), Prestige, Lucky Wheel & VIP Rush Order
@@ -458,6 +535,33 @@ export function createDefaultState() {
     unlockedBadges: [],
     milestoneIndex: 0,
     totalAuctionsWon: 0,
+
+    // Phase 5: Corporate HQ, Island Resort, Liveries, Engines, Stock Portfolio, Ledger & Records
+    hqTier: 0,
+    pendingDividendCash: 0,
+    islandResortTier: 0,
+    resortAccumCash: 0,
+    resortAccumGems: 0,
+    yachtLivery: 'pearl_sky',
+    planeLivery: 'pearl_sky',
+    unlockedLiveries: ['pearl_sky'],
+    yachtEngineTier: 1,
+    planeEngineTier: 1,
+    stockPortfolio: {
+      TMBR: { shares: 0, avgPrice: 0 },
+      PORT: { shares: 0, avgPrice: 0 },
+      AERO: { shares: 0, avgPrice: 0 },
+      RESO: { shares: 0, avgPrice: 0 }
+    },
+    transactionLog: [],
+    unreadNotifications: 0,
+    personalBests: {
+      bestShiftCash: 0,
+      bestCpm: 0,
+      bestSingleDeal: 0,
+      totalStormRescues: 0,
+      completedShifts: 0
+    },
 
     // Cosmetics & Fleet
     equippedSkin: 'classic',
@@ -532,6 +636,11 @@ export function getBadgeRevenueBonus() {
   return pct / 100;
 }
 
+export function getHqMultiplierBonus() {
+  const hq = HQ_TIERS.find((h) => h.tier === (gameState.hqTier || 0));
+  return hq ? hq.revBonus : 0;
+}
+
 export function getRevenueMultiplier() {
   const branchMult = getActiveBranch().multiplier;
   const plankMult = 1 + ((gameState.plankValueTier || 1) - 1) * 0.35;
@@ -539,12 +648,13 @@ export function getRevenueMultiplier() {
   const mgrMult = 1 + getManagerBonus('sawValue');
   const prestigeMult = getPrestigeMultiplier();
   const badgeMult = 1 + getBadgeRevenueBonus();
+  const hqMult = 1 + getHqMultiplierBonus();
   const ev = activeEventState.current;
   const eventMult = ev && ev.multTarget === 'sawmill' ? 1 + ev.multBonus : 1.0;
   let skinMult = 1.0;
   if (gameState.equippedSkin === 'captain') skinMult = 1.15;
   if (gameState.equippedSkin === 'gold_tycoon') skinMult = 1.25;
-  return branchMult * plankMult * vipMult * skinMult * mgrMult * prestigeMult * badgeMult * eventMult;
+  return branchMult * plankMult * vipMult * skinMult * mgrMult * prestigeMult * badgeMult * hqMult * eventMult;
 }
 
 export function getContractMultiplier() {
@@ -574,15 +684,52 @@ export function getHarborVisualTier() {
   return 1;
 }
 
+export function logTransaction(kind, title, cashDelta = 0, gemDelta = 0) {
+  if (!Array.isArray(gameState.transactionLog)) gameState.transactionLog = [];
+  const d = new Date();
+  const hh = String(d.getHours()).padStart(2, '0');
+  const mm = String(d.getMinutes()).padStart(2, '0');
+  const ss = String(d.getSeconds()).padStart(2, '0');
+  gameState.transactionLog.unshift({
+    id: 'tx_' + Date.now() + '_' + Math.floor(Math.random() * 999),
+    time: `${hh}:${mm}:${ss}`,
+    kind, // 'income' | 'stocks' | 'fleet'
+    title,
+    cashDelta: Math.round(cashDelta),
+    gemDelta: Math.round(gemDelta)
+  });
+  if (gameState.transactionLog.length > 60) {
+    gameState.transactionLog.length = 60;
+  }
+  gameState.unreadNotifications = Math.min(99, (gameState.unreadNotifications || 0) + 1);
+}
+
+export function markNotificationsRead() {
+  gameState.unreadNotifications = 0;
+}
+
 export function recordRevenue(source, amount) {
   if (!amount || amount <= 0) return;
   const rounded = Math.round(amount);
   if (!gameState.revenueStats) {
-    gameState.revenueStats = { sawmill: 0, contracts: 0, fishery: 0, market: 0, offline: 0 };
+    gameState.revenueStats = { sawmill: 0, contracts: 0, fishery: 0, market: 0, offline: 0, stocks: 0, resort: 0 };
   }
-  if (source in gameState.revenueStats) {
-    gameState.revenueStats[source] += rounded;
+  if (!(source in gameState.revenueStats)) {
+    gameState.revenueStats[source] = 0;
   }
+  gameState.revenueStats[source] += rounded;
+
+  shiftSession.cashEarned += rounded;
+  if (!gameState.personalBests) {
+    gameState.personalBests = { bestShiftCash: 0, bestCpm: 0, bestSingleDeal: 0, totalStormRescues: 0, completedShifts: 0 };
+  }
+  if (rounded > (gameState.personalBests.bestSingleDeal || 0)) {
+    gameState.personalBests.bestSingleDeal = rounded;
+  }
+  if (shiftSession.cashEarned > (gameState.personalBests.bestShiftCash || 0)) {
+    gameState.personalBests.bestShiftCash = shiftSession.cashEarned;
+  }
+
   cashFlowSamples.push({ t: Date.now(), amt: rounded });
   if (cashFlowSamples.length > 240) cashFlowSamples.shift();
 }
@@ -768,6 +915,19 @@ export function performPrestige() {
   gameState.islandStationTier = 0;
   gameState.autoSeaFleet = 0;
   gameState.autoAirFleet = 0;
+  gameState.hqTier = 0;
+  gameState.pendingDividendCash = 0;
+  gameState.islandResortTier = 0;
+  gameState.resortAccumCash = 0;
+  gameState.resortAccumGems = 0;
+  gameState.yachtEngineTier = 1;
+  gameState.planeEngineTier = 1;
+  gameState.stockPortfolio = {
+    TMBR: { shares: 0, avgPrice: 0 },
+    PORT: { shares: 0, avgPrice: 0 },
+    AERO: { shares: 0, avgPrice: 0 },
+    RESO: { shares: 0, avgPrice: 0 }
+  };
   gameState.activeBranchId = 'pine_bay';
   gameState.unlockedBranches = ['pine_bay'];
   gameState.contractsCompleted = 0;
@@ -776,6 +936,10 @@ export function performPrestige() {
   gameState.vipRushCooldown = 15;
   fleetMissionState.sea = null;
   fleetMissionState.air = null;
+  stormState.active = false;
+  stormState.cooldown = 22;
+  resetShiftSession(true);
+  logTransaction('fleet', `Chuyển sinh Đế chế Cấp ${gameState.prestigeLevel} (+${medals} 🏅)`, 0, 0);
   evaluateBadgeUnlocks();
   generateNextContract();
   return medals;
@@ -1144,6 +1308,338 @@ export async function saveGameServer(immediate = false) {
   saveDebounce = setTimeout(run, 1800);
 }
 
+// ---------------------------------------------------------------------------
+// Phase 5: HQ, Island Resort, Liveries, Engines, Stock Market, Storm & Shift
+// ---------------------------------------------------------------------------
+export function getHqNextTier() {
+  const cur = gameState.hqTier || 0;
+  return HQ_TIERS.find((h) => h.tier === cur + 1) || null;
+}
+
+export function getResortNextTier() {
+  const cur = gameState.islandResortTier || 0;
+  return ISLAND_RESORT_TIERS.find((r) => r.tier === cur + 1) || null;
+}
+
+export function getLiveryData(id = 'pearl_sky') {
+  return FLEET_LIVERIES.find((l) => l.id === id) || FLEET_LIVERIES[0];
+}
+
+export function getYachtEngineCost(lv = gameState.yachtEngineTier || 1) {
+  if (lv >= ENGINE_MAX_TIER) return null;
+  return Math.round(2800 * Math.pow(2.15, Math.max(0, lv - 1)));
+}
+
+export function getPlaneEngineCost(lv = gameState.planeEngineTier || 1) {
+  if (lv >= ENGINE_MAX_TIER) return null;
+  return Math.round(3600 * Math.pow(2.2, Math.max(0, lv - 1)));
+}
+
+export function getEngineSpeedMult(lv = 1) {
+  return 1 + (Math.max(1, lv) - 1) * 0.14;
+}
+
+export function getEngineYieldMult(lv = 1) {
+  return 1 + (Math.max(1, lv) - 1) * 0.16;
+}
+
+export function sampleRevenueHistory() {
+  const cpm = getCashPerMinute();
+  revenueHistory.push({ t: Date.now(), cpm });
+  if (revenueHistory.length > 24) revenueHistory.shift();
+  return cpm;
+}
+
+export function updateStockPrices() {
+  const movers = [];
+  const fundamentalDrivers = {
+    TMBR: 1 + ((gameState.sawSpeedTier || 1) - 1) * 0.08 + (gameState.hqTier || 0) * 0.12,
+    PORT: 1 + ((gameState.logisticsTier || 0) * 0.1) + Math.min(0.6, (gameState.contractsCompleted || 0) * 0.04),
+    AERO: 1 + ((gameState.yachtTier || 0) * 0.12) + ((gameState.airportTier || 0) * 0.12) + ((gameState.autoAirFleet || 0) * 0.08),
+    RESO: 1 + ((gameState.islandStationTier || 0) * 0.1) + ((gameState.islandResortTier || 0) * 0.18)
+  };
+  for (const t of STOCK_TICKERS) {
+    const entry = stockMarketState.items[t.symbol];
+    const eq = t.basePrice * (fundamentalDrivers[t.symbol] || 1);
+    const pull = (eq - entry.price) * 0.14;
+    const shock = entry.price * (Math.random() - 0.485) * 0.11;
+    const minP = Math.round(t.basePrice * 0.55);
+    const maxP = Math.round(eq * 1.65);
+    const nextPrice = Math.max(minP, Math.min(maxP, Math.round(entry.price + pull + shock)));
+    entry.prevPrice = entry.price;
+    entry.price = nextPrice;
+    entry.history.push(nextPrice);
+    if (entry.history.length > 16) entry.history.shift();
+    const pct = ((nextPrice - entry.prevPrice) / Math.max(1, entry.prevPrice)) * 100;
+    if (Math.abs(pct) >= 5.5) {
+      movers.push(`${t.symbol} ${pct >= 0 ? '+' : ''}${pct.toFixed(1)}%`);
+    }
+  }
+  stockMarketState.lastUpdateMs = Date.now();
+  return movers;
+}
+
+export function buyStock(symbol, qty = 10) {
+  const entry = stockMarketState.items[symbol];
+  if (!entry || qty <= 0) return { ok: false, reason: 'Mã cổ phiếu không hợp lệ.' };
+  const cost = entry.price * qty;
+  if (gameState.cash < cost) return { ok: false, reason: 'Chưa đủ tiền mặt mua cổ phiếu.' };
+  if (!gameState.stockPortfolio) gameState.stockPortfolio = {};
+  const hold = gameState.stockPortfolio[symbol] || { shares: 0, avgPrice: 0 };
+  const prevVal = hold.shares * hold.avgPrice;
+  const nextShares = hold.shares + qty;
+  hold.avgPrice = Math.round(((prevVal + cost) / nextShares) * 100) / 100;
+  hold.shares = nextShares;
+  gameState.stockPortfolio[symbol] = hold;
+  gameState.cash -= cost;
+  logTransaction('stocks', `Mua ${qty} CP ${symbol} @ $${entry.price}`, -cost, 0);
+  return { ok: true, symbol, qty, cost, price: entry.price };
+}
+
+export function sellStock(symbol) {
+  const entry = stockMarketState.items[symbol];
+  const hold = gameState.stockPortfolio?.[symbol];
+  if (!entry || !hold || hold.shares <= 0) return { ok: false, reason: 'Bạn chưa nắm giữ cổ phiếu này.' };
+  const shares = hold.shares;
+  const gross = Math.round(shares * entry.price);
+  const basis = Math.round(shares * hold.avgPrice);
+  const profit = gross - basis;
+  gameState.cash += gross;
+  hold.shares = 0;
+  hold.avgPrice = 0;
+  if (profit > 0) recordRevenue('stocks', profit);
+  else recordRevenue('stocks', Math.round(gross * 0.15));
+  logTransaction('stocks', `Chốt ${shares} CP ${symbol} (${profit >= 0 ? `Lãi +$${profit.toLocaleString()}` : `Lỗ -$${Math.abs(profit).toLocaleString()}`})`, gross, 0);
+  return { ok: true, symbol, shares, gross, profit };
+}
+
+export function claimResortYield() {
+  const cash = Math.floor(gameState.resortAccumCash || 0);
+  const gems = Math.floor(gameState.resortAccumGems || 0);
+  if (cash <= 0 && gems <= 0) return null;
+  gameState.cash += cash;
+  gameState.gems += gems;
+  gameState.resortAccumCash = 0;
+  gameState.resortAccumGems = 0;
+  if (cash > 0) recordRevenue('resort', cash);
+  addVipXp(18);
+  logTransaction('income', 'Thu hoạch Khu Nghỉ Dưỡng Đảo VIP', cash, gems);
+  return { cash, gems };
+}
+
+export function claimDividendYield() {
+  const cash = Math.floor(gameState.pendingDividendCash || 0);
+  if (cash <= 0) return null;
+  gameState.cash += cash;
+  gameState.pendingDividendCash = 0;
+  recordRevenue('stocks', cash);
+  addVipXp(14);
+  logTransaction('stocks', 'Nhận Cổ Tức Trụ Sở Tập Đoàn', cash, 0);
+  return { cash };
+}
+
+export function getTotalPendingYields() {
+  return Math.floor(gameState.yachtAccumCash || 0)
+    + Math.floor(gameState.resortAccumCash || 0)
+    + Math.floor(gameState.pendingDividendCash || 0);
+}
+
+export function collectAllEmpireYields() {
+  let cash = 0;
+  let gems = 0;
+  const y = claimYachtYield();
+  if (y) {
+    cash += y.cash;
+    gems += y.gems;
+    logTransaction('income', 'Thu hoạch Quỹ Du Thuyền VIP', y.cash, y.gems);
+  }
+  const r = claimResortYield();
+  if (r) {
+    cash += r.cash;
+    gems += r.gems;
+  }
+  const d = claimDividendYield();
+  if (d) {
+    cash += d.cash;
+  }
+  if (cash <= 0 && gems <= 0) return null;
+  return { cash, gems };
+}
+
+export function spawnStormChallenge(forceKind = null) {
+  const hasPlane = (gameState.airportTier || 0) >= 1 && (gameState.unlockedPlanes?.length || 0) > 0;
+  const hasYacht = (gameState.yachtTier || 0) >= 1;
+  if (!hasPlane && !hasYacht) return null;
+
+  const kind = forceKind || (hasPlane && (!hasYacht || Math.random() > 0.48) ? 'air' : 'sea');
+  const branchMult = getActiveBranch().multiplier * getPrestigeMultiplier();
+
+  if (kind === 'air') {
+    const spots = [
+      { x: -18, y: 15, z: 54, label: 'Tâm Bão Vịnh Tây (Không phận)' },
+      { x: 46, y: 16, z: 72, label: 'Cứu Trợ Không Phận Hải Đảo' },
+      { x: 18, y: 18, z: 92, label: 'Hành Lang Mây Cấp 8' }
+    ];
+    const s = spots[Math.floor(Math.random() * spots.length)];
+    stormState.active = true;
+    stormState.kind = 'air';
+    stormState.timeLeft = 65;
+    stormState.targetX = s.x;
+    stormState.targetY = s.y;
+    stormState.targetZ = s.z;
+    stormState.targetLabel = s.label;
+    stormState.rewardCash = Math.round(2800 * branchMult * getEngineYieldMult(gameState.planeEngineTier || 1));
+    stormState.rewardGems = 28 + (gameState.airportTier || 1) * 6;
+  } else {
+    const spots = [
+      { x: -32, y: 0.4, z: 68, label: 'Phao Cứu Hộ Bão Biển Tây' },
+      { x: 24, y: 0.4, z: 86, label: 'Eo Biển Sóng Lớn Đảo Đông' },
+      { x: -6, y: 0.4, z: 102, label: 'Tàu Hàng Gặp Nạn Ngoài Khơi' }
+    ];
+    const s = spots[Math.floor(Math.random() * spots.length)];
+    stormState.active = true;
+    stormState.kind = 'sea';
+    stormState.timeLeft = 72;
+    stormState.targetX = s.x;
+    stormState.targetY = s.y;
+    stormState.targetZ = s.z;
+    stormState.targetLabel = s.label;
+    stormState.rewardCash = Math.round(2200 * branchMult * getEngineYieldMult(gameState.yachtEngineTier || 1));
+    stormState.rewardGems = 24 + (gameState.yachtTier || 1) * 5;
+  }
+  return stormState;
+}
+
+export function tickStormChallenge(dt) {
+  if (stormState.active) {
+    stormState.timeLeft -= dt;
+    if (stormState.timeLeft <= 0) {
+      stormState.active = false;
+      stormState.cooldown = 36;
+      return 'expired';
+    }
+    return null;
+  }
+  stormState.cooldown -= dt;
+  if (stormState.cooldown <= 0) {
+    const spawned = spawnStormChallenge();
+    if (spawned) return 'spawned';
+    stormState.cooldown = 20;
+  }
+  return null;
+}
+
+export function completeStormRescue() {
+  if (!stormState.active) return null;
+  const out = {
+    kind: stormState.kind,
+    label: stormState.targetLabel,
+    rewardCash: stormState.rewardCash,
+    rewardGems: stormState.rewardGems
+  };
+  gameState.cash += out.rewardCash;
+  gameState.gems += out.rewardGems;
+  recordRevenue('contracts', out.rewardCash);
+  addVipXp(75);
+  addSeasonXp(55);
+  shiftSession.stormRescues += 1;
+  if (!gameState.personalBests) {
+    gameState.personalBests = { bestShiftCash: 0, bestCpm: 0, bestSingleDeal: 0, totalStormRescues: 0, completedShifts: 0 };
+  }
+  gameState.personalBests.totalStormRescues = (gameState.personalBests.totalStormRescues || 0) + 1;
+  logTransaction('fleet', `Cứu trợ Bão: ${out.label}`, out.rewardCash, out.rewardGems);
+
+  stormState.active = false;
+  stormState.cooldown = 42;
+  return out;
+}
+
+export function resetShiftSession(commitRecords = true) {
+  const prevCash = shiftSession.cashEarned;
+  if (commitRecords) {
+    if (!gameState.personalBests) {
+      gameState.personalBests = { bestShiftCash: 0, bestCpm: 0, bestSingleDeal: 0, totalStormRescues: 0, completedShifts: 0 };
+    }
+    if (prevCash > (gameState.personalBests.bestShiftCash || 0)) {
+      gameState.personalBests.bestShiftCash = prevCash;
+    }
+    if (shiftSession.peakCpm > (gameState.personalBests.bestCpm || 0)) {
+      gameState.personalBests.bestCpm = shiftSession.peakCpm;
+    }
+    if (prevCash > 0) {
+      gameState.personalBests.completedShifts = (gameState.personalBests.completedShifts || 0) + 1;
+    }
+  }
+  shiftSession.startedAt = Date.now();
+  shiftSession.cashEarned = 0;
+  shiftSession.logsCut = 0;
+  shiftSession.contractsDone = 0;
+  shiftSession.stormRescues = 0;
+  shiftSession.peakCpm = 0;
+  return prevCash;
+}
+
+export function hydrateLoadedState() {
+  if (!gameState.revenueStats) {
+    gameState.revenueStats = { sawmill: 0, contracts: 0, fishery: 0, market: 0, offline: 0, stocks: 0, resort: 0 };
+  }
+  if (typeof gameState.revenueStats.stocks !== 'number') gameState.revenueStats.stocks = 0;
+  if (typeof gameState.revenueStats.resort !== 'number') gameState.revenueStats.resort = 0;
+  if (!Array.isArray(gameState.claimedAchievements)) gameState.claimedAchievements = [];
+  if (!gameState.managers) {
+    gameState.managers = { mgr_forest: 0, mgr_sawmill: 0, mgr_harbor: 0, mgr_coldchain: 0 };
+  }
+  if (!Array.isArray(gameState.unlockedBadges)) gameState.unlockedBadges = [];
+  if (typeof gameState.logisticsTier !== 'number') gameState.logisticsTier = 0;
+  if (typeof gameState.autoLogisticsEnabled !== 'boolean') gameState.autoLogisticsEnabled = true;
+  if (typeof gameState.yachtTier !== 'number') gameState.yachtTier = 0;
+  if (typeof gameState.yachtAccumCash !== 'number') gameState.yachtAccumCash = 0;
+  if (typeof gameState.yachtAccumGems !== 'number') gameState.yachtAccumGems = 0;
+  if (typeof gameState.airportTier !== 'number') gameState.airportTier = 0;
+  if (typeof gameState.islandStationTier !== 'number') gameState.islandStationTier = 0;
+  if (typeof gameState.equippedPlane !== 'string') gameState.equippedPlane = 'bush_plane';
+  if (!Array.isArray(gameState.unlockedPlanes)) gameState.unlockedPlanes = [];
+  if (typeof gameState.autoSeaFleet !== 'number') gameState.autoSeaFleet = 0;
+  if (typeof gameState.autoAirFleet !== 'number') gameState.autoAirFleet = 0;
+  if (typeof gameState.treasuresCollected !== 'number') gameState.treasuresCollected = 0;
+  if (typeof gameState.seaDeliveries !== 'number') gameState.seaDeliveries = 0;
+  if (typeof gameState.airDeliveries !== 'number') gameState.airDeliveries = 0;
+  if (typeof gameState.milestoneIndex !== 'number') gameState.milestoneIndex = 0;
+  if (typeof gameState.totalAuctionsWon !== 'number') gameState.totalAuctionsWon = 0;
+
+  // Phase 5 safe hydration
+  if (typeof gameState.hqTier !== 'number') gameState.hqTier = 0;
+  if (typeof gameState.pendingDividendCash !== 'number') gameState.pendingDividendCash = 0;
+  if (typeof gameState.islandResortTier !== 'number') gameState.islandResortTier = 0;
+  if (typeof gameState.resortAccumCash !== 'number') gameState.resortAccumCash = 0;
+  if (typeof gameState.resortAccumGems !== 'number') gameState.resortAccumGems = 0;
+  if (typeof gameState.yachtLivery !== 'string') gameState.yachtLivery = 'pearl_sky';
+  if (typeof gameState.planeLivery !== 'string') gameState.planeLivery = 'pearl_sky';
+  if (!Array.isArray(gameState.unlockedLiveries) || !gameState.unlockedLiveries.length) {
+    gameState.unlockedLiveries = ['pearl_sky'];
+  }
+  if (typeof gameState.yachtEngineTier !== 'number') gameState.yachtEngineTier = 1;
+  if (typeof gameState.planeEngineTier !== 'number') gameState.planeEngineTier = 1;
+  if (!gameState.stockPortfolio || typeof gameState.stockPortfolio !== 'object') {
+    gameState.stockPortfolio = {
+      TMBR: { shares: 0, avgPrice: 0 },
+      PORT: { shares: 0, avgPrice: 0 },
+      AERO: { shares: 0, avgPrice: 0 },
+      RESO: { shares: 0, avgPrice: 0 }
+    };
+  }
+  for (const t of STOCK_TICKERS) {
+    if (!gameState.stockPortfolio[t.symbol]) {
+      gameState.stockPortfolio[t.symbol] = { shares: 0, avgPrice: 0 };
+    }
+  }
+  if (!Array.isArray(gameState.transactionLog)) gameState.transactionLog = [];
+  if (typeof gameState.unreadNotifications !== 'number') gameState.unreadNotifications = 0;
+  if (!gameState.personalBests || typeof gameState.personalBests !== 'object') {
+    gameState.personalBests = { bestShiftCash: 0, bestCpm: 0, bestSingleDeal: 0, totalStormRescues: 0, completedShifts: 0 };
+  }
+}
+
 export function loadGameLocal() {
   try {
     const raw = localStorage.getItem('timberport_save_v2');
@@ -1152,34 +1648,7 @@ export function loadGameLocal() {
     if (parsed && typeof parsed === 'object') {
       const prevUpdatedAt = parsed.updatedAt || null;
       Object.assign(gameState, parsed);
-      if (!gameState.revenueStats) {
-        gameState.revenueStats = { sawmill: 0, contracts: 0, fishery: 0, market: 0, offline: 0 };
-      }
-      if (!Array.isArray(gameState.claimedAchievements)) {
-        gameState.claimedAchievements = [];
-      }
-      if (!gameState.managers) {
-        gameState.managers = { mgr_forest: 0, mgr_sawmill: 0, mgr_harbor: 0, mgr_coldchain: 0 };
-      }
-      if (!Array.isArray(gameState.unlockedBadges)) {
-        gameState.unlockedBadges = [];
-      }
-      if (typeof gameState.logisticsTier !== 'number') gameState.logisticsTier = 0;
-      if (typeof gameState.autoLogisticsEnabled !== 'boolean') gameState.autoLogisticsEnabled = true;
-      if (typeof gameState.yachtTier !== 'number') gameState.yachtTier = 0;
-      if (typeof gameState.yachtAccumCash !== 'number') gameState.yachtAccumCash = 0;
-      if (typeof gameState.yachtAccumGems !== 'number') gameState.yachtAccumGems = 0;
-      if (typeof gameState.airportTier !== 'number') gameState.airportTier = 0;
-      if (typeof gameState.islandStationTier !== 'number') gameState.islandStationTier = 0;
-      if (typeof gameState.equippedPlane !== 'string') gameState.equippedPlane = 'bush_plane';
-      if (!Array.isArray(gameState.unlockedPlanes)) gameState.unlockedPlanes = [];
-      if (typeof gameState.autoSeaFleet !== 'number') gameState.autoSeaFleet = 0;
-      if (typeof gameState.autoAirFleet !== 'number') gameState.autoAirFleet = 0;
-      if (typeof gameState.treasuresCollected !== 'number') gameState.treasuresCollected = 0;
-      if (typeof gameState.seaDeliveries !== 'number') gameState.seaDeliveries = 0;
-      if (typeof gameState.airDeliveries !== 'number') gameState.airDeliveries = 0;
-      if (typeof gameState.milestoneIndex !== 'number') gameState.milestoneIndex = 0;
-      if (typeof gameState.totalAuctionsWon !== 'number') gameState.totalAuctionsWon = 0;
+      hydrateLoadedState();
       return prevUpdatedAt;
     }
   } catch (e) {}

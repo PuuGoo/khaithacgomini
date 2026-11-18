@@ -10,7 +10,7 @@
   <link rel="preconnect" href="https://fonts.googleapis.com">
   <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
   <link href="https://fonts.googleapis.com/css2?family=JetBrains+Mono:wght@500;600;700&family=Outfit:wght@600;700&family=Plus+Jakarta+Sans:wght@400;500;600;700&display=swap" rel="stylesheet">
-  <link rel="stylesheet" href="/css/style.css?v=2.4.0">
+  <link rel="stylesheet" href="/css/style.css?v=2.5.0">
   <link rel="icon" href="data:image/svg+xml,<svg xmlns=%22http://www.w3.org/2000/svg%22 viewBox=%220 0 100 100%22><text y=%22.9em%22 font-size=%2290%22>🪵</text></svg>">
   <script type="importmap">
   {
@@ -82,6 +82,14 @@
         <span>👁️</span>
         <span class="hide-sm">Gọn</span>
       </button>
+      <button type="button" id="btn-shift" class="top-btn" title="Báo cáo Tổng kết Ca Kinh Doanh &amp; Kỷ lục">
+        <span>📋</span>
+        <span class="hide-sm">Ca</span>
+      </button>
+      <button type="button" id="btn-notifications" class="top-btn top-btn-notif" title="Trung tâm Thông báo &amp; Nhật ký Giao dịch">
+        <span>🔔</span>
+        <span id="badge-notif" class="notif-dot tabular-nums" hidden>0</span>
+      </button>
       <button type="button" id="btn-audio" class="top-btn" title="Bật hoặc tắt âm thanh">🔊</button>
       <button type="button" id="btn-leaderboard" class="top-btn" title="Bảng xếp hạng & Đế chế online">
         <span>🏆</span>
@@ -119,14 +127,26 @@
     <span id="vip-rush-reward" class="rush-reward tabular-nums hide-xs">+$2,400</span>
   </button>
 
+  <!-- Sea Storm & Aerial Relief Challenge Alert Strip -->
+  <button type="button" id="storm-alert-strip" class="storm-strip" title="Nhấn để điều động Du thuyền hoặc Máy bay đi cứu trợ Bão!" hidden>
+    <span id="storm-alert-label" class="storm-kicker">⛈️ Cứu trợ Bão</span>
+    <span class="meta-sep" aria-hidden="true">·</span>
+    <span id="storm-alert-timer" class="storm-timer tabular-nums">01:05</span>
+    <span class="meta-sep hide-xs" aria-hidden="true">·</span>
+    <span id="storm-alert-reward" class="storm-reward tabular-nums hide-xs">+$2,800</span>
+  </button>
+
   <!-- Contextual Prompt for Vehicles / Harbor / Saw Hopper -->
   <button type="button" id="action-prompt" class="action-prompt" hidden>
     <span class="prompt-key" id="action-prompt-key">E</span>
     <span id="action-prompt-label">Lái xe</span>
   </button>
 
-  <!-- Quick-Board Fleet Strip (Instant Yacht / Airplane Launch from anywhere) -->
+  <!-- Quick-Board Fleet Strip & 1-Tap Collect All Yields -->
   <div id="fleet-quick-strip" class="fleet-quick-strip" aria-label="Điều khiển nhanh hạm đội">
+    <button type="button" id="btn-collect-all" class="fleet-quick-btn is-collect tabular-nums" title="Thu hoạch 1 chạm toàn bộ Quỹ Du thuyền, Resort &amp; Cổ tức" hidden>
+      <span>💰</span><span id="btn-collect-all-label">Thu Quỹ ($0)</span>
+    </button>
     <button type="button" id="btn-quick-yacht" class="fleet-quick-btn" title="Lái Du thuyền ra khơi ngay">
       <span>🚤</span><span>Du thuyền</span>
     </button>
@@ -192,6 +212,10 @@
         <span class="dock-icon">🚢</span>
         <span class="dock-label">Hợp đồng</span>
       </button>
+      <button type="button" class="dock-btn" data-hub-tab="finance">
+        <span class="dock-icon">📊</span>
+        <span class="dock-label">Tài chính</span>
+      </button>
       <button type="button" class="dock-btn" data-hub-tab="season">
         <span class="dock-icon">🎫</span>
         <span class="dock-label">Vé Mùa</span>
@@ -212,13 +236,13 @@
     </nav>
   </div>
 
-  <!-- Unified Commercial Empire Hub Modal (5 Organized Tabs) -->
+  <!-- Unified Commercial Empire Hub Modal (7 Organized Tabs) -->
   <div id="hub-modal" class="modal-backdrop" role="dialog" aria-modal="true" aria-labelledby="hub-title" hidden>
     <div class="modal-panel modal-panel-wide">
       <div class="modal-header">
         <div>
           <h2 id="hub-title" class="modal-title">Trung Tâm Điều Hành TimberPort</h2>
-          <p class="modal-subtitle" id="hub-subtitle">Quản lý dây chuyền sản xuất, hợp đồng cảng biển, vé mùa và trang bị cao cấp.</p>
+          <p class="modal-subtitle" id="hub-subtitle">Quản lý dây chuyền sản xuất, hợp đồng cảng biển, tài chính cổ phiếu, vé mùa và hạm đội.</p>
         </div>
         <button type="button" id="btn-close-hub" class="modal-close" aria-label="Đóng">✕</button>
       </div>
@@ -226,6 +250,7 @@
       <div class="hub-tabs" role="tablist">
         <button type="button" class="hub-tab active" data-tab="upgrades" role="tab">🏭 Xưởng &amp; Quản lý</button>
         <button type="button" class="hub-tab" data-tab="contracts" role="tab">🚢 Hợp đồng &amp; Sàn giá</button>
+        <button type="button" class="hub-tab" data-tab="finance" role="tab">📊 Tài chính &amp; Cổ phiếu</button>
         <button type="button" class="hub-tab" data-tab="season" role="tab">🎡 Vòng quay &amp; Sự kiện</button>
         <button type="button" class="hub-tab" data-tab="locker" role="tab">✈️ Showroom Hạm đội</button>
         <button type="button" class="hub-tab" data-tab="achievements" role="tab">🏆 Thành tựu <span id="badge-ach" class="tab-badge tabular-nums" hidden>0</span></button>
@@ -304,6 +329,47 @@
     </div>
   </div>
 
+  <!-- Notification Center & Transaction Ledger Slide-Over Drawer -->
+  <div id="notif-drawer" class="notif-drawer-backdrop" role="dialog" aria-modal="true" aria-labelledby="notif-title" hidden>
+    <aside class="notif-drawer">
+      <div class="modal-header">
+        <div>
+          <h2 id="notif-title" class="modal-title">Thông Báo &amp; Nhật Ký Giao Dịch</h2>
+          <p class="modal-subtitle">Biến động doanh thu, cổ phiếu và hạm đội theo thời gian thực.</p>
+        </div>
+        <button type="button" id="btn-close-notif" class="modal-close" aria-label="Đóng">✕</button>
+      </div>
+      <div class="notif-toolbar">
+        <div class="notif-filters" role="tablist">
+          <button type="button" class="notif-filter-btn active" data-notif-filter="all">Tất cả</button>
+          <button type="button" class="notif-filter-btn" data-notif-filter="income">Doanh thu</button>
+          <button type="button" class="notif-filter-btn" data-notif-filter="stocks">Cổ phiếu</button>
+          <button type="button" class="notif-filter-btn" data-notif-filter="fleet">Hạm đội</button>
+        </div>
+        <button type="button" id="btn-notif-read" class="btn-secondary notif-read-btn">Đánh dấu đã đọc</button>
+      </div>
+      <div id="notif-list" class="notif-list">
+        <!-- Rendered dynamically by ui.js -->
+      </div>
+    </aside>
+  </div>
+
+  <!-- Business Shift Summary & Personal Bests Modal -->
+  <div id="shift-modal" class="modal-backdrop" role="dialog" aria-modal="true" aria-labelledby="shift-modal-title" hidden>
+    <div class="modal-panel">
+      <div class="modal-header">
+        <div>
+          <h2 id="shift-modal-title" class="modal-title">Báo Cáo Ca Kinh Doanh &amp; Kỷ Lục</h2>
+          <p class="modal-subtitle">So sánh hiệu suất phiên điều hành hiện tại với kỷ lục cá nhân.</p>
+        </div>
+        <button type="button" id="btn-close-shift" class="modal-close" aria-label="Đóng">✕</button>
+      </div>
+      <div id="shift-body" class="hub-body">
+        <!-- Rendered dynamically by ui.js -->
+      </div>
+    </div>
+  </div>
+
   <!-- Reward Claim Celebration Banner -->
   <div id="celebration-banner" class="celebration-banner" aria-live="polite" hidden>
     <div class="celebration-title" id="celebration-title">Phần thưởng Thương Mại</div>
@@ -314,6 +380,6 @@
   <div id="toast-container" class="toast-container" aria-live="polite"></div>
 
   <!-- Application Entry Point (Modern ES Modules) -->
-  <script type="module" src="/js/engine.js?v=2.4.0"></script>
+  <script type="module" src="/js/engine.js?v=2.5.0"></script>
 </body>
 </html>
