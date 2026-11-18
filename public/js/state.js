@@ -205,10 +205,35 @@ export const activeEventState = {
 };
 
 export const YACHT_TIERS = [
-  { tier: 1, name: 'Bến Du Thuyền Hạng Sang', costCash: 4500, cashPer10s: 120, gemChance: 0.25, desc: 'Cập bến du thuyền trắng mũi nhọn, thu phí du lịch vịnh & cơ hội rơi 💎.' },
-  { tier: 2, name: 'Du Thuyền Đô Đốc Hoàng Gia', costCash: 16000, cashPer10s: 340, gemChance: 0.45, desc: 'Mở rộng boong tiệc VIP, tăng mạnh doanh thu thụ động & tỷ lệ rơi 💎.' },
-  { tier: 3, name: 'Siêu Du Thuyền Đế Chế', costCash: 52000, cashPer10s: 920, gemChance: 0.75, desc: 'Biểu tượng thượng lưu tối thượng với quỹ du lịch cao cấp & 💎 ổn định.' }
+  { tier: 1, name: 'Du Thuyền Mũi Nhọn 38ft', costCash: 4500, cashPer10s: 120, gemChance: 0.25, speed: 18, desc: 'Cập bến du thuyền tự lái ra khơi, thu phí du lịch vịnh & săn kho báu biển.' },
+  { tier: 2, name: 'Du Thuyền Đô Đốc Hoàng Gia', costCash: 16000, cashPer10s: 340, gemChance: 0.45, speed: 24, desc: 'Mở rộng boong tiệc VIP, tăng tốc độ rẽ sóng & thưởng giao hàng hải +35%.' },
+  { tier: 3, name: 'Siêu Du Thuyền Đế Chế', costCash: 52000, cashPer10s: 920, gemChance: 0.75, speed: 31, desc: 'Du thuyền hạng siêu sang tối thượng, tốc độ vượt trội & cơ hội rơi 💎 liên tục.' }
 ];
+
+export const AIRPORT_TIERS = [
+  { tier: 1, name: 'Đường Băng Duyên Hải', costCash: 2800, airMult: 1.0, maxSpeedBonus: 0, desc: 'Xây đường băng phía Đông & mở khóa quyền cất cánh Máy bay vận tải.' },
+  { tier: 2, name: 'Sân Bay Đèn Dẫn & Không Lưu', costCash: 11000, airMult: 1.35, maxSpeedBonus: 0.2, desc: 'Nâng cấp tháp không lưu & hangar, +35% thưởng bay & +20% tốc độ bay.' },
+  { tier: 3, name: 'Trung Tâm Hàng Không Đế Chế', costCash: 38000, airMult: 1.85, maxSpeedBonus: 0.35, desc: 'Cảng hàng không quốc tế hoàn chỉnh, +85% thưởng giao hàng trên không.' }
+];
+
+export const ISLAND_STATION_TIERS = [
+  { tier: 1, name: 'Trạm Tiếp Liệu Đảo Tiền Đồn', costCash: 2400, tradeMult: 1.0, desc: 'Xây cầu tàu & kho tiếp liệu trên Đảo Ngoài Khơi để giao đơn Biển & Không.' },
+  { tier: 2, name: 'Kho Ngoại Quan Hải Đảo', costCash: 9500, tradeMult: 1.45, desc: 'Mở rộng bồn nhiên liệu & nhà kho đảo, +45% thưởng tuyến Đảo Tiền Đồn.' },
+  { tier: 3, name: 'Đặc Khu Giao Thương Ngoài Khơi', costCash: 32000, tradeMult: 2.0, desc: 'Đặc khu thương mại biển đảo cấp tối đa, x2.0 toàn bộ đơn giao ra đảo.' }
+];
+
+export const PLANES = [
+  { id: 'bush_plane', name: 'Thủy Phi Cơ Khai Phá', costType: 'cash', cost: 3200, speed: 26, climbRate: 11, cargoBonus: 1.2, desc: 'Máy bay cánh quạt linh hoạt, dễ cất cánh từ đường băng ngắn.' },
+  { id: 'cargo_twin', name: 'Vận Tải Cánh Quạt Đôi', costType: 'cash', cost: 12500, speed: 35, climbRate: 14, cargoBonus: 1.55, desc: 'Thân rộng 2 động cơ cánh quạt, chuyên chở đơn hàng không tải trọng lớn.' },
+  { id: 'imperial_jet', name: 'Chuyên Cơ Phản Lực Hoàng Kim', costType: 'gems', cost: 125, speed: 48, climbRate: 19, cargoBonus: 2.15, desc: 'Chuyên cơ phản lực thương mại cao cấp, tốc độ siêu thanh & +115% thưởng.' }
+];
+
+export const fleetMissionState = {
+  sea: null,
+  air: null,
+  seaCooldown: 2,
+  airCooldown: 2
+};
 
 export const LOGISTICS_TIERS = [
   { tier: 1, name: 'Drone Gom Phôi Gỗ', costCash: 1600, desc: 'Tự động thu 1 khúc gỗ trực tiếp vào Phễu Xưởng mỗi 4.5 giây.' },
@@ -317,12 +342,14 @@ export function getCashPerMinute() {
   const yachtDef = YACHT_TIERS.find((y) => y.tier === (gameState.yachtTier || 0));
   const yachtPerMin = yachtDef ? yachtDef.cashPer10s * 6 * getPrestigeMultiplier() : 0;
   const logisticsPerMin = (gameState.logisticsTier || 0) * 140 * getRevenueMultiplier();
+  const autoFleetPerMin = ((gameState.autoSeaFleet || 0) * 320 + (gameState.autoAirFleet || 0) * 480) * getRevenueMultiplier();
   const passiveEstimate = Math.round(
     ((gameState.autoForklifts || 0) * 180 + Math.max(0, gameState.fishingBoats || 0) * 95)
     * getRevenueMultiplier()
     * (1 + getManagerBonus('contractBonus'))
     + yachtPerMin
     + logisticsPerMin
+    + autoFleetPerMin
   );
   return Math.max(total, passiveEstimate);
 }
@@ -413,12 +440,21 @@ export function createDefaultState() {
     vipRushOrder: null,
     vipRushCooldown: 12,
 
-    // Phase 3: Logistics Network, VIP Yacht Berth, Auctions, Badge Codex & Milestones
+    // Phase 3 & 4: Logistics, Yacht, Airport, Island Outpost & Aviation Fleet
     logisticsTier: 0,
     autoLogisticsEnabled: true,
     yachtTier: 0,
     yachtAccumCash: 0,
     yachtAccumGems: 0,
+    airportTier: 0,
+    islandStationTier: 0,
+    equippedPlane: 'bush_plane',
+    unlockedPlanes: [],
+    autoSeaFleet: 0,
+    autoAirFleet: 0,
+    treasuresCollected: 0,
+    seaDeliveries: 0,
+    airDeliveries: 0,
     unlockedBadges: [],
     milestoneIndex: 0,
     totalAuctionsWon: 0,
@@ -728,12 +764,18 @@ export function performPrestige() {
   gameState.yachtTier = 0;
   gameState.yachtAccumCash = 0;
   gameState.yachtAccumGems = 0;
+  gameState.airportTier = 0;
+  gameState.islandStationTier = 0;
+  gameState.autoSeaFleet = 0;
+  gameState.autoAirFleet = 0;
   gameState.activeBranchId = 'pine_bay';
   gameState.unlockedBranches = ['pine_bay'];
   gameState.contractsCompleted = 0;
   gameState.padProgress = {};
   gameState.vipRushOrder = null;
   gameState.vipRushCooldown = 15;
+  fleetMissionState.sea = null;
+  fleetMissionState.air = null;
   evaluateBadgeUnlocks();
   generateNextContract();
   return medals;
@@ -747,6 +789,133 @@ export function getLogisticsNextTier() {
 export function getYachtNextTier() {
   const cur = gameState.yachtTier || 0;
   return YACHT_TIERS.find((y) => y.tier === cur + 1) || null;
+}
+
+export function getAirportNextTier() {
+  const cur = gameState.airportTier || 0;
+  return AIRPORT_TIERS.find((a) => a.tier === cur + 1) || null;
+}
+
+export function getIslandNextTier() {
+  const cur = gameState.islandStationTier || 0;
+  return ISLAND_STATION_TIERS.find((s) => s.tier === cur + 1) || null;
+}
+
+export function getSeaFleetCost() {
+  const cur = gameState.autoSeaFleet || 0;
+  if (cur >= 3) return null;
+  return Math.round(5800 * Math.pow(2.2, cur));
+}
+
+export function getAirFleetCost() {
+  const cur = gameState.autoAirFleet || 0;
+  if (cur >= 3) return null;
+  return Math.round(7600 * Math.pow(2.25, cur));
+}
+
+export function getPlaneData(id = gameState.equippedPlane) {
+  return PLANES.find((p) => p.id === id) || PLANES[0];
+}
+
+export function spawnFleetMission(kind) {
+  const branchMult = getActiveBranch().multiplier * getPrestigeMultiplier();
+  const islandDef = ISLAND_STATION_TIERS.find((s) => s.tier === (gameState.islandStationTier || 0));
+  const islandMult = islandDef ? islandDef.tradeMult : 1.0;
+
+  if (kind === 'sea') {
+    const toIsland = (gameState.islandStationTier || 0) > 0;
+    const target = toIsland
+      ? { x: 42, z: 86, label: 'Cầu Tàu Đảo Tiền Đồn' }
+      : { x: -24, z: 76, label: 'Phao Giao Hàng Vịnh Tây' };
+    const yachtLv = Math.max(1, gameState.yachtTier || 1);
+    fleetMissionState.sea = {
+      id: 'sea_' + Date.now(),
+      title: toIsland ? 'Đơn Hàng Hải: Cảng → Đảo Tiền Đồn' : 'Tuần Tra & Giao Hàng Vịnh Tây',
+      targetX: target.x,
+      targetZ: target.z,
+      targetLabel: target.label,
+      rewardCash: Math.round((950 + yachtLv * 450) * branchMult * islandMult),
+      rewardGems: 10 + yachtLv * 4,
+      timeLeft: 90
+    };
+    return fleetMissionState.sea;
+  }
+
+  const airDef = AIRPORT_TIERS.find((a) => a.tier === (gameState.airportTier || 0));
+  const airMult = airDef ? airDef.airMult : 1.0;
+  const plane = getPlaneData();
+  const toIsland = (gameState.islandStationTier || 0) > 0 && Math.random() > 0.35;
+  const target = toIsland
+    ? { x: 52, y: 12, z: 92, label: 'Không Phận Đảo Tiền Đồn' }
+    : { x: 2, y: 12, z: 32, label: 'Tháp Không Lưu Cảng Biển' };
+
+  fleetMissionState.air = {
+    id: 'air_' + Date.now(),
+    title: toIsland ? 'Thả Hàng Siêu Tốc: Đảo Tiền Đồn' : 'Tiếp Tế Hàng Không: Cảng Biển',
+    targetX: target.x,
+    targetY: target.y,
+    targetZ: target.z,
+    targetLabel: target.label,
+    rewardCash: Math.round(1450 * branchMult * islandMult * airMult * (plane.cargoBonus || 1)),
+    rewardGems: 14 + (gameState.airportTier || 1) * 5,
+    timeLeft: 75
+  };
+  return fleetMissionState.air;
+}
+
+export function tickFleetMissions(dt) {
+  let spawned = null;
+  if ((gameState.yachtTier || 0) > 0) {
+    if (fleetMissionState.sea) {
+      fleetMissionState.sea.timeLeft -= dt;
+      if (fleetMissionState.sea.timeLeft <= 0) {
+        fleetMissionState.sea = null;
+        fleetMissionState.seaCooldown = 8;
+      }
+    } else {
+      fleetMissionState.seaCooldown -= dt;
+      if (fleetMissionState.seaCooldown <= 0) {
+        spawnFleetMission('sea');
+        spawned = 'sea';
+      }
+    }
+  }
+  if ((gameState.airportTier || 0) > 0 && (gameState.unlockedPlanes?.length || 0) > 0) {
+    if (fleetMissionState.air) {
+      fleetMissionState.air.timeLeft -= dt;
+      if (fleetMissionState.air.timeLeft <= 0) {
+        fleetMissionState.air = null;
+        fleetMissionState.airCooldown = 8;
+      }
+    } else {
+      fleetMissionState.airCooldown -= dt;
+      if (fleetMissionState.airCooldown <= 0) {
+        spawnFleetMission('air');
+        spawned = spawned || 'air';
+      }
+    }
+  }
+  return spawned;
+}
+
+export function completeFleetMission(kind) {
+  const m = fleetMissionState[kind];
+  if (!m) return null;
+  gameState.cash += m.rewardCash;
+  gameState.gems += m.rewardGems;
+  recordRevenue('contracts', m.rewardCash);
+  addVipXp(38);
+  addSeasonXp(30);
+  if (kind === 'sea') {
+    gameState.seaDeliveries = (gameState.seaDeliveries || 0) + 1;
+    fleetMissionState.sea = null;
+    fleetMissionState.seaCooldown = 6;
+  } else {
+    gameState.airDeliveries = (gameState.airDeliveries || 0) + 1;
+    fleetMissionState.air = null;
+    fleetMissionState.airCooldown = 6;
+  }
+  return m;
 }
 
 export function evaluateBadgeUnlocks() {
@@ -1000,6 +1169,15 @@ export function loadGameLocal() {
       if (typeof gameState.yachtTier !== 'number') gameState.yachtTier = 0;
       if (typeof gameState.yachtAccumCash !== 'number') gameState.yachtAccumCash = 0;
       if (typeof gameState.yachtAccumGems !== 'number') gameState.yachtAccumGems = 0;
+      if (typeof gameState.airportTier !== 'number') gameState.airportTier = 0;
+      if (typeof gameState.islandStationTier !== 'number') gameState.islandStationTier = 0;
+      if (typeof gameState.equippedPlane !== 'string') gameState.equippedPlane = 'bush_plane';
+      if (!Array.isArray(gameState.unlockedPlanes)) gameState.unlockedPlanes = [];
+      if (typeof gameState.autoSeaFleet !== 'number') gameState.autoSeaFleet = 0;
+      if (typeof gameState.autoAirFleet !== 'number') gameState.autoAirFleet = 0;
+      if (typeof gameState.treasuresCollected !== 'number') gameState.treasuresCollected = 0;
+      if (typeof gameState.seaDeliveries !== 'number') gameState.seaDeliveries = 0;
+      if (typeof gameState.airDeliveries !== 'number') gameState.airDeliveries = 0;
       if (typeof gameState.milestoneIndex !== 'number') gameState.milestoneIndex = 0;
       if (typeof gameState.totalAuctionsWon !== 'number') gameState.totalAuctionsWon = 0;
       return prevUpdatedAt;

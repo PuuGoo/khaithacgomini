@@ -22,19 +22,29 @@ import {
   createCargoFreighterModel,
   createVipYachtModel,
   createGantryCraneModel,
+  createAirportRunwayModel,
+  createIslandOutpostModel,
+  createSeaTreasureModel,
   syncBuildingEvolution,
   disposeObject3D
 } from './models.js';
-import { gameState, getUpgradeCost, UPGRADE_CATALOG } from './state.js';
+import { gameState, fleetMissionState, getUpgradeCost, UPGRADE_CATALOG } from './state.js';
 
 export const WORLD_BOUNDS = { minX: -42, maxX: 42, minZ: -38, maxZ: 34 };
+export const SEA_BOUNDS = { minX: -115, maxX: 115, minZ: 27.5, maxZ: 145 };
+export const AIR_BOUNDS = { minX: -135, maxX: 135, minZ: -65, maxZ: 155, minY: 0.25, maxY: 34 };
 
 export const ZONES = {
   hopper: new THREE.Vector3(-4, 0, -14),
   sawOutput: new THREE.Vector3(8, 0, -14),
   vehicleSpawn: new THREE.Vector3(-10, 0, 4),
   harborExport: new THREE.Vector3(8.5, 0.5, 31),
-  canneryDock: new THREE.Vector3(-6.5, 0.5, 29)
+  canneryDock: new THREE.Vector3(-6.5, 0.5, 29),
+  yachtBerth: new THREE.Vector3(14.5, 0.5, 29),
+  runwayStart: new THREE.Vector3(30, 0.14, 13),
+  islandDock: new THREE.Vector3(41, 0.5, 86),
+  islandAirDrop: new THREE.Vector3(52, 12, 92),
+  harborAirDrop: new THREE.Vector3(2, 12, 32)
 };
 
 export class WorldManager {
@@ -59,6 +69,11 @@ export class WorldManager {
     this.cargoFreighter = null;
     this.vipYacht = null;
     this.gantryCrane = null;
+    this.airport = null;
+    this.islandOutpost = null;
+    this.seaTreasures = [];
+    this.seaBeaconRing = null;
+    this.airBeaconRing = null;
     this.harborBeaconLight = null;
     this.questRing = null;
     this.currentQuestTarget = ZONES.hopper;
@@ -126,6 +141,8 @@ export class WorldManager {
     this.addFloorMarker(ZONES.vehicleSpawn, 2.8, '#f59e0b', 'BÃI XE THƯƠNG MẠI', '🚘 Nhấn [E]');
     this.addFloorMarker(ZONES.harborExport, 2.8, '#10b981', 'CẨU XUẤT CẢNG', '🚢 Giao hợp đồng');
     this.addFloorMarker(ZONES.canneryDock, 2.5, '#38bdf8', 'CẢNG CÁ HỘP', '🐟 Thu hoạch cá');
+    this.addFloorMarker(ZONES.yachtBerth, 2.6, '#06b6d4', 'BẾN DU THUYỀN VIP', '🚤 Lái ra khơi [E]');
+    this.addFloorMarker(ZONES.runwayStart, 2.8, '#f59e0b', 'ĐƯỜNG BĂNG SÂN BAY', '✈️ Cất cánh [E]');
   }
 
   addFloorMarker(pos, radius, colorHex, title, sub) {
@@ -259,6 +276,53 @@ export class WorldManager {
     this.gantryCrane = createGantryCraneModel(this.lowSpec);
     this.gantryCrane.position.set(-1.5, 0.72, 29.5);
     this.worldGroup.add(this.gantryCrane);
+
+    // Pre-built Airport Runway & Hangar (East Peninsula x=30, z=-2)
+    this.airport = createAirportRunwayModel(this.lowSpec);
+    this.airport.position.set(30, 0, -2);
+    this.worldGroup.add(this.airport);
+    this.syncAirportTier(gameState.airportTier || 0);
+
+    // Pre-built Offshore Island Outpost & Supply Station (x=52, z=92)
+    this.islandOutpost = createIslandOutpostModel(this.lowSpec);
+    this.islandOutpost.position.set(52, -0.35, 92);
+    this.worldGroup.add(this.islandOutpost);
+    this.syncIslandTier(gameState.islandStationTier || 0);
+
+    // Pre-built Sea Treasure Pool (4 floating crates across the bay)
+    const treasureSpots = [
+      [-26, 56],
+      [14, 72],
+      [68, 60],
+      [-42, 92]
+    ];
+    for (const [tx, tz] of treasureSpots) {
+      const mesh = createSeaTreasureModel();
+      mesh.position.set(tx, 0.05, tz);
+      this.worldGroup.add(mesh);
+      this.seaTreasures.push({
+        mesh,
+        pos: new THREE.Vector3(tx, 0.05, tz),
+        active: true,
+        respawnTimer: 0
+      });
+    }
+
+    // Sea & Air Delivery Target Beacons (Zero allocation visibility toggle)
+    this.seaBeaconRing = new THREE.Mesh(
+      new THREE.RingGeometry(3.4, 4.2, 28),
+      new THREE.MeshBasicMaterial({ color: 0x06b6d4, transparent: true, opacity: 0.8, side: THREE.DoubleSide })
+    );
+    this.seaBeaconRing.rotation.x = -Math.PI / 2;
+    this.seaBeaconRing.visible = false;
+    this.worldGroup.add(this.seaBeaconRing);
+
+    this.airBeaconRing = new THREE.Mesh(
+      new THREE.TorusGeometry(4.4, 0.35, 10, 28),
+      new THREE.MeshBasicMaterial({ color: 0xf59e0b, transparent: true, opacity: 0.85 })
+    );
+    this.airBeaconRing.visible = false;
+    this.worldGroup.add(this.airBeaconRing);
   }
 
   syncYachtTier(tier = 0) {
@@ -267,6 +331,20 @@ export class WorldManager {
     if (tier > 0) {
       this.vipYacht.scale.setScalar(0.86 + tier * 0.11);
     }
+  }
+
+  syncAirportTier(tier = 0) {
+    if (!this.airport) return;
+    this.airport.visible = tier > 0;
+    if (this.airport.userData?.tier2Group) this.airport.userData.tier2Group.visible = tier >= 2;
+    if (this.airport.userData?.tier3Group) this.airport.userData.tier3Group.visible = tier >= 3;
+  }
+
+  syncIslandTier(tier = 0) {
+    if (!this.islandOutpost) return;
+    this.islandOutpost.visible = tier > 0;
+    if (this.islandOutpost.userData?.tier2Group) this.islandOutpost.userData.tier2Group.visible = tier >= 2;
+    if (this.islandOutpost.userData?.tier3Group) this.islandOutpost.userData.tier3Group.visible = tier >= 3;
   }
 
   setLowSpec(isLow) {
@@ -557,6 +635,41 @@ export class WorldManager {
 
     if (this.gantryCrane && !this.lowSpec && this.gantryCrane.userData.trolley) {
       this.gantryCrane.userData.trolley.position.z = 3.5 + Math.sin(elapsed * 0.65) * 3.8;
+    }
+
+    if (this.airport?.visible && this.airport.userData?.radar?.visible !== false) {
+      this.airport.userData.radar.rotation.y += dt * 1.4;
+    }
+
+    for (let i = 0; i < this.seaTreasures.length; i++) {
+      const tr = this.seaTreasures[i];
+      if (tr.active) {
+        tr.mesh.position.y = 0.05 + Math.sin(elapsed * 2.1 + i) * 0.14;
+        tr.mesh.rotation.y += dt * 0.9;
+      } else {
+        tr.respawnTimer -= dt;
+        if (tr.respawnTimer <= 0) {
+          tr.active = true;
+          tr.mesh.visible = true;
+        }
+      }
+    }
+
+    if (this.seaBeaconRing) {
+      const sm = fleetMissionState.sea;
+      this.seaBeaconRing.visible = Boolean(sm);
+      if (sm) {
+        this.seaBeaconRing.position.set(sm.targetX, 0.16, sm.targetZ);
+        this.seaBeaconRing.scale.setScalar(1 + Math.sin(elapsed * 4.5) * 0.12);
+      }
+    }
+    if (this.airBeaconRing) {
+      const am = fleetMissionState.air;
+      this.airBeaconRing.visible = Boolean(am);
+      if (am) {
+        this.airBeaconRing.position.set(am.targetX, am.targetY, am.targetZ);
+        this.airBeaconRing.rotation.y += dt * 1.4;
+      }
     }
 
     for (const tree of this.trees) {

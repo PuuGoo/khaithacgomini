@@ -19,6 +19,9 @@ import {
   MANAGER_CATALOG,
   WHEEL_SEGMENTS,
   YACHT_TIERS,
+  AIRPORT_TIERS,
+  ISLAND_STATION_TIERS,
+  PLANES,
   LOGISTICS_TIERS,
   BADGE_CODEX,
   MILESTONE_QUESTS,
@@ -26,6 +29,7 @@ import {
   marketState,
   comboState,
   auctionState,
+  fleetMissionState,
   getBackpackCapacity,
   getActiveBranch,
   getRevenueMultiplier,
@@ -39,6 +43,11 @@ import {
   getPrestigeMultiplier,
   getLogisticsNextTier,
   getYachtNextTier,
+  getAirportNextTier,
+  getIslandNextTier,
+  getSeaFleetCost,
+  getAirFleetCost,
+  getPlaneData,
   getBadgeRevenueBonus,
   evaluateBadgeUnlocks,
   getActiveMilestone,
@@ -77,6 +86,7 @@ export class UIManager {
     this.wheelAngle = 0;
     this.prestigeConfirmOpen = false;
     this.celebrationTimer = null;
+    this.currentControlMode = 'foot';
 
     this.els = {
       hudBranch: document.getElementById('hud-branch'),
@@ -101,6 +111,17 @@ export class UIManager {
       actionPrompt: document.getElementById('action-prompt'),
       actionPromptKey: document.getElementById('action-prompt-key'),
       actionPromptLabel: document.getElementById('action-prompt-label'),
+      fleetQuickStrip: document.getElementById('fleet-quick-strip'),
+      btnQuickYacht: document.getElementById('btn-quick-yacht'),
+      btnQuickPlane: document.getElementById('btn-quick-plane'),
+      vehicleHud: document.getElementById('vehicle-hud'),
+      vhudTitle: document.getElementById('vhud-title'),
+      vhudSpeed: document.getElementById('vhud-speed'),
+      vhudAlt: document.getElementById('vhud-alt'),
+      vhudMission: document.getElementById('vhud-mission'),
+      btnPlaneUp: document.getElementById('btn-plane-up'),
+      btnPlaneDown: document.getElementById('btn-plane-down'),
+      btnVehicleExit: document.getElementById('btn-vehicle-exit'),
       dockWrap: document.getElementById('bottom-dock-wrap'),
       dockToggle: document.getElementById('btn-toggle-dock'),
       btnBoost: document.getElementById('btn-boost'),
@@ -195,6 +216,29 @@ export class UIManager {
       if (this.cb.onContextAction) this.cb.onContextAction();
     });
 
+    this.els.btnQuickYacht?.addEventListener('click', () => {
+      if (this.cb.onBoardYacht) this.cb.onBoardYacht();
+    });
+    this.els.btnQuickPlane?.addEventListener('click', () => {
+      if (this.cb.onBoardPlane) this.cb.onBoardPlane();
+    });
+    this.els.btnVehicleExit?.addEventListener('click', () => {
+      if (this.cb.onDisembark) this.cb.onDisembark();
+    });
+
+    const bindHoldBtn = (el, handler) => {
+      if (!el) return;
+      el.addEventListener('pointerdown', (e) => {
+        e.preventDefault();
+        handler(true);
+      });
+      ['pointerup', 'pointercancel', 'pointerleave'].forEach((ev) => {
+        el.addEventListener(ev, () => handler(false));
+      });
+    };
+    bindHoldBtn(this.els.btnPlaneUp, (active) => this.cb.onPlaneClimb?.(active));
+    bindHoldBtn(this.els.btnPlaneDown, (active) => this.cb.onPlaneDescend?.(active));
+
     // Close modals on backdrop click
     [this.els.hubModal, this.els.accountModal, this.els.lbModal].forEach((modal) => {
       modal?.addEventListener('click', (e) => {
@@ -269,14 +313,19 @@ export class UIManager {
     this.els.welcomeOverlay.hidden = false;
   }
 
-  renderMinimap(playerPos, playerYaw, trees, questTarget) {
+  renderMinimap(playerPos, playerYaw, trees, questTarget, extras = {}) {
     const ctx = this.els.minimapCtx;
     if (!ctx || this.minimapCollapsed || this.dockCollapsed) return;
 
     const w = 148;
     const h = 148;
-    const toMapX = (wx) => ((wx + 46) / 92) * w;
-    const toMapY = (wz) => ((wz + 42) / 84) * h;
+    // Expanded Radar coordinates covering Forest, Airport East Peninsula, Bay & Offshore Island
+    const minX = -54;
+    const spanX = 140; // -54 .. +86
+    const minZ = -44;
+    const spanZ = 160; // -44 .. +116
+    const toMapX = (wx) => ((wx - minX) / spanX) * w;
+    const toMapY = (wz) => ((wz - minZ) / spanZ) * h;
 
     // Terrain & Ocean
     ctx.fillStyle = '#183624';
@@ -284,61 +333,164 @@ export class UIManager {
 
     const beachY = toMapY(22);
     ctx.fillStyle = '#a38954';
-    ctx.fillRect(0, beachY, w, toMapY(26) - beachY);
+    ctx.fillRect(0, beachY, w, toMapY(26.5) - beachY);
 
     ctx.fillStyle = '#0c4a6e';
-    ctx.fillRect(0, toMapY(26), w, h - toMapY(26));
+    ctx.fillRect(0, toMapY(26.5), w, h - toMapY(26.5));
+
+    // Offshore Outpost Island (52, 92)
+    const islX = toMapX(52);
+    const islY = toMapY(92);
+    ctx.fillStyle = (gameState.islandStationTier || 0) > 0 ? '#4d7c3f' : '#2f6845';
+    ctx.strokeStyle = '#d9b978';
+    ctx.lineWidth = 2;
+    ctx.beginPath();
+    ctx.arc(islX, islY, 10, 0, Math.PI * 2);
+    ctx.fill();
+    ctx.stroke();
+
+    // Sea & Air tactical dashed lanes
+    ctx.save();
+    ctx.setLineDash([3, 3]);
+    ctx.lineWidth = 1.2;
+    ctx.strokeStyle = 'rgba(56, 189, 248, 0.55)';
+    ctx.beginPath();
+    ctx.moveTo(toMapX(14.5), toMapY(29));
+    ctx.lineTo(toMapX(41), toMapY(86));
+    ctx.stroke();
+
+    ctx.strokeStyle = 'rgba(245, 158, 11, 0.55)';
+    ctx.beginPath();
+    ctx.moveTo(toMapX(30), toMapY(-2));
+    ctx.lineTo(islX, islY);
+    ctx.lineTo(toMapX(2), toMapY(32));
+    ctx.stroke();
+    ctx.restore();
 
     // Asphalt roads
     ctx.fillStyle = '#334155';
-    ctx.fillRect(toMapX(-25), toMapY(-6.5), toMapX(21) - toMapX(-25), 9);
-    ctx.fillRect(toMapX(-1), toMapY(-6), 10, toMapY(26) - toMapY(-6));
+    ctx.fillRect(toMapX(-25), toMapY(-6.5), toMapX(21) - toMapX(-25), 5);
+    ctx.fillRect(toMapX(-1), toMapY(-6), 5, toMapY(26) - toMapY(-6));
+
+    // Airport Runway (30, -2)
+    const rwX = toMapX(25.4);
+    const rwY = toMapY(-21);
+    const rwW = Math.max(6, toMapX(34.6) - rwX);
+    const rwH = Math.max(18, toMapY(17) - rwY);
+    ctx.fillStyle = (gameState.airportTier || 0) > 0 ? '#1e293b' : 'rgba(30, 41, 59, 0.45)';
+    ctx.fillRect(rwX, rwY, rwW, rwH);
+    if ((gameState.airportTier || 0) > 0) {
+      ctx.strokeStyle = '#f59e0b';
+      ctx.lineWidth = 1;
+      ctx.beginPath();
+      ctx.moveTo(rwX + rwW / 2, rwY + 2);
+      ctx.lineTo(rwX + rwW / 2, rwY + rwH - 2);
+      ctx.stroke();
+    }
 
     // Sawmill building & Harbor Pier
     ctx.fillStyle = '#d97706';
-    ctx.fillRect(toMapX(-6), toMapY(-19), 26, 18);
+    ctx.fillRect(toMapX(-6), toMapY(-19), 15, 11);
     ctx.fillStyle = '#92623a';
-    ctx.fillRect(toMapX(-11), toMapY(24.5), 42, 22);
+    ctx.fillRect(toMapX(-11), toMapY(24.5), 25, 13);
     ctx.fillStyle = '#0ea5e9';
-    ctx.fillRect(toMapX(2), toMapY(29), 18, 9);
+    ctx.fillRect(toMapX(2), toMapY(29), 10, 6);
 
     // Harvestable alive trees
     if (trees && trees.length) {
       ctx.fillStyle = '#4ade80';
       for (const t of trees) {
         if (!t.alive) continue;
-        ctx.fillRect(toMapX(t.pos.x) - 1.5, toMapY(t.pos.z) - 1.5, 3, 3);
+        ctx.fillRect(toMapX(t.pos.x) - 1.2, toMapY(t.pos.z) - 1.2, 2.4, 2.4);
       }
+    }
+
+    // Floating Sea Treasures (gold dots)
+    if (extras.treasures && extras.treasures.length) {
+      ctx.fillStyle = '#facc15';
+      for (const tr of extras.treasures) {
+        if (!tr.active) continue;
+        ctx.beginPath();
+        ctx.arc(toMapX(tr.pos.x), toMapY(tr.pos.z), 2.8, 0, Math.PI * 2);
+        ctx.fill();
+      }
+    }
+
+    // Fleet Mission Target Rings (Sea cyan / Air amber)
+    const fms = extras.fleetMissionState || fleetMissionState;
+    if (fms?.sea) {
+      ctx.strokeStyle = '#22d3ee';
+      ctx.lineWidth = 2;
+      ctx.beginPath();
+      ctx.arc(toMapX(fms.sea.targetX), toMapY(fms.sea.targetZ), 5.5, 0, Math.PI * 2);
+      ctx.stroke();
+    }
+    if (fms?.air) {
+      ctx.strokeStyle = '#fbbf24';
+      ctx.lineWidth = 2;
+      ctx.beginPath();
+      ctx.arc(toMapX(fms.air.targetX), toMapY(fms.air.targetZ), 6.2, 0, Math.PI * 2);
+      ctx.stroke();
     }
 
     // Active quest target beacon ring
     if (questTarget) {
       const qx = toMapX(questTarget.x);
       const qy = toMapY(questTarget.z);
-      ctx.strokeStyle = '#facc15';
-      ctx.lineWidth = 2;
+      ctx.strokeStyle = '#fde047';
+      ctx.lineWidth = 1.6;
       ctx.beginPath();
-      ctx.arc(qx, qy, 5.5, 0, Math.PI * 2);
+      ctx.arc(qx, qy, 4.5, 0, Math.PI * 2);
       ctx.stroke();
     }
 
-    // Player directional triangle
+    // Player / Yacht / Airplane directional cursor
     if (playerPos) {
       const px = toMapX(playerPos.x);
       const py = toMapY(playerPos.z);
+      const mode = extras.controlMode || 'foot';
       ctx.save();
       ctx.translate(px, py);
       ctx.rotate(-playerYaw + Math.PI);
-      ctx.fillStyle = '#f59e0b';
       ctx.strokeStyle = '#ffffff';
-      ctx.lineWidth = 1.4;
-      ctx.beginPath();
-      ctx.moveTo(0, -6);
-      ctx.lineTo(4.5, 5);
-      ctx.lineTo(-4.5, 5);
-      ctx.closePath();
-      ctx.fill();
-      ctx.stroke();
+      ctx.lineWidth = 1.3;
+
+      if (mode === 'plane') {
+        ctx.fillStyle = '#fbbf24';
+        ctx.beginPath();
+        ctx.moveTo(0, -6.5);
+        ctx.lineTo(1.8, -1.5);
+        ctx.lineTo(6.5, 1.5);
+        ctx.lineTo(1.6, 2.2);
+        ctx.lineTo(1.2, 5.5);
+        ctx.lineTo(-1.2, 5.5);
+        ctx.lineTo(-1.6, 2.2);
+        ctx.lineTo(-6.5, 1.5);
+        ctx.lineTo(-1.8, -1.5);
+        ctx.closePath();
+        ctx.fill();
+        ctx.stroke();
+      } else if (mode === 'yacht') {
+        ctx.fillStyle = '#38bdf8';
+        ctx.beginPath();
+        ctx.moveTo(0, -6);
+        ctx.lineTo(3.4, 1);
+        ctx.lineTo(2.4, 5.5);
+        ctx.lineTo(-2.4, 5.5);
+        ctx.lineTo(-3.4, 1);
+        ctx.closePath();
+        ctx.fill();
+        ctx.stroke();
+      } else {
+        ctx.fillStyle = '#f59e0b';
+        ctx.beginPath();
+        ctx.moveTo(0, -5.2);
+        ctx.lineTo(4, 4.5);
+        ctx.lineTo(-4, 4.5);
+        ctx.closePath();
+        ctx.fill();
+        ctx.stroke();
+      }
       ctx.restore();
     }
   }
@@ -418,6 +570,31 @@ export class UIManager {
     this.els.actionPromptKey.textContent = keyLabel;
     this.els.actionPromptLabel.textContent = text;
     this.els.actionPrompt.hidden = false;
+  }
+
+  updateVehicleHud(telemetry) {
+    const mode = telemetry?.mode || 'foot';
+    this.currentControlMode = mode;
+    const isPilot = mode === 'yacht' || mode === 'plane';
+
+    if (this.els.fleetQuickStrip) {
+      this.els.fleetQuickStrip.hidden = isPilot;
+    }
+    if (!this.els.vehicleHud) return;
+
+    if (!isPilot) {
+      this.els.vehicleHud.hidden = true;
+      return;
+    }
+
+    this.els.vehicleHud.hidden = false;
+    this.els.vehicleHud.classList.toggle('is-air', mode === 'plane');
+    if (this.els.vhudTitle) this.els.vhudTitle.textContent = telemetry.title || '';
+    if (this.els.vhudSpeed) this.els.vhudSpeed.textContent = telemetry.speedDisplay || '0';
+    if (this.els.vhudAlt) this.els.vhudAlt.textContent = telemetry.altDisplay || '0.0 m';
+    if (this.els.vhudMission) this.els.vhudMission.textContent = telemetry.missionText || 'Tự do khám phá';
+    if (this.els.btnPlaneUp) this.els.btnPlaneUp.hidden = mode !== 'plane';
+    if (this.els.btnPlaneDown) this.els.btnPlaneDown.hidden = mode !== 'plane';
   }
 
   refreshHUD() {
@@ -500,6 +677,12 @@ export class UIManager {
       this.els.badgeAch.textContent = readyAch;
       this.els.badgeAch.hidden = readyAch === 0;
     }
+
+    // Quick-Board Fleet Strip lock visual cue
+    const hasYacht = (gameState.yachtTier || 0) >= 1;
+    const hasPlane = (gameState.airportTier || 0) >= 1 && (gameState.unlockedPlanes?.length || 0) > 0;
+    this.els.btnQuickYacht?.classList.toggle('is-locked', !hasYacht);
+    this.els.btnQuickPlane?.classList.toggle('is-locked', !hasPlane);
 
     // Live-update Hub KPI strip & active timers cleanly without rebuilding DOM mid-click
     if (this.els.hubModal && !this.els.hubModal.hidden) {
@@ -1431,16 +1614,277 @@ export class UIManager {
   }
 
   renderLockerTab(root) {
-    // Skins
+    const yachtLv = gameState.yachtTier || 0;
+    const airportLv = gameState.airportTier || 0;
+    const islandLv = gameState.islandStationTier || 0;
+    const hasPlane = airportLv >= 1 && (gameState.unlockedPlanes?.length || 0) > 0;
+    const activePlane = getPlaneData();
+    const activeYacht = YACHT_TIERS.find((y) => y.tier === yachtLv) || null;
+
+    // 1. Flagship Fleet Showroom Hero Banner + SVG Technical Preview
+    const heroSec = document.createElement('section');
+    heroSec.innerHTML = `
+      <div class="showroom-hero">
+        <div class="showroom-hero-copy">
+          <div class="store-hero-kicker">SHOWROOM HẠM ĐỘI THƯƠNG MẠI · BIỂN &amp; HÀNG KHÔNG</div>
+          <div class="store-hero-title">Tổ Hợp Du Thuyền &amp; Cảng Hàng Không Đế Chế</div>
+          <div class="card-meta tabular-nums">
+            Du thuyền Cấp ${yachtLv}/3 · Sân bay Cấp ${airportLv}/3 · Đảo Tiền Đồn Cấp ${islandLv}/3
+          </div>
+          <div class="card-meta tabular-nums" style="color:#6ee7b7;">
+            Kho báu biển: ${gameState.treasuresCollected || 0} · Đơn Biển: ${gameState.seaDeliveries || 0} · Đơn Không: ${gameState.airDeliveries || 0}
+          </div>
+          <div class="showroom-cta-row">
+            <button type="button" id="btn-showroom-launch-yacht" class="${yachtLv > 0 ? 'btn-primary' : 'btn-secondary'}">
+              ${yachtLv > 0 ? '🚤 Ra Khơi Lái Du Thuyền' : '🔒 Mở Bến Du Thuyền trước'}
+            </button>
+            <button type="button" id="btn-showroom-launch-plane" class="${hasPlane ? 'btn-gem' : 'btn-secondary'}">
+              ${hasPlane ? `✈️ Cất Cánh (${activePlane.name})` : '🔒 Cần Đường Băng &amp; Máy Bay'}
+            </button>
+          </div>
+        </div>
+        <div class="showroom-svg-stage">
+          <svg viewBox="0 0 260 96" aria-hidden="true">
+            <path d="M8 74 Q 65 68 130 74 T 252 74" fill="none" stroke="#0ea5e9" stroke-width="2" stroke-opacity="0.55"/>
+            <!-- Yacht Silhouette -->
+            <path d="M22 66 L108 66 L124 54 L32 54 Z" fill="#f8fafc"/>
+            <path d="M40 54 L88 54 L78 44 L44 44 Z" fill="#38bdf8"/>
+            <rect x="26" y="57" width="84" height="3" fill="#f59e0b"/>
+            <!-- Cargo Jet Silhouette -->
+            <path d="M138 30 L214 26 L236 32 L212 36 L142 36 Z" fill="#f59e0b"/>
+            <path d="M168 30 L152 14 L172 14 L188 30 Z" fill="#fbbf24"/>
+            <path d="M142 30 L132 18 L146 18 L152 30 Z" fill="#dc2626"/>
+            <path d="M126 33 L86 33" stroke="#94a3b8" stroke-width="2" stroke-dasharray="4 4"/>
+          </svg>
+          <div class="fleet-spec-line tabular-nums">
+            ${activeYacht ? `🚤 ${activeYacht.name} (${activeYacht.speed} kts)` : '🚤 Chưa sở hữu Du thuyền'} · ${hasPlane ? `✈️ ${activePlane.speed} m/s` : '✈️ Chưa có Máy bay'}
+          </div>
+        </div>
+      </div>
+    `;
+    heroSec.querySelector('#btn-showroom-launch-yacht')?.addEventListener('click', () => {
+      if (yachtLv <= 0) {
+        this.toast('Hãy nâng cấp Bến Du Thuyền VIP Cấp 1 ngay bên dưới!');
+        return;
+      }
+      this.els.hubModal.hidden = true;
+      this.cb.onBoardYacht?.();
+    });
+    heroSec.querySelector('#btn-showroom-launch-plane')?.addEventListener('click', () => {
+      if (!hasPlane) {
+        this.toast('Cần xây Đường Băng Cấp 1 và mua ít nhất 1 Máy Bay!');
+        return;
+      }
+      this.els.hubModal.hidden = true;
+      this.cb.onBoardPlane?.();
+    });
+    root.appendChild(heroSec);
+
+    // 2. Infrastructure: Yacht Berth, Airport Runway & Offshore Island Outpost
+    const infraSec = document.createElement('section');
+    infraSec.innerHTML = `<div class="section-heading"><h3>Hạ Tầng Hàng Không, Hải Đảo &amp; Bến Du Thuyền</h3><span>Xây dựng công trình thực tế trên bản đồ 3D để mở tuyến giao thương mới</span></div>`;
+    const infraGrid = document.createElement('div');
+    infraGrid.className = 'card-grid';
+
+    const nextYacht = getYachtNextTier();
+    const nextAirport = getAirportNextTier();
+    const nextIsland = getIslandNextTier();
+
+    const infraCards = [
+      {
+        title: `🛥️ Bến Du Thuyền VIP (Cấp ${yachtLv}/3)`,
+        meta: activeYacht ? `${activeYacht.name} · +$${activeYacht.cashPer10s}/10s` : 'Chưa mở khóa — mở để tự lái ra khơi săn kho báu',
+        desc: nextYacht ? nextYacht.desc : 'Đã đạt siêu du thuyền cấp tối đa.',
+        next: nextYacht,
+        onUpgrade: () => {
+          if (!nextYacht || gameState.cash < nextYacht.costCash) return;
+          gameState.cash -= nextYacht.costCash;
+          gameState.yachtTier = nextYacht.tier;
+          addVipXp(55);
+          sound.playShipHorn();
+          evaluateBadgeUnlocks();
+          this.cb.onYachtChange?.();
+          this.triggerCelebration(`Mở ${nextYacht.name}!`, 'Nhấn nút 🚤 Du thuyền để tự lái ra khơi!');
+        }
+      },
+      {
+        title: `🛫 Đường Băng & Sân Bay (Cấp ${airportLv}/3)`,
+        meta: airportLv > 0 ? `${AIRPORT_TIERS[airportLv - 1].name} · x${AIRPORT_TIERS[airportLv - 1].airMult.toFixed(2)} Thưởng` : 'Chưa xây Đường Băng Phía Đông',
+        desc: nextAirport ? nextAirport.desc : 'Cảng hàng không Đế chế đã đạt quy mô tối đa.',
+        next: nextAirport,
+        onUpgrade: () => {
+          if (!nextAirport || gameState.cash < nextAirport.costCash) return;
+          gameState.cash -= nextAirport.costCash;
+          gameState.airportTier = nextAirport.tier;
+          addVipXp(60);
+          sound.playTakeoff();
+          this.cb.onAirportChange?.();
+          this.triggerCelebration(`Hoàn Thành ${nextAirport.name}!`, 'Đường băng đã sẵn sàng cho máy bay cất cánh!');
+        }
+      },
+      {
+        title: `🏝️ Đảo Tiền Đồn Ngoài Khơi (Cấp ${islandLv}/3)`,
+        meta: islandLv > 0 ? `${ISLAND_STATION_TIERS[islandLv - 1].name} · x${ISLAND_STATION_TIERS[islandLv - 1].tradeMult.toFixed(2)} Giao thương` : 'Xây cầu tàu & trạm tiếp liệu trên đảo xa',
+        desc: nextIsland ? nextIsland.desc : 'Đặc khu giao thương Hải Đảo đã đạt cấp 3/3.',
+        next: nextIsland,
+        onUpgrade: () => {
+          if (!nextIsland || gameState.cash < nextIsland.costCash) return;
+          gameState.cash -= nextIsland.costCash;
+          gameState.islandStationTier = nextIsland.tier;
+          addVipXp(50);
+          sound.playUpgrade();
+          this.cb.onIslandChange?.();
+          this.triggerCelebration(`Nâng Cấp ${nextIsland.name}!`, 'Mở tuyến giao hàng Biển & Không ra đảo thưởng lớn!');
+        }
+      }
+    ];
+
+    for (const ic of infraCards) {
+      const card = document.createElement('div');
+      card.className = `hub-card ${ic.next === null ? 'is-equipped' : 'is-value-highlight'}`;
+      card.innerHTML = `
+        <div>
+          <div class="card-title">${ic.title}</div>
+          <div class="card-meta tabular-nums">${ic.meta}</div>
+          <p class="card-desc" style="margin-top:6px;">${ic.desc}</p>
+        </div>
+        <button type="button" class="btn-primary tabular-nums" ${!ic.next || gameState.cash < ic.next.costCash ? 'disabled' : ''}>
+          ${ic.next ? `Xây Cấp ${ic.next.tier} · $${ic.next.costCash.toLocaleString()}` : 'Đã Đạt Tối Đa ✓'}
+        </button>
+      `;
+      card.querySelector('button').addEventListener('click', () => {
+        ic.onUpgrade();
+        saveGameServer();
+        this.refreshHUD();
+        this.renderHub();
+      });
+      infraGrid.appendChild(card);
+    }
+    infraSec.appendChild(infraGrid);
+    root.appendChild(infraSec);
+
+    // 3. Automated Air & Sea Passive Fleet
+    const autoSec = document.createElement('section');
+    autoSec.innerHTML = `<div class="section-heading"><h3>Đội Bay &amp; Du Thuyền Tự Động</h3><span>Chạy tuần tra tự động 3D quanh vịnh &amp; tạo thu nhập thụ động mỗi phút</span></div>`;
+    const autoGrid = document.createElement('div');
+    autoGrid.className = 'card-grid';
+
+    const seaCost = getSeaFleetCost();
+    const airCost = getAirFleetCost();
+    const autoCards = [
+      {
+        title: `🚤 Đội Du Thuyền Tự Lái (${gameState.autoSeaFleet || 0}/3)`,
+        meta: `Thu nhập thụ động: +$${((gameState.autoSeaFleet || 0) * 320 * getRevenueMultiplier()).toLocaleString()}/phút`,
+        desc: 'Thuê thuyền trưởng tự động chở khách du lịch vịnh & tuần tra giao thương biển.',
+        cost: seaCost,
+        lockedReason: yachtLv <= 0 ? 'Cần Bến Du Thuyền Cấp 1' : null,
+        onHire: () => {
+          if (seaCost === null || yachtLv <= 0 || gameState.cash < seaCost) return;
+          gameState.cash -= seaCost;
+          gameState.autoSeaFleet = (gameState.autoSeaFleet || 0) + 1;
+          addVipXp(45);
+          sound.playShipHorn();
+          this.cb.onAutoFleetChange?.();
+          this.toast(`🚤 Đã biên chế Du thuyền tự động #${gameState.autoSeaFleet}!`);
+        }
+      },
+      {
+        title: `✈️ Đội Bay Vận Tải Tự Động (${gameState.autoAirFleet || 0}/3)`,
+        meta: `Thu nhập thụ động: +$${((gameState.autoAirFleet || 0) * 480 * getRevenueMultiplier()).toLocaleString()}/phút`,
+        desc: 'Phi đội bay vận tải đường dài tự động cất cánh từ Đường Băng giao hàng đảo.',
+        cost: airCost,
+        lockedReason: airportLv <= 0 ? 'Cần Đường Băng Cấp 1' : null,
+        onHire: () => {
+          if (airCost === null || airportLv <= 0 || gameState.cash < airCost) return;
+          gameState.cash -= airCost;
+          gameState.autoAirFleet = (gameState.autoAirFleet || 0) + 1;
+          addVipXp(55);
+          sound.playTakeoff();
+          this.cb.onAutoFleetChange?.();
+          this.toast(`✈️ Đã biên chế Máy bay tự động #${gameState.autoAirFleet}!`);
+        }
+      }
+    ];
+    for (const ac of autoCards) {
+      const card = document.createElement('div');
+      card.className = 'hub-card';
+      const disabled = Boolean(ac.lockedReason) || ac.cost === null || gameState.cash < ac.cost;
+      card.innerHTML = `
+        <div>
+          <div class="card-title">${ac.title}</div>
+          <div class="card-meta tabular-nums" style="color:#34d399;">${ac.meta}</div>
+          <p class="card-desc" style="margin-top:6px;">${ac.desc}</p>
+        </div>
+        <button type="button" class="btn-primary tabular-nums" ${disabled ? 'disabled' : ''}>
+          ${ac.lockedReason ? ac.lockedReason : ac.cost === null ? 'Đủ Đội Hình 3/3 ✓' : `Thuê Thêm · $${ac.cost.toLocaleString()}`}
+        </button>
+      `;
+      card.querySelector('button').addEventListener('click', () => {
+        ac.onHire();
+        saveGameServer();
+        this.refreshHUD();
+        this.renderHub();
+      });
+      autoGrid.appendChild(card);
+    }
+    autoSec.appendChild(autoGrid);
+    root.appendChild(autoSec);
+
+    // 4. Airplane Showroom Catalog
+    const planeSec = document.createElement('section');
+    planeSec.innerHTML = `<div class="section-heading"><h3>Showroom Máy Bay Vận Tải VIP</h3><span>${airportLv === 0 ? 'Lưu ý: Hãy xây Đường Băng Cấp 1 ở trên để cất cánh!' : 'Chọn mẫu phi cơ 3D để trang bị & bay thả hàng siêu tốc'}</span></div>`;
+    const planeGrid = document.createElement('div');
+    planeGrid.className = 'card-grid';
+
+    for (const p of PLANES) {
+      const unlocked = (gameState.unlockedPlanes || []).includes(p.id);
+      const equipped = unlocked && gameState.equippedPlane === p.id;
+      const canAfford = p.costType === 'cash' ? gameState.cash >= p.cost : gameState.gems >= p.cost;
+      const priceLabel = p.costType === 'cash' ? `$${p.cost.toLocaleString()}` : `${p.cost} 💎`;
+
+      const card = document.createElement('div');
+      card.className = `hub-card ${equipped ? 'is-equipped' : p.id === 'imperial_jet' ? 'is-value-highlight' : ''}`;
+      card.innerHTML = `
+        <div>
+          <div class="card-title">✈️ ${p.name}</div>
+          <div class="card-meta tabular-nums">Tốc độ ${p.speed} m/s · Leo cao ${p.climbRate} m/s · Thưởng x${p.cargoBonus.toFixed(2)}</div>
+          <p class="card-desc" style="margin-top:6px;">${p.desc}</p>
+        </div>
+        <button type="button" class="${equipped ? 'btn-secondary' : unlocked ? 'btn-gem' : 'btn-primary'}" ${equipped || (!unlocked && !canAfford) ? 'disabled' : ''}>
+          ${equipped ? 'Đang trong Hangar ✓' : unlocked ? 'Chọn phi cơ này' : `Mua Phi Cơ · ${priceLabel}`}
+        </button>
+      `;
+      card.querySelector('button').addEventListener('click', () => {
+        if (equipped) return;
+        if (!unlocked) {
+          if (!canAfford) return;
+          if (p.costType === 'cash') gameState.cash -= p.cost;
+          else gameState.gems -= p.cost;
+          if (!Array.isArray(gameState.unlockedPlanes)) gameState.unlockedPlanes = [];
+          gameState.unlockedPlanes.push(p.id);
+          addVipXp(p.costType === 'gems' ? p.cost * 2 : 55);
+          sound.playTakeoff();
+          this.triggerCelebration(`Sở Hữu ${p.name}!`, airportLv > 0 ? 'Đã sẵn sàng trên Đường Băng!' : 'Xây Đường Băng Cấp 1 để bay!');
+        }
+        gameState.equippedPlane = p.id;
+        this.cb.onPlaneChange?.(p.id);
+        saveGameServer();
+        this.refreshHUD();
+        this.renderHub();
+      });
+      planeGrid.appendChild(card);
+    }
+    planeSec.appendChild(planeGrid);
+    root.appendChild(planeSec);
+
+    // 5. Skins, Pets & Land Vehicles
     this.renderCosmeticSection(root, 'Trang phục Nhân vật (Skins)', SKINS, 'unlockedSkins', 'equippedSkin', (item) => {
       if (this.cb.onSkinChange) this.cb.onSkinChange(item);
     });
-    // Pets
     this.renderCosmeticSection(root, 'Thú cưng Đồng hành 3D', PETS, 'unlockedPets', 'equippedPet', (item) => {
       if (this.cb.onPetChange) this.cb.onPetChange(item.id);
     });
-    // Supercars / Vehicles
-    this.renderCosmeticSection(root, 'Siêu xe & Phương tiện Vận tải', VEHICLES, 'unlockedVehicles', 'equippedVehicle', (item) => {
+    this.renderCosmeticSection(root, 'Siêu xe & Phương tiện Đường Bộ', VEHICLES, 'unlockedVehicles', 'equippedVehicle', (item) => {
       if (this.cb.onVehicleChange) this.cb.onVehicleChange(item.id);
     });
   }
@@ -1842,6 +2286,9 @@ export class UIManager {
       (gameState.cash || 0)
       + (gameState.gems || 0) * 120
       + (gameState.yachtTier || 0) * 6500
+      + (gameState.airportTier || 0) * 5500
+      + (gameState.islandStationTier || 0) * 4800
+      + (gameState.unlockedPlanes?.length || 0) * 4200
       + (gameState.logisticsTier || 0) * 3200
       + ((gameState.unlockedBranches?.length || 1) - 1) * 12000
     );
@@ -1977,11 +2424,18 @@ export class UIManager {
         if (!Array.isArray(gameState.unlockedBadges)) {
           gameState.unlockedBadges = [];
         }
+        if (!Array.isArray(gameState.unlockedPlanes)) {
+          gameState.unlockedPlanes = [];
+        }
         if (this.cb.onUpgrade) this.cb.onUpgrade('lumberjacks');
         if (this.cb.onSkinChange) this.cb.onSkinChange();
         if (this.cb.onPetChange) this.cb.onPetChange();
         if (this.cb.onVehicleChange) this.cb.onVehicleChange();
         if (this.cb.onYachtChange) this.cb.onYachtChange();
+        if (this.cb.onAirportChange) this.cb.onAirportChange();
+        if (this.cb.onIslandChange) this.cb.onIslandChange();
+        if (this.cb.onPlaneChange) this.cb.onPlaneChange();
+        if (this.cb.onAutoFleetChange) this.cb.onAutoFleetChange();
       }
       await saveGameServer(true);
       sound.playUpgrade();

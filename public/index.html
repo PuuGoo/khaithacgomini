@@ -10,7 +10,7 @@
   <link rel="preconnect" href="https://fonts.googleapis.com">
   <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
   <link href="https://fonts.googleapis.com/css2?family=JetBrains+Mono:wght@500;600;700&family=Outfit:wght@600;700&family=Plus+Jakarta+Sans:wght@400;500;600;700&display=swap" rel="stylesheet">
-  <link rel="stylesheet" href="/css/style.css?v=2.3.0">
+  <link rel="stylesheet" href="/css/style.css?v=2.4.0">
   <link rel="icon" href="data:image/svg+xml,<svg xmlns=%22http://www.w3.org/2000/svg%22 viewBox=%220 0 100 100%22><text y=%22.9em%22 font-size=%2290%22>🪵</text></svg>">
   <script type="importmap">
   {
@@ -125,6 +125,34 @@
     <span id="action-prompt-label">Lái xe</span>
   </button>
 
+  <!-- Quick-Board Fleet Strip (Instant Yacht / Airplane Launch from anywhere) -->
+  <div id="fleet-quick-strip" class="fleet-quick-strip" aria-label="Điều khiển nhanh hạm đội">
+    <button type="button" id="btn-quick-yacht" class="fleet-quick-btn" title="Lái Du thuyền ra khơi ngay">
+      <span>🚤</span><span>Du thuyền</span>
+    </button>
+    <button type="button" id="btn-quick-plane" class="fleet-quick-btn is-air" title="Lên Máy bay cất cánh ngay">
+      <span>✈️</span><span>Máy bay</span>
+    </button>
+  </div>
+
+  <!-- Compact Cockpit & Maritime Telemetry HUD (Active while piloting Yacht or Airplane) -->
+  <div id="vehicle-hud" class="vehicle-hud" hidden aria-label="Bảng thông số buồng lái">
+    <div class="vhud-info tabular-nums">
+      <span id="vhud-title" class="vhud-title">✈️ Thủy Phi Cơ</span>
+      <span class="meta-sep" aria-hidden="true">·</span>
+      <span id="vhud-speed" class="vhud-stat">0 km/h</span>
+      <span class="meta-sep" aria-hidden="true">·</span>
+      <span id="vhud-alt" class="vhud-stat">0.0 m</span>
+      <span class="meta-sep hide-sm" aria-hidden="true">·</span>
+      <span id="vhud-mission" class="vhud-mission hide-sm">Tự do khám phá</span>
+    </div>
+    <div class="vhud-controls">
+      <button type="button" id="btn-plane-up" class="vhud-btn" title="Bay lên cao (Space)" hidden>▲ Lên</button>
+      <button type="button" id="btn-plane-down" class="vhud-btn" title="Hạ độ cao (Shift)" hidden>▼ Xuống</button>
+      <button type="button" id="btn-vehicle-exit" class="vhud-btn is-exit" title="Rời phương tiện về bến (Phím E)">🚪 Rời (E)</button>
+    </div>
+  </div>
+
   <!-- Mobile / Pointer Virtual Joystick -->
   <div id="virtual-joystick-base" aria-hidden="true">
     <div id="virtual-joystick-stick"></div>
@@ -141,9 +169,11 @@
       <div class="minimap-legend">
         <span>🌲 Rừng</span>
         <span class="meta-sep" aria-hidden="true">·</span>
-        <span>🏭 Xưởng</span>
-        <span class="meta-sep" aria-hidden="true">·</span>
         <span>🚢 Cảng</span>
+        <span class="meta-sep" aria-hidden="true">·</span>
+        <span>🛫 Bay</span>
+        <span class="meta-sep" aria-hidden="true">·</span>
+        <span>🏝️ Đảo</span>
       </div>
     </div>
   </aside>
@@ -168,8 +198,8 @@
         <span id="badge-season" class="dock-count tabular-nums" hidden>0</span>
       </button>
       <button type="button" class="dock-btn" data-hub-tab="locker">
-        <span class="dock-icon">🚘</span>
-        <span class="dock-label">Tủ đồ</span>
+        <span class="dock-icon">✈️</span>
+        <span class="dock-label">Hạm đội</span>
       </button>
       <button type="button" class="dock-btn dock-btn-vip" data-hub-tab="vip">
         <span class="dock-icon">👑</span>
@@ -197,7 +227,7 @@
         <button type="button" class="hub-tab active" data-tab="upgrades" role="tab">🏭 Xưởng &amp; Quản lý</button>
         <button type="button" class="hub-tab" data-tab="contracts" role="tab">🚢 Hợp đồng &amp; Sàn giá</button>
         <button type="button" class="hub-tab" data-tab="season" role="tab">🎡 Vòng quay &amp; Sự kiện</button>
-        <button type="button" class="hub-tab" data-tab="locker" role="tab">🚘 Tủ đồ &amp; Siêu xe</button>
+        <button type="button" class="hub-tab" data-tab="locker" role="tab">✈️ Showroom Hạm đội</button>
         <button type="button" class="hub-tab" data-tab="achievements" role="tab">🏆 Thành tựu <span id="badge-ach" class="tab-badge tabular-nums" hidden>0</span></button>
         <button type="button" class="hub-tab" data-tab="vip" role="tab">👑 VIP &amp; Chuyển sinh</button>
       </div>
@@ -284,6 +314,6 @@
   <div id="toast-container" class="toast-container" aria-live="polite"></div>
 
   <!-- Application Entry Point (Modern ES Modules) -->
-  <script type="module" src="/js/engine.js?v=2.3.0"></script>
+  <script type="module" src="/js/engine.js?v=2.4.0"></script>
 </body>
 </html>

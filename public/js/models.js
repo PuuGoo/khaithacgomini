@@ -1014,4 +1014,329 @@ export function createGantryCraneModel(lowSpec = false) {
   return g;
 }
 
+export function createDrivableYachtModel(tier = 1, lowSpec = false) {
+  const g = new THREE.Group();
+  const hullColor = tier >= 3 ? 0x0f172a : 0xf8fafc;
+  const trimColor = tier >= 2 ? 0xf59e0b : 0x0ea5e9;
+  const hullMat = new THREE.MeshStandardMaterial({ color: hullColor, roughness: 0.24, metalness: 0.2 });
+  const teakMat = new THREE.MeshStandardMaterial({ color: 0xb45309, roughness: 0.65 });
+  const glassMat = new THREE.MeshStandardMaterial({ color: 0x38bdf8, roughness: 0.1, metalness: 0.55 });
+  const trimMat = new THREE.MeshStandardMaterial({ color: trimColor, roughness: 0.28, metalness: 0.78 });
+
+  // Main hull oriented along +Z (bow at +Z)
+  const hull = new THREE.Mesh(new THREE.BoxGeometry(2.8, 1.15, 7.6), hullMat);
+  hull.position.set(0, 0.48, -0.3);
+  hull.castShadow = !lowSpec;
+
+  const bow = new THREE.Mesh(new THREE.ConeGeometry(1.42, 2.8, 4), hullMat);
+  bow.rotation.x = Math.PI / 2;
+  bow.rotation.z = Math.PI / 4;
+  bow.scale.set(1.0, 1.0, 0.52);
+  bow.position.set(0, 0.52, 4.9);
+
+  const teakDeck = new THREE.Mesh(new THREE.BoxGeometry(2.45, 0.12, 7.1), teakMat);
+  teakDeck.position.set(0, 1.1, -0.2);
+
+  const stripe = new THREE.Mesh(new THREE.BoxGeometry(2.86, 0.14, 7.65), trimMat);
+  stripe.position.set(0, 0.85, -0.3);
+
+  const cabin = new THREE.Mesh(new THREE.BoxGeometry(2.05, 0.95, 3.6), new THREE.MeshStandardMaterial({ color: 0xf8fafc, roughness: 0.25 }));
+  cabin.position.set(0, 1.6, -0.5);
+  cabin.castShadow = !lowSpec;
+
+  const visor = new THREE.Mesh(new THREE.BoxGeometry(2.14, 0.45, 3.72), glassMat);
+  visor.position.set(0, 1.68, -0.4);
+
+  const flybridge = new THREE.Mesh(new THREE.BoxGeometry(1.65, 0.55, 2.1), new THREE.MeshStandardMaterial({ color: 0xf8fafc, roughness: 0.25 }));
+  flybridge.position.set(0, 2.35, -0.85);
+
+  const radarArch = new THREE.Mesh(new THREE.BoxGeometry(1.85, 0.14, 0.25), trimMat);
+  radarArch.position.set(0, 2.85, -1.35);
+
+  const deckLight = new THREE.PointLight(0xfde68a, 1.35, 14, 1.8);
+  deckLight.position.set(0, 2.95, -0.8);
+  deckLight.visible = !lowSpec;
+
+  g.add(hull, bow, teakDeck, stripe, cabin, visor, flybridge, radarArch, deckLight);
+  g.userData = { deckLight };
+  return g;
+}
+
+export function createAirplaneModel(planeId = 'bush_plane', lowSpec = false) {
+  const g = new THREE.Group();
+  const isJet = planeId === 'imperial_jet';
+  const isTwin = planeId === 'cargo_twin';
+
+  const bodyColor = isJet ? 0xf8fafc : isTwin ? 0x0284c7 : 0xf59e0b;
+  const accentColor = isJet ? 0xf59e0b : isTwin ? 0xf8fafc : 0xdc2626;
+  const bodyMat = new THREE.MeshStandardMaterial({ color: bodyColor, roughness: 0.28, metalness: isJet ? 0.42 : 0.22 });
+  const accentMat = new THREE.MeshStandardMaterial({ color: accentColor, roughness: 0.32, metalness: 0.55 });
+  const glassMat = new THREE.MeshStandardMaterial({ color: 0x38bdf8, roughness: 0.1, metalness: 0.6 });
+  const darkMat = new THREE.MeshStandardMaterial({ color: 0x1e293b, roughness: 0.45, metalness: 0.65 });
+
+  // Fuselage along +Z (nose at +Z)
+  const fuseW = isTwin ? 1.15 : isJet ? 1.05 : 0.92;
+  const fuseL = isJet ? 6.4 : isTwin ? 5.8 : 4.8;
+  const fuselage = new THREE.Mesh(new THREE.BoxGeometry(fuseW, fuseW * 0.92, fuseL), bodyMat);
+  fuselage.position.set(0, 0.85, 0);
+  fuselage.castShadow = !lowSpec;
+
+  const nose = new THREE.Mesh(new THREE.ConeGeometry(fuseW * 0.52, 1.5, 8), accentMat);
+  nose.rotation.x = Math.PI / 2;
+  nose.position.set(0, 0.85, fuseL * 0.5 + 0.72);
+
+  const canopy = new THREE.Mesh(new THREE.BoxGeometry(fuseW * 0.82, 0.46, 1.45), glassMat);
+  canopy.position.set(0, 1.28, fuseL * 0.18);
+
+  const wingSpan = isJet ? 8.6 : isTwin ? 8.2 : 7.0;
+  const wingY = isJet ? 0.78 : isTwin ? 1.18 : 1.32;
+  if (isJet) {
+    [-1, 1].forEach((side) => {
+      const wing = new THREE.Mesh(new THREE.BoxGeometry(wingSpan * 0.5, 0.12, 1.45), bodyMat);
+      wing.position.set(side * (wingSpan * 0.25), wingY, -0.2);
+      wing.rotation.y = side * -0.34;
+      wing.castShadow = !lowSpec;
+      const tip = new THREE.Mesh(new THREE.BoxGeometry(0.14, 0.48, 0.7), accentMat);
+      tip.position.set(side * (wingSpan * 0.48), wingY + 0.22, -0.85);
+      g.add(wing, tip);
+    });
+  } else {
+    const wing = new THREE.Mesh(new THREE.BoxGeometry(wingSpan, 0.13, 1.35), bodyMat);
+    wing.position.set(0, wingY, 0.2);
+    wing.castShadow = !lowSpec;
+    const stripe = new THREE.Mesh(new THREE.BoxGeometry(wingSpan + 0.05, 0.15, 0.24), accentMat);
+    stripe.position.set(0, wingY, 0.68);
+    g.add(wing, stripe);
+  }
+
+  // Tail Fin & Horizontal Stabilizer
+  const vTail = new THREE.Mesh(new THREE.BoxGeometry(0.14, 1.25, 1.05), accentMat);
+  vTail.position.set(0, 1.55, -fuseL * 0.44);
+  const hTail = new THREE.Mesh(new THREE.BoxGeometry(2.6, 0.1, 0.75), bodyMat);
+  hTail.position.set(0, isJet || isTwin ? 2.05 : 1.05, -fuseL * 0.45);
+
+  // Landing skids / wheels
+  [-0.65, 0.65].forEach((lx) => {
+    const strut = new THREE.Mesh(new THREE.BoxGeometry(0.1, 0.55, 0.12), darkMat);
+    strut.position.set(lx, 0.35, 0.5);
+    const wheel = new THREE.Mesh(new THREE.CylinderGeometry(0.22, 0.22, 0.16, 8), darkMat);
+    wheel.rotation.z = Math.PI / 2;
+    wheel.position.set(lx, 0.12, 0.5);
+    g.add(strut, wheel);
+  });
+
+  const propellers = [];
+  if (isJet) {
+    [-0.95, 0.95].forEach((ex) => {
+      const pod = new THREE.Mesh(new THREE.CylinderGeometry(0.28, 0.24, 1.35, 8), darkMat);
+      pod.rotation.x = Math.PI / 2;
+      pod.position.set(ex, 1.15, -1.75);
+      const glow = new THREE.Mesh(
+        new THREE.RingGeometry(0.1, 0.22, 10),
+        new THREE.MeshBasicMaterial({ color: 0xf59e0b, side: THREE.DoubleSide })
+      );
+      glow.position.set(ex, 1.15, -2.44);
+      g.add(pod, glow);
+    });
+  } else if (isTwin) {
+    [-2.0, 2.0].forEach((ex) => {
+      const nac = new THREE.Mesh(new THREE.BoxGeometry(0.42, 0.38, 1.05), accentMat);
+      nac.position.set(ex, wingY - 0.12, 0.55);
+      const prop = new THREE.Mesh(new THREE.BoxGeometry(1.25, 0.1, 0.05), darkMat);
+      prop.position.set(ex, wingY - 0.12, 1.12);
+      g.add(nac, prop);
+      propellers.push(prop);
+    });
+  } else {
+    const prop = new THREE.Mesh(new THREE.BoxGeometry(1.55, 0.12, 0.06), darkMat);
+    prop.position.set(0, 0.85, fuseL * 0.5 + 1.48);
+    g.add(prop);
+    propellers.push(prop);
+  }
+
+  g.add(fuselage, nose, canopy, vTail, hTail);
+  g.userData = { propellers, isJet };
+  return g;
+}
+
+export function createAirportRunwayModel(lowSpec = false) {
+  const g = new THREE.Group();
+  const tarmacMat = new THREE.MeshStandardMaterial({
+    color: 0x1e293b,
+    roughness: 0.85,
+    metalness: 0.08,
+    polygonOffset: true,
+    polygonOffsetFactor: -1,
+    polygonOffsetUnits: -1
+  });
+  const stripeMat = new THREE.MeshBasicMaterial({ color: 0xf8fafc });
+  const amberMat = new THREE.MeshBasicMaterial({ color: 0xf59e0b });
+  const hangarMat = new THREE.MeshStandardMaterial({ color: 0x475569, roughness: 0.55, metalness: 0.45 });
+  const roofMat = new THREE.MeshStandardMaterial({ color: 0x0284c7, roughness: 0.42, metalness: 0.35 });
+
+  // Runway slab (9 x 38 along Z)
+  const runway = new THREE.Mesh(new THREE.BoxGeometry(9.2, 0.12, 38), tarmacMat);
+  runway.position.set(0, 0.06, 0);
+  runway.receiveShadow = !lowSpec;
+  g.add(runway);
+
+  // Centerline dashed markings
+  const dashGeo = markShared(new THREE.PlaneGeometry(0.45, 2.2));
+  dashGeo.rotateX(-Math.PI / 2);
+  for (let z = -15; z <= 15; z += 4.2) {
+    const dash = new THREE.Mesh(dashGeo, stripeMat);
+    dash.position.set(0, 0.13, z);
+    g.add(dash);
+  }
+
+  // Runway threshold bars & edge lights
+  [-17.2, 17.2].forEach((tz) => {
+    const bar = new THREE.Mesh(new THREE.PlaneGeometry(7.2, 0.7), amberMat);
+    bar.rotation.x = -Math.PI / 2;
+    bar.position.set(0, 0.135, tz);
+    g.add(bar);
+  });
+
+  const edgeGeo = markShared(new THREE.BoxGeometry(0.24, 0.22, 0.24));
+  for (let z = -16; z <= 16; z += 6.4) {
+    [-4.3, 4.3].forEach((ex) => {
+      const marker = new THREE.Mesh(edgeGeo, amberMat);
+      marker.position.set(ex, 0.18, z);
+      g.add(marker);
+    });
+  }
+
+  // Tier 2: Hangar & Air Traffic Control Tower
+  const tier2Group = new THREE.Group();
+  tier2Group.visible = false;
+  const hangar = new THREE.Mesh(new THREE.BoxGeometry(6.8, 3.6, 8.2), hangarMat);
+  hangar.position.set(8.6, 1.8, -8);
+  hangar.castShadow = !lowSpec;
+  const hangarRoof = new THREE.Mesh(new THREE.CylinderGeometry(3.5, 3.5, 8.3, 8, 1, false, 0, Math.PI), roofMat);
+  hangarRoof.rotation.z = Math.PI / 2;
+  hangarRoof.rotation.y = Math.PI / 2;
+  hangarRoof.position.set(8.6, 3.6, -8);
+  const atcShaft = new THREE.Mesh(new THREE.BoxGeometry(2.2, 7.2, 2.2), hangarMat);
+  atcShaft.position.set(8.4, 3.6, 4.5);
+  atcShaft.castShadow = !lowSpec;
+  const atcCab = new THREE.Mesh(
+    new THREE.CylinderGeometry(2.0, 1.5, 1.5, 8),
+    new THREE.MeshStandardMaterial({ color: 0x38bdf8, roughness: 0.15, metalness: 0.45 })
+  );
+  atcCab.position.set(8.4, 7.9, 4.5);
+  tier2Group.add(hangar, hangarRoof, atcShaft, atcCab);
+  g.add(tier2Group);
+
+  // Tier 3: Radar Dish & Extended Jet Apron
+  const tier3Group = new THREE.Group();
+  tier3Group.visible = false;
+  const radar = new THREE.Mesh(new THREE.OctahedronGeometry(0.9, 0), new THREE.MeshStandardMaterial({ color: 0xf59e0b, metalness: 0.75, roughness: 0.25 }));
+  radar.position.set(8.4, 9.5, 4.5);
+  const apron = new THREE.Mesh(new THREE.BoxGeometry(6.5, 0.1, 14), tarmacMat);
+  apron.position.set(7.8, 0.05, 11);
+  tier3Group.add(radar, apron);
+  g.add(tier3Group);
+
+  g.userData = { tier2Group, tier3Group, radar };
+  return g;
+}
+
+export function createIslandOutpostModel(lowSpec = false) {
+  const g = new THREE.Group();
+  const sandMat = new THREE.MeshStandardMaterial({ color: 0xe6c88a, roughness: 0.9 });
+  const grassMat = new THREE.MeshStandardMaterial({ color: 0x3f8a45, roughness: 0.85, flatShading: true });
+  const woodMat = new THREE.MeshStandardMaterial({ color: 0x92400e, roughness: 0.8 });
+  const depotMat = new THREE.MeshStandardMaterial({ color: 0x0ea5e9, roughness: 0.45 });
+  const goldMat = new THREE.MeshStandardMaterial({ color: 0xf59e0b, roughness: 0.3, metalness: 0.75 });
+
+  // Sand base + grassy mound
+  const sandBase = new THREE.Mesh(new THREE.CylinderGeometry(13.5, 16.5, 1.4, 12), sandMat);
+  sandBase.position.y = 0.05;
+  sandBase.receiveShadow = !lowSpec;
+  const grassTop = new THREE.Mesh(new THREE.CylinderGeometry(10.2, 12.6, 1.1, 12), grassMat);
+  grassTop.position.y = 0.85;
+  grassTop.receiveShadow = !lowSpec;
+  g.add(sandBase, grassTop);
+
+  // Wooden Sea Dock extending West-Northwest (-10, 0.4, -6)
+  const dock = new THREE.Mesh(new THREE.BoxGeometry(7.2, 0.45, 4.2), woodMat);
+  dock.position.set(-11.5, 0.35, -6.5);
+  dock.rotation.y = 0.45;
+  g.add(dock);
+
+  // Supply Warehouse & Helipad/Airdrop Ring
+  const warehouse = new THREE.Mesh(new THREE.BoxGeometry(5.2, 2.8, 4.4), depotMat);
+  warehouse.position.set(2.5, 2.75, -2.5);
+  warehouse.castShadow = !lowSpec;
+  const roof = new THREE.Mesh(new THREE.ConeGeometry(3.9, 1.5, 4), goldMat);
+  roof.rotation.y = Math.PI / 4;
+  roof.position.set(2.5, 4.9, -2.5);
+  const helipad = new THREE.Mesh(
+    new THREE.RingGeometry(2.4, 3.0, 24),
+    new THREE.MeshBasicMaterial({ color: 0xfacc15, side: THREE.DoubleSide })
+  );
+  helipad.rotation.x = -Math.PI / 2;
+  helipad.position.set(-2.5, 1.45, 2.2);
+  g.add(warehouse, roof, helipad);
+
+  // Palm accents (2 low-poly island trees)
+  const trunkMat = new THREE.MeshStandardMaterial({ color: 0x78350f, roughness: 0.9 });
+  [[-4.5, -3.5], [5.8, 3.8]].forEach(([px, pz]) => {
+    const t = new THREE.Mesh(new THREE.CylinderGeometry(0.22, 0.34, 3.4, 6), trunkMat);
+    t.position.set(px, 2.8, pz);
+    const c = new THREE.Mesh(new THREE.DodecahedronGeometry(1.4, 0), grassMat);
+    c.position.set(px, 4.7, pz);
+    g.add(t, c);
+  });
+
+  // Tier 2 & 3 Outpost Upgrades
+  const tier2Group = new THREE.Group();
+  tier2Group.visible = false;
+  const tankMat = new THREE.MeshStandardMaterial({ color: 0xe2e8f0, roughness: 0.35, metalness: 0.6 });
+  const tank1 = new THREE.Mesh(new THREE.CylinderGeometry(1.1, 1.1, 2.8, 10), tankMat);
+  tank1.position.set(6.2, 2.7, -2.2);
+  const tank2 = new THREE.Mesh(new THREE.CylinderGeometry(1.1, 1.1, 2.8, 10), tankMat);
+  tank2.position.set(6.2, 2.7, 0.4);
+  tier2Group.add(tank1, tank2);
+  g.add(tier2Group);
+
+  const tier3Group = new THREE.Group();
+  tier3Group.visible = false;
+  const spire = new THREE.Mesh(new THREE.CylinderGeometry(0.5, 0.9, 6.2, 8), goldMat);
+  spire.position.set(2.5, 7.6, -2.5);
+  tier3Group.add(spire);
+  g.add(tier3Group);
+
+  g.userData = { tier2Group, tier3Group };
+  return g;
+}
+
+export function createSeaTreasureModel() {
+  const g = new THREE.Group();
+  const buoyMat = new THREE.MeshStandardMaterial({ color: 0xf97316, roughness: 0.45 });
+  const chestMat = new THREE.MeshStandardMaterial({ color: 0x78350f, roughness: 0.72 });
+  const goldMat = new THREE.MeshStandardMaterial({ color: 0xfacc15, roughness: 0.25, metalness: 0.85, emissive: 0x713f12, emissiveIntensity: 0.35 });
+
+  const ring = new THREE.Mesh(new THREE.TorusGeometry(1.15, 0.22, 8, 16), buoyMat);
+  ring.rotation.x = Math.PI / 2;
+  ring.position.y = 0.08;
+
+  const chest = new THREE.Mesh(new THREE.BoxGeometry(1.35, 0.9, 0.95), chestMat);
+  chest.position.y = 0.45;
+  const band = new THREE.Mesh(new THREE.BoxGeometry(1.4, 0.22, 1.0), goldMat);
+  band.position.y = 0.62;
+
+  const beaconRing = new THREE.Mesh(
+    new THREE.RingGeometry(1.6, 1.95, 20),
+    new THREE.MeshBasicMaterial({ color: 0xfacc15, transparent: true, opacity: 0.75, side: THREE.DoubleSide })
+  );
+  beaconRing.rotation.x = -Math.PI / 2;
+  beaconRing.position.y = 0.05;
+
+  g.add(ring, chest, band, beaconRing);
+  g.userData = { beaconRing };
+  return g;
+}
+
+
 

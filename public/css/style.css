@@ -1714,5 +1714,230 @@ body.zen-hud #btn-account {
   box-shadow: inset 0 0 0 1px rgba(56, 189, 248, 0.65);
 }
 
+/* =========================================================================
+   Phase 4 Air & Sea Fleet, Cockpit HUD & Luxury Showroom Styles
+   ========================================================================= */
+
+.fleet-quick-strip {
+  position: fixed;
+  bottom: 20px;
+  right: 16px;
+  z-index: 31;
+  display: flex;
+  align-items: center;
+  gap: 8px;
+}
+.fleet-quick-strip[hidden] {
+  display: none;
+}
+.fleet-quick-btn {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  min-height: 40px;
+  padding: 0 13px;
+  border-radius: var(--radius-md);
+  border: 1px solid rgba(6, 182, 212, 0.5);
+  background: rgba(15, 23, 42, 0.94);
+  color: #e0f2fe;
+  font-family: var(--font-body);
+  font-size: 12.5px;
+  font-weight: 700;
+  cursor: pointer;
+  white-space: nowrap;
+  box-shadow: 0 8px 22px rgba(0, 0, 0, 0.42);
+  transition: transform 0.14s ease, border-color 0.14s ease, background-color 0.14s ease;
+}
+.fleet-quick-btn:hover {
+  border-color: #38bdf8;
+  background: #16243b;
+  transform: translateY(-1px);
+}
+.fleet-quick-btn:active {
+  transform: scale(0.96);
+}
+.fleet-quick-btn.is-air {
+  border-color: rgba(245, 158, 11, 0.55);
+  color: #fef3c7;
+}
+.fleet-quick-btn.is-air:hover {
+  border-color: var(--accent-amber);
+  background: #231c12;
+}
+.fleet-quick-btn.is-locked {
+  opacity: 0.78;
+  border-color: var(--border-hairline);
+  color: var(--text-secondary);
+}
+
+body.zen-hud .fleet-quick-strip {
+  opacity: 0;
+  pointer-events: none;
+  transform: translateY(10px);
+}
+
+/* Cockpit & Maritime Telemetry HUD */
+.vehicle-hud {
+  position: fixed;
+  bottom: 98px;
+  left: 50%;
+  transform: translateX(-50%);
+  z-index: 36;
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  flex-wrap: wrap;
+  gap: 10px;
+  max-width: min(760px, 95vw);
+  padding: 8px 14px;
+  background: rgba(15, 23, 42, 0.95);
+  border: 1px solid rgba(56, 189, 248, 0.55);
+  border-radius: var(--radius-md);
+  box-shadow: 0 12px 32px rgba(0, 0, 0, 0.55);
+}
+.vehicle-hud[hidden] {
+  display: none;
+}
+.vehicle-hud.is-air {
+  border-color: rgba(245, 158, 11, 0.65);
+}
+.vhud-info {
+  display: flex;
+  align-items: center;
+  gap: 7px;
+  font-size: 12.5px;
+  color: var(--text-secondary);
+  white-space: nowrap;
+}
+.vhud-title {
+  font-family: var(--font-display);
+  font-weight: 700;
+  color: var(--text-primary);
+}
+.vhud-stat {
+  font-family: var(--font-mono);
+  font-weight: 700;
+  color: #38bdf8;
+}
+.vehicle-hud.is-air .vhud-stat {
+  color: #fbbf24;
+}
+.vhud-mission {
+  color: #6ee7b7;
+  font-weight: 600;
+  max-width: 240px;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+.vhud-controls {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+}
+.vhud-btn {
+  min-height: 36px;
+  padding: 0 12px;
+  border-radius: var(--radius-sm);
+  border: 1px solid rgba(56, 189, 248, 0.45);
+  background: #17253d;
+  color: #e0f2fe;
+  font-family: var(--font-body);
+  font-size: 12.5px;
+  font-weight: 700;
+  cursor: pointer;
+  white-space: nowrap;
+  user-select: none;
+  touch-action: none;
+}
+.vhud-btn[hidden] {
+  display: none;
+}
+.vhud-btn:active {
+  transform: scale(0.95);
+  background: #0284c7;
+}
+.vhud-btn.is-exit {
+  border-color: rgba(244, 63, 94, 0.55);
+  background: #2b1620;
+  color: #fecdd3;
+}
+
+/* Luxury Fleet Showroom Hero Banner */
+.showroom-hero {
+  background: #121c30;
+  border: 1px solid rgba(56, 189, 248, 0.45);
+  border-radius: var(--radius-md);
+  padding: 16px 18px;
+  display: grid;
+  grid-template-columns: 1.35fr 1fr;
+  align-items: center;
+  gap: 16px;
+}
+.showroom-hero-copy {
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+}
+.showroom-cta-row {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 8px;
+  margin-top: 4px;
+}
+.showroom-cta-row > button {
+  flex: 1;
+  min-width: 140px;
+}
+.showroom-svg-stage {
+  background: #0b1120;
+  border: 1px solid var(--border-hairline);
+  border-radius: var(--radius-md);
+  padding: 10px 12px;
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+}
+.showroom-svg-stage svg {
+  width: 100%;
+  height: 92px;
+  display: block;
+}
+.fleet-spec-line {
+  font-family: var(--font-mono);
+  font-size: 11.5px;
+  font-weight: 600;
+  color: #7dd3fc;
+}
+
+@media (max-width: 960px) {
+  .fleet-quick-strip {
+    bottom: 92px;
+    right: auto;
+    left: 10px;
+    gap: 6px;
+  }
+  .fleet-quick-btn {
+    min-height: 36px;
+    padding: 0 10px;
+    font-size: 12px;
+  }
+  .vehicle-hud {
+    bottom: 84px;
+    padding: 6px 10px;
+    gap: 6px;
+  }
+  .vhud-btn {
+    min-height: 34px;
+    padding: 0 10px;
+    font-size: 12px;
+  }
+}
+
+@media (max-width: 720px) {
+  .showroom-hero {
+    grid-template-columns: 1fr;
+  }
+}
+
 
 
