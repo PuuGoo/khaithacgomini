@@ -1,0 +1,33 @@
+{
+  "name": "lumber-fishery-empire-tycoon",
+  "version": "3.5.0",
+  "description": "Mô phỏng chuỗi cung ứng Gỗ - Thủy sản - Siêu thị Web 3D với Three.js, Node.js Express & MongoDB Atlas",
+  "main": "server.js",
+  "scripts": {
+    "start": "node server.js",
+    "dev": "node server.js",
+    "build": "node --check server.js",
+    "lint": "node --check server.js public/js/engine.js public/js/state.js public/js/world.js public/js/models.js public/js/ui.js public/js/textures.js public/js/audio.js"
+  },
+  "engines": {
+    "node": ">=18.0.0"
+  },
+  "keywords": [
+    "threejs",
+    "webgl",
+    "tycoon",
+    "game",
+    "mongodb",
+    "nodejs",
+    "express"
+  ],
+  "author": "Thaiphuong17",
+  "license": "MIT",
+  "dependencies": {
+    "cors": "^2.8.5",
+    "dotenv": "^16.4.7",
+    "express": "^4.21.2",
+    "mongodb": "^6.13.0",
+    "three": "^0.187.0"
+  }
+}

@@ -1,0 +1,865 @@
+<!DOCTYPE html>
+<html lang="vi">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
+  <meta http-equiv="Cache-Control" content="no-cache, no-store, must-revalidate">
+  <meta http-equiv="Pragma" content="no-cache">
+  <meta http-equiv="Expires" content="0">
+  <title>🌲🐟 Lumber & Fishery Empire Tycoon 3D (PBR Engine)</title>
+  <link rel="stylesheet" href="css/style.css?v=9.19.0">
+  <link rel="icon" href="data:image/svg+xml,<svg xmlns=%22http://www.w3.org/2000/svg%22 viewBox=%220 0 100 100%22><text y=%22.9em%22 font-size=%2290%22>🪵</text></svg>">
+</head>
+<body>
+  <!-- 3D WebGL Canvas Container -->
+  <div id="webgl-container"></div>
+
+  <!-- Screen Shake / Golden Fever Vignette Overlay -->
+  <div id="fever-vignette"></div>
+
+  <!-- World-Space Floating Numbers Container -->
+  <div id="floating-container"></div>
+
+  <!-- Dynamic Floating Virtual Joystick for Touch / Mouse Drag -->
+  <div id="virtual-joystick-base">
+    <div id="virtual-joystick-stick"></div>
+  </div>
+
+  <!-- In-Game Immersive Head Floating Gauge (Following Player 3D Head) -->
+  <div id="player-head-gauge" class="head-gauge-box">🪵 0/4</div>
+
+  <!-- Mini-Quest Objective Tracker Under Level Badge -->
+  <div id="quest-tracker-widget">
+    <span>🎯</span>
+    <span id="quest-tracker-text">Nhiệm vụ: Đang tải...</span>
+  </div>
+
+  <!-- VIP Rush Order Contract Notification Widget -->
+  <div id="vip-contract-widget" class="vip-contract-card">
+    <div class="vip-header">
+      <span class="vip-badge">⚡ HỢP ĐỒNG VIP</span>
+      <span id="contract-timer" class="contract-timer">02:30</span>
+    </div>
+    <div id="contract-desc" class="contract-desc">Đơn hàng khẩn cấp</div>
+    <div class="contract-progress-track">
+      <div id="contract-progress-fill" class="contract-progress-fill" style="width:0%"></div>
+    </div>
+    <div class="vip-footer">
+      <span id="contract-reward" class="contract-reward">+$8,000 💵</span>
+      <span id="contract-counter" class="contract-counter">0/20</span>
+    </div>
+  </div>
+
+  <!-- Vehicle Prompt HUD (when near Forklift or Truck) -->
+  <div id="vehicle-prompt-hud" class="vehicle-prompt-box">
+    <span class="kbd-key">E</span>
+    <span id="vehicle-prompt-text">LÊN LÁI XE NÂNG FORKLIFT</span>
+  </div>
+
+  <!-- Truck Action HUD (Space / Horn / Deliver for Mobile & Touch) -->
+  <div id="truck-action-hud" class="vehicle-prompt-box truck-action-box" style="display:none;">
+    <span class="kbd-key">SPACE</span>
+    <span id="truck-action-text">📯 CÒI HƠI / BỐC DỠ GỖ</span>
+  </div>
+
+  <!-- Floating Visiting Friend's Empire Banner (Spectator / Tourist Mode) -->
+  <div id="visiting-banner" class="visiting-banner-card" style="display:none;">
+    <div class="visiting-badge">👀 CHẾ ĐỘ THAM QUAN</div>
+    <div class="visiting-info">
+      <span>Đang tham quan: <b id="visiting-empire-name">Đế Chế Bạn Bè</b> của <b id="visiting-owner-name">Chủ tịch</b></span>
+    </div>
+    <button id="btn-leave-visit" class="btn-leave-visit">🏠 VỀ ĐẾ CHẾ CỦA TÔI</button>
+  </div>
+
+  <!-- Compact Top HUD Bar (Ultra Glassmorphism AAA) -->
+  <header id="top-hud">
+    <!-- Personal Empire & Account Badge -->
+    <div id="account-pill" class="res-pill empire-account-pill" title="Tài khoản & Đế Chế của bạn (Bấm để mở Menu quản lý)">
+      <span class="empire-crown-icon">👑</span>
+      <div class="empire-info-text">
+        <span id="val-empire-name" class="empire-name-tag">Đế Chế Lâm Nghiệp</span>
+        <span id="val-username" class="empire-user-tag">Chủ tịch</span>
+      </div>
+    </div>
+
+    <!-- Level Badge & Progress -->
+    <div class="hud-level-group">
+      <div class="hud-level-badge">
+        <span id="level-tag" class="level-tag">LV.1 THỦ CÔNG</span>
+        <span id="level-goal" class="level-goal-text">Đốn 0/20 • $0/$200</span>
+      </div>
+      <div class="xp-bar-track">
+        <div id="xp-bar-fill" class="xp-bar-fill"></div>
+      </div>
+    </div>
+
+    <!-- Core Resource Counters with Real-Time Rate -->
+    <div class="hud-res-group">
+      <div class="res-pill res-money" title="Tiền mặt (USD)">
+        💵 <span id="val-money">$0</span>
+        <span id="val-rate" class="passive-rate-tag"></span>
+      </div>
+      <div class="res-pill res-logs" title="Gỗ thô trong Balo (Tối đa 4)">
+        🪵 <span id="val-logs">0/4</span>
+      </div>
+      <div class="res-pill res-planks" title="Ván xẻ trong kho">
+        📦 <span id="val-planks">0</span>
+      </div>
+      <div class="res-pill res-pallets" title="Kiện Pallet đóng đai công nghiệp">
+        🏗️ <span id="val-pallets">0</span>
+      </div>
+      <div id="hud-truck-pill" class="res-pill res-truck" style="display:none;" title="Gỗ trên Xe Tải Đầu Kéo">
+        🚚 <span id="val-truck-cargo">0/16</span>
+      </div>
+      <div class="res-pill res-fish" title="Cá tươi đánh bắt">
+        🐟 <span id="val-fish">0</span>
+      </div>
+      <div class="res-pill res-canned" title="Hộp cá xuất khẩu">
+        🥫 <span id="val-canned">0</span>
+      </div>
+      <div class="res-pill res-steel" title="Dầm thép siêu cường luyện kim">
+        🔩 <span id="val-steel">0</span> Thép
+      </div>
+      <div class="res-pill res-cement" title="Bao xi măng nghiền công nghiệp">
+        🧱 <span id="val-cement">0</span> Xi măng
+      </div>
+      <div class="res-pill res-rations" title="Thùng lương thực đóng hộp nông trường">
+        🌾 <span id="val-rations">0</span> Lương thực
+      </div>
+      <div class="res-pill res-rp" title="Điểm Nghiên Cứu R&D (RP) dùng nâng cấp Viện Công Nghệ">
+        🔬 <span id="val-rp">0 RP</span>
+      </div>
+      <div class="res-pill res-workers" title="Tổng số nhân công đang làm việc trên công trường (Thợ đốn củi, Khiêng gỗ, Kỹ sư máy cưa, Bốc ván)">
+        👷 <span id="val-workers">3</span> Thợ
+      </div>
+    </div>
+
+    <!-- System Actions, Fever Mode & MongoDB Atlas Status -->
+    <div class="hud-sys-group">
+      <div id="weather-pill" class="res-pill weather-pill" title="Thời tiết hiện tại">
+        <span id="weather-icon">☀️</span> <span id="weather-text">Nắng</span>
+      </div>
+      <div id="hud-clock-pill" class="res-pill hud-clock-pill" title="Thời gian công trường 24h">
+        <span id="val-clock-icon">☀️</span> <span id="val-clock">10:00</span> <span id="val-season" style="margin-left:6px; font-size:12px; font-weight:bold; color:#facc15; padding:2px 6px; background:rgba(15,23,42,0.6); border-radius:4px; border:1px solid rgba(250,204,21,0.3);">🌸 Xuân</span>
+      </div>
+      <button id="btn-empires" class="sys-btn btn-empires" title="Bảng Xếp Hạng & Khám Phá Đế Chế Bạn Bè">
+        🌐 <span class="hide-mobile hide-compact">Đế Chế</span>
+      </button>
+      <button id="btn-achievements" class="sys-btn" title="Huy Chương & Thành Tựu Đế Chế">
+        🏆 <span class="hide-mobile hide-compact">Thành Tựu</span>
+      </button>
+      <button id="btn-skins" class="sys-btn" title="Tủ Đồ Trang Phục">
+        👔 <span class="hide-mobile hide-compact">Trang Phục</span>
+      </button>
+      <button id="btn-stocks" class="sys-btn btn-stocks" title="Sàn Giao Dịch Chứng Khoán Tycoon">
+        📈 <span class="hide-mobile hide-compact">Cổ Phiếu</span>
+      </button>
+      <button id="btn-crafting" class="sys-btn" style="border-color:#38bdf8;" onclick="openCraftingModal()" title="Xưởng Chế Tác Chuỗi Cung Ứng Đa Tầng">
+        🏭 <span class="hide-mobile hide-compact">Chế Tác</span>
+      </button>
+      <button id="btn-talents" class="sys-btn" style="border-color:#a855f7;" onclick="openTalentModal()" title="Cây Kỹ Năng & Thiên Phú Chuyên Môn">
+        🧬 <span class="hide-mobile hide-compact">Thiên Phú</span>
+      </button>
+      <button id="btn-city-hall" class="sys-btn" style="border-color:#22c55e;" onclick="openCityHallModal()" title="Tòa Thị Chính & Sắc Lệnh Đô Thị">
+        🏛️ <span class="hide-mobile hide-compact">Đô Thị</span>
+      </button>
+      <button id="btn-syndicate" class="sys-btn" style="border-color:#f59e0b;" onclick="openSyndicateModal()" title="Tập Đoàn Đa Quốc Gia & Nghiệp Đoàn">
+        🌐 <span class="hide-mobile hide-compact">Tập Đoàn</span>
+      </button>
+      <button id="btn-shop" class="sys-btn btn-shop" title="Bảng Nâng Cấp Đế Chế (Phím B)">
+        <span class="btn-shop-icon">🏪</span>
+        <span class="btn-shop-label">NÂNG CẤP</span>
+        <span class="btn-shop-kbd hide-compact">B</span>
+      </button>
+      <button id="btn-fever" class="sys-btn btn-fever" title="Kích hoạt 30s Rìu Vàng: Tốc độ x2 & 1 nhát hạ cây">
+        🪓 <span class="hide-compact">Rìu Vàng</span>
+      </button>
+      <button id="btn-overtime-rush" class="sys-btn btn-overtime" title="Kích hoạt Tăng Ca Toàn Nhà Máy (Phím R): x2 Tốc độ toàn bộ công nhân trong 25s">
+        ⚡ <span class="hide-compact">Tăng Ca</span>
+        <span id="overtime-badge" class="overtime-badge">SẴN SÀNG</span>
+      </button>
+      <button id="btn-tech-tree" class="sys-btn btn-tech" title="Viện Nghiên Cứu Công Nghệ & Kỹ Năng R&D">
+        🔬 <span class="hide-mobile hide-compact">Nghiên Cứu</span>
+      </button>
+      <button id="btn-save" class="sys-btn sys-btn-icon-only" title="Lưu dữ liệu vào MongoDB Atlas">💾</button>
+      <button id="btn-load" class="sys-btn sys-btn-icon-only" title="Nạp tiến trình từ Atlas">📥</button>
+      <button id="btn-audio" class="sys-btn sys-btn-icon-only" title="Bật/Tắt âm thanh">🔊</button>
+    </div>
+  </header>
+
+  <!-- Dynamic Market News Banner (Real-time Commodity Rush) -->
+  <div id="market-news-banner" class="market-news-banner" style="display:none;">
+    <span class="news-pulse">⚡ TIN NÓNG THỊ TRƯỜNG:</span>
+    <span id="market-news-text" class="news-headline">Đang cập nhật...</span>
+    <span id="market-news-timer" class="market-timer-badge">02:00</span>
+  </div>
+
+  <!-- Live City Metrics Banner (Eco-Health, Citizen Happiness, Mayor Rating) -->
+  <div id="city-metrics-banner" class="market-news-banner" style="background: rgba(15, 23, 42, 0.88); border: 1px solid #0284c7; display: flex; justify-content: space-between; align-items: center; padding: 4px 16px; margin: 4px 12px; border-radius: 8px;">
+    <div style="display:flex; gap:16px; align-items:center; font-size:12px;">
+      <span title="Chỉ số Sinh Thái & Năng Lượng Xanh">🌿 Môi Trường: <b id="val-eco-health" style="color:#22c55e;">85%</b></span>
+      <span title="Mức độ Hài Lòng Cư Dân (Hạnh phúc >80% nhận gấp đôi tiền thuế)">😊 Hạnh Phúc: <b id="val-citizen-happiness" style="color:#facc15;">90%</b></span>
+      <span title="Tỷ Lệ Tội Phạm Thành Phố">🚨 Tội Phạm: <b id="val-crime-rate" style="color:#38bdf8;">10%</b></span>
+    </div>
+    <div style="display:flex; gap:10px; align-items:center;">
+      <span class="dividend-badge" style="background:#7c3aed; color:#fff;" id="val-mayor-rating">🏛️ THỊ TRƯỞNG HẠNG S</span>
+      <button class="sys-btn" style="padding:2px 8px; font-size:11px;" onclick="openCityHallModal()">📜 Sắc Lệnh Đô Thị</button>
+    </div>
+  </div>
+
+  <!-- Global Crisis Alert Banner (Wildfire, Oil Spill, Black Swan, Gold Rush) -->
+  <div id="crisis-alert-banner" class="market-news-banner" style="display:none; background:rgba(220, 38, 38, 0.92); border:2px solid #f87171; padding:6px 16px; margin:4px 12px; border-radius:8px;">
+    <span class="news-pulse">🚨 KHỦNG HOẢNG TOÀN CẦU:</span>
+    <span id="crisis-alert-text" class="news-headline" style="font-weight:bold; color:#fff;">Đang xảy ra sự cố...</span>
+    <span id="crisis-alert-timer" class="market-timer-badge" style="background:#7f1d1d;">03:00</span>
+    <button id="btn-crisis-resolve" class="sys-btn" style="background:#f59e0b; font-weight:bold; color:#000; margin-left:8px;" onclick="joinGlobalCrisisResolve()">ỨNG CỨU (+$10,000)</button>
+  </div>
+
+  <!-- Bottom Left: Shortcuts & Instructions + Floating Empire Upgrade Shop Launcher -->
+  <div id="bottom-left-btn">
+    <button id="btn-shortcuts" class="info-circle-btn" title="Phím tắt & Hướng dẫn">⌨️</button>
+    <button id="btn-shop-float" class="hud-shop-launcher-btn" title="Mở Bảng Nâng Cấp Đế Chế (Phím B)">
+      <span class="shop-btn-icon">🏪</span>
+      <span class="shop-btn-text">NÂNG CẤP</span>
+      <span class="shop-btn-kbd">B</span>
+    </button>
+  </div>
+
+  <div id="shortcuts-modal">
+    <div style="display:flex; justify-content:space-between; align-items:center; margin-bottom:8px;">
+      <b>🎮 ĐIỀU KHIỂN & PHÍM TẮT</b>
+      <button id="btn-close-shortcuts" style="background:none; border:none; color:#94a3b8; font-size:16px; cursor:pointer;">✖</button>
+    </div>
+    <ul style="list-style:none; padding:0; margin:0; line-height:1.8;">
+      <li><span class="kbd">W</span> <span class="kbd">A</span> <span class="kbd">S</span> <span class="kbd">D</span> hoặc <span class="kbd">Mũi tên</span>: Di chuyển nhân vật</li>
+      <li><span class="kbd">Phím Cách (Space)</span>: Đốn cây / Tương tác nhanh</li>
+      <li><span class="kbd">B</span>: Mở / Tắt Bảng Nâng Cấp Đế Chế</li>
+      <li><span class="kbd">R</span>: Kích hoạt chế độ Tăng Ca Nhà Máy (Overtime Rush)</li>
+      <li><span class="kbd">Chuột Trái / Chạm Màn Hình</span>: Kéo Joystick ảo hoặc click trực tiếp</li>
+      <li><span class="kbd">Chuột Phải</span>: Lia bản đồ (Pan Isometric)</li>
+      <li><span class="kbd">Cuộn Chuột</span>: Phóng to / Thu nhỏ (Zoom)</li>
+    </ul>
+  </div>
+
+  <!-- Bottom Right: Camera Recenter & Radar Minimap -->
+  <div id="bottom-right-controls">
+    <button id="btn-recenter" class="circle-btn" title="Đưa góc nhìn về nhân vật">🎯</button>
+  </div>
+
+  <!-- Circular Minimap Radar Widget & GPS Quick Pins -->
+  <div id="minimap-widget" class="minimap-panel">
+    <div class="minimap-header">
+      <span class="minimap-title">🧭 RADAR GPS</span>
+      <span class="minimap-radius-tag">380m</span>
+    </div>
+    <div class="minimap-canvas-wrapper">
+      <canvas id="minimap-canvas" width="150" height="150"></canvas>
+    </div>
+    <div class="minimap-quick-pois">
+      <button class="poi-quick-btn" data-poi="gold" title="Dẫn đường đến Mỏ Vàng Phía Bắc">🪙 Vàng</button>
+      <button class="poi-quick-btn" data-poi="sawmill" title="Dẫn đường đến Xưởng Cưa">🪵 Cưa</button>
+      <button class="poi-quick-btn" data-poi="harbor" title="Dẫn đường đến Cảng Biển">⚓ Cảng</button>
+      <button class="poi-quick-btn" data-poi="furniture" title="Dẫn đường đến Xưởng Nội Thất">🪑 Ghế</button>
+      <button class="poi-quick-btn" data-poi="resort" title="Dẫn đường đến Resort Maldives">🏖️ Biển</button>
+      <button class="poi-quick-btn" data-poi="airport" title="Dẫn đường đến Sân Bay">✈️ Bay</button>
+    </div>
+  </div>
+
+  <!-- Achievements Modal -->
+  <div id="achievements-modal" class="modal-overlay">
+    <div class="modal-card modal-wide">
+      <div class="modal-card-header">
+        <h2>🏆 BẢNG HUY CHƯƠNG & THÀNH TỰU ĐẾ CHẾ</h2>
+        <button id="btn-close-achievements" class="btn-close-panel">✖</button>
+      </div>
+      <p class="modal-subtitle">Hoàn thành các cột mốc sản xuất & logistics để nhận thưởng hàng chục nghìn USD!</p>
+      <div id="achievements-list" class="achievements-grid"></div>
+    </div>
+  </div>
+
+  <!-- Character Skins Modal -->
+  <div id="skins-modal" class="modal-overlay">
+    <div class="modal-card modal-wide">
+      <div class="modal-card-header">
+        <h2>👔 TỦ ĐỒ TRANG PHỤC TYCOON</h2>
+        <button id="btn-close-skins" class="btn-close-panel">✖</button>
+      </div>
+      <p class="modal-subtitle">Thay đổi phong cách trang phục 3D chân thực của nhân vật trong thế giới!</p>
+      <div id="skins-list" class="skins-grid"></div>
+    </div>
+  </div>
+
+  <!-- Tycoon Stock Market Modal -->
+  <div id="stocks-modal" class="modal-overlay">
+    <div class="modal-card modal-wide">
+      <div class="modal-card-header">
+        <h2>📈 SÀN GIAO DỊCH CHỨNG KHOÁN TYCOON (WALL STREET)</h2>
+        <button id="btn-close-stocks" class="btn-close-panel">✖</button>
+      </div>
+      <div class="stocks-modal-sub">
+        <span>Đầu tư cổ phiếu doanh nghiệp trong đế chế &bull; Cổ tức thụ động chi trả mỗi 60 giây</span>
+        <span id="dividend-countdown" class="dividend-badge">⏱️ Cổ tức: 60s</span>
+      </div>
+      <div id="stocks-list" class="stocks-grid"></div>
+    </div>
+  </div>
+
+  <!-- R&D Tech Tree Modal -->
+  <div id="tech-tree-modal" class="modal-overlay">
+    <div class="modal-card modal-wide">
+      <div class="modal-card-header">
+        <h2>🔬 VIỆN NGHIÊN CỨU CÔNG NGHỆ R&D</h2>
+        <button id="btn-close-tech-tree" class="btn-close-panel">✖</button>
+      </div>
+      <div class="stocks-modal-sub">
+        <span>Đột phá công nghệ toàn diện &bull; Sử dụng Điểm Nghiên Cứu (RP) tích lũy từ thu hoạch & sản xuất</span>
+        <span class="dividend-badge">Điểm RP hiện có: <strong id="modal-rp-val">0 RP</strong></span>
+      </div>
+      <div id="tech-tree-list" class="tech-tree-grid"></div>
+    </div>
+  </div>
+  <div id="single-toast"></div>
+
+  <!-- Level Up Celebration Modal -->
+  <div id="levelup-modal" class="modal-overlay">
+    <div class="modal-card">
+      <h2 id="modal-level-title">🎉 KỶ NGUYÊN MỚI!</h2>
+      <p id="modal-level-desc">Chúc mừng bạn đã hoàn thành mục tiêu và mở rộng đế chế thành công!</p>
+      <button id="btn-claim-levelup" class="btn-primary-action">🚀 TIẾP TỤC PHÁT TRIỂN</button>
+    </div>
+  </div>
+
+  <!-- Floating Empire Upgrade Control Panel (Docked at Top-Right Under HUD) -->
+  <div id="upgrade-shop-panel">
+    <div class="shop-panel-header">
+      <div class="shop-panel-title">
+        <span class="shop-icon-title">🏪</span>
+        <b>BẢNG NÂNG CẤP ĐẾ CHẾ</b>
+      </div>
+      <div class="shop-header-actions">
+        <span class="kbd kbd-wallet">💵 $<span id="shop-wallet-money">0</span></span>
+        <button id="btn-close-shop" class="btn-close-panel" title="Đóng">✖</button>
+      </div>
+    </div>
+
+    <!-- Shop Tabs (Pill style matching kbd buttons) -->
+    <div class="shop-panel-tabs" id="shop-tabs-nav"></div>
+
+    <!-- Active Tab Items List -->
+    <div class="shop-panel-list" id="shop-items-grid"></div>
+  </div>
+
+  <!-- Offline Earnings Welcome Back Modal -->
+  <div id="offline-modal" class="modal-overlay">
+    <div class="modal-card">
+      <div class="chest-icon">📦</div>
+      <h2>CHÀO MỪNG TRỞ LẠI!</h2>
+      <p id="offline-earnings-text">Đội ngũ của bạn đã chăm chỉ làm việc trong lúc bạn vắng mặt.</p>
+      <button id="btn-claim-offline" class="btn-primary-action">💰 THU NHẬN TIỀN VỀ VÍ</button>
+    </div>
+  </div>
+
+  <!-- Empire Authentication Modal (Register / Login / Guest) -->
+  <div id="auth-modal" class="modal-overlay">
+    <div class="modal-card auth-card" style="position:relative;">
+      <button id="btn-close-auth" class="btn-close-panel" style="position:absolute; top:12px; right:12px; z-index:10;" title="Đóng">✖</button>
+      <div class="auth-header">
+        <div class="auth-logo">👑</div>
+        <h2>ĐẾ CHẾ LÂM NGHIỆP & THỦY SẢN 3D</h2>
+        <p class="auth-subtitle">Đăng nhập hoặc tạo tài khoản để xây dựng & mở rộng đế chế của riêng bạn!</p>
+      </div>
+
+      <!-- Auth Tabs -->
+      <div class="auth-tabs">
+        <button id="auth-tab-login" class="auth-tab active" type="button">🔑 ĐĂNG NHẬP</button>
+        <button id="auth-tab-register" class="auth-tab" type="button">✨ TẠO TÀI KHOẢN MỚI</button>
+      </div>
+
+      <!-- Auth Form -->
+      <form id="auth-form" class="auth-form" autocomplete="off">
+        <h3 id="auth-form-title" class="auth-form-title">🔑 ĐĂNG NHẬP VÀO ĐẾ CHẾ</h3>
+        <div id="auth-error-msg" class="auth-error"></div>
+
+        <div class="auth-input-group">
+          <label for="auth-username">👤 Tên đăng nhập / Nickname:</label>
+          <input type="text" id="auth-username" placeholder="Ví dụ: hoang_tycoon, nam_king..." required minlength="3" maxlength="20">
+        </div>
+
+        <div class="auth-input-group">
+          <label for="auth-password">🔒 Mật khẩu:</label>
+          <input type="password" id="auth-password" placeholder="Nhập mật khẩu (tối thiểu 3 ký tự)" required minlength="3" maxlength="32">
+        </div>
+
+        <div id="auth-register-extra" class="auth-input-group" style="display:none;">
+          <label for="auth-empire-name">🏛️ Tên Đế Chế của bạn:</label>
+          <input type="text" id="auth-empire-name" placeholder="Ví dụ: Tập Đoàn Gỗ Hoàng Gia, Đế Chế Nam Vương..." maxlength="30">
+          <small class="auth-hint">Tên này sẽ xuất hiện trên Cổng Chào 3D, Trụ sở HQ và Bảng tên nhân vật!</small>
+        </div>
+
+        <button type="submit" id="auth-submit-btn" class="btn-primary-action auth-submit-btn">🚀 VÀO ĐẾ CHẾ CỦA TÔI</button>
+      </form>
+
+      <div class="auth-divider">
+        <span>HOẶC</span>
+      </div>
+
+      <button type="button" id="auth-guest-btn" class="btn-guest-action">⚡ Chơi Nhanh (Chế Độ Khách Không Cần Đăng Ký)</button>
+    </div>
+  </div>
+
+  <!-- Empires Directory & Leaderboard Modal -->
+  <div id="empires-modal" class="modal-overlay">
+    <div class="modal-card modal-wide">
+      <div class="modal-card-header">
+        <h2>🌐 BẢNG XẾP HẠNG & DANH SÁCH ĐẾ CHẾ SERVER</h2>
+        <button id="btn-close-empires" class="btn-close-panel">✖</button>
+      </div>
+      <p class="modal-subtitle">Khám phá các đế chế của người chơi khác trên server và dịch chuyển đến tham quan công trình!</p>
+      <div id="empires-grid" class="empires-grid"></div>
+    </div>
+  </div>
+
+  <!-- 1. City Hall & Mayor Quests Modal -->
+  <div id="city-hall-modal" class="modal-overlay">
+    <div class="modal-card modal-wide">
+      <div class="modal-card-header">
+        <h2>🏛️ TÒA THỊ CHÍNH - BẢNG ĐIỀU HÀNH & NHIỆM VỤ ĐÔ THỊ</h2>
+        <button id="btn-close-city-hall" class="btn-close-panel">✖</button>
+      </div>
+      <p class="modal-subtitle">Thị trưởng hiện tại: <b id="ch-current-mayor" style="color:#facc15;">Ban Quản Trị</b> | Ngân khố công: <b id="ch-treasury" style="color:#34d399;">$120,000</b></p>
+      
+      <!-- City Decrees & Law Controls -->
+      <div style="background:rgba(30,41,59,0.8); border:1px solid rgba(251,191,36,0.3); border-radius:12px; padding:12px; margin-top:10px;">
+        <h4 style="margin:0 0 8px 0; color:#fbbf24; font-size:13px; text-transform:uppercase;">📜 Sắc Lệnh & Luật Đô Thị Ban Hành</h4>
+        <div style="display:grid; grid-template-columns:repeat(auto-fit, minmax(200px, 1fr)); gap:10px; font-size:12px;">
+          <label style="display:flex; align-items:center; gap:8px; cursor:pointer;">
+            <input type="checkbox" id="decree-curfew" onchange="toggleCityDecree('curfew', this.checked)">
+            <span>🌙 Giờ Giới Nghiêm Ban Đêm (Tăng an ninh)</span>
+          </label>
+          <label style="display:flex; align-items:center; gap:8px; cursor:pointer;">
+            <input type="checkbox" id="decree-reforest" checked onchange="toggleCityDecree('reforestation', this.checked)">
+            <span>🌲 Luật Trồng Rừng Bắt Buộc (+Chỉ số Xanh)</span>
+          </label>
+          <label style="display:flex; align-items:center; gap:8px; cursor:pointer;">
+            <input type="checkbox" id="decree-health" checked onchange="toggleCityDecree('freeHealthcare', this.checked)">
+            <span>🏥 Trợ Cấp Viện Phí Miễn Phí (Chi từ Ngân khố)</span>
+          </label>
+        </div>
+      </div>
+
+      <div class="city-quest-grid" id="city-quest-list" style="display:flex; flex-direction:column; gap:12px; margin-top:14px;"></div>
+    </div>
+  </div>
+
+  <!-- 2. Police HQ & Bounty Board Modal -->
+  <div id="police-station-modal" class="modal-overlay">
+    <div class="modal-card modal-wide">
+      <div class="modal-card-header">
+        <h2>👮 SỞ CẢNH SÁT - BẢNG SĂN TIỀN THƯỞNG TỘI PHẠM (BOUNTY BOARD)</h2>
+        <button id="btn-close-police-station" class="btn-close-panel">✖</button>
+      </div>
+      <p class="modal-subtitle">Gia nhập lực lượng an ninh, lái Xe Tuần Tra [E] và săn lùng tội phạm nhận thưởng lớn!</p>
+      <div class="city-quest-grid" id="police-quest-list" style="display:flex; flex-direction:column; gap:12px; margin-top:14px;"></div>
+    </div>
+  </div>
+
+  <!-- 3. Hospital & Fire Rescue 911 Modal -->
+  <div id="hospital-fire-modal" class="modal-overlay">
+    <div class="modal-card modal-wide">
+      <div class="modal-card-header">
+        <h2>🚨 TRUNG TÂM CỨU HỘ 911 & BỆNH VIỆN ĐA KHOA</h2>
+        <button id="btn-close-hospital-fire" class="btn-close-panel">✖</button>
+      </div>
+      <p class="modal-subtitle">Ứng cứu hỏa hoạn khẩn cấp và cấp cứu công nhân để nhận Huân Chương Cứu Hộ & Tiền thưởng!</p>
+      <div class="city-quest-grid" id="rescue-quest-list" style="display:flex; flex-direction:column; gap:12px; margin-top:14px;"></div>
+    </div>
+  </div>
+
+  <!-- 4. Landmark Construction Progress Modal -->
+  <div id="landmark-modal" class="modal-overlay">
+    <div class="modal-card modal-wide">
+      <div class="modal-card-header">
+        <h2>🏗️ ĐẠI DỰ ÁN KỲ QUAN THẾ KỶ TOÀN SERVER</h2>
+        <button id="btn-close-landmark" class="btn-close-panel">✖</button>
+      </div>
+      <p class="modal-subtitle" id="landmark-modal-subtitle">Đóng góp tài nguyên cùng toàn bộ người chơi để hoàn thiện Tòa Tháp Hoàng Gia!</p>
+      <div id="landmark-progress-container" style="padding:15px; background:rgba(30,41,59,0.7); border-radius:12px; margin-bottom:15px;"></div>
+      <div class="landmark-contribute-actions" style="display:flex; gap:10px; justify-content:center; flex-wrap:wrap;">
+        <button id="btn-contrib-planks" class="btn-primary-action" type="button">🪵 Nạp 10 Ván Gỗ</button>
+        <button id="btn-contrib-steel" class="btn-primary-action" type="button" style="background:#0284c7;">🏗️ Nạp 5 Dầm Thép</button>
+        <button id="btn-contrib-cement" class="btn-primary-action" type="button" style="background:#ca8a04;">🧱 Nạp 5 Xi Măng</button>
+        <button id="btn-contrib-money" class="btn-primary-action" type="button" style="background:#16a34a;">💵 Nạp $5,000</button>
+      </div>
+    </div>
+  </div>
+
+  <!-- 5. City Careers & Job Specialization Modal -->
+  <div id="career-modal" class="modal-overlay">
+    <div class="modal-card modal-wide">
+      <div class="modal-card-header">
+        <h2>💼 TRUNG TÂM GIỚI THIỆU VIỆC LÀM & GIẤY PHÉP HÀNH NGHỀ</h2>
+        <button id="btn-close-career" class="btn-close-panel">✖</button>
+      </div>
+      <p class="modal-subtitle">Chọn nghề nghiệp chuyên môn để mở khóa trang bị đặc chủng và nguồn thu nhập cao!</p>
+      <div class="career-grid" style="display:grid; grid-template-columns:repeat(auto-fit, minmax(210px, 1fr)); gap:14px; margin-top:14px;">
+        <div class="career-card" style="background:rgba(30,58,138,0.3); border:2px solid #3b82f6; border-radius:14px; padding:15px; text-align:center;">
+          <div style="font-size:36px; margin-bottom:8px;">👮</div>
+          <h3 style="color:#60a5fa; margin:0 0 6px 0; font-size:16px;">CẢNH SÁT TUẦN TRA</h3>
+          <p style="font-size:12px; color:#cbd5e1; margin-bottom:12px; line-height:1.4;">Được cấp súng điện taser [F], còi xe tuần tra, nhận lương $1,200/ngày và tiền thưởng bắt tội phạm.</p>
+          <button class="btn-primary-action" onclick="selectPlayerCareer('police')" style="background:#2563eb; width:100%;">GIA NHẬP CẢNH SÁT</button>
+        </div>
+        <div class="career-card" style="background:rgba(185,28,28,0.3); border:2px solid #ef4444; border-radius:14px; padding:15px; text-align:center;">
+          <div style="font-size:36px; margin-bottom:8px;">🚒</div>
+          <h3 style="color:#f87171; margin:0 0 6px 0; font-size:16px;">LÍNH CỨU HỎA & 911</h3>
+          <p style="font-size:12px; color:#cbd5e1; margin-bottom:12px; line-height:1.4;">Trang phục chống lửa, vòi bọt dập lửa [F], lái Xe Cứu Hỏa phun nước [Space] dập tắt hỏa hoạn nhận $3,500+.</p>
+          <button class="btn-primary-action" onclick="selectPlayerCareer('firefighter')" style="background:#dc2626; width:100%;">GIA NHẬP CỨU HỎA</button>
+        </div>
+        <div class="career-card" style="background:rgba(217,119,6,0.3); border:2px solid #f59e0b; border-radius:14px; padding:15px; text-align:center;">
+          <div style="font-size:36px; margin-bottom:8px;">🚛</div>
+          <h3 style="color:#fbbf24; margin:0 0 6px 0; font-size:16px;">TÀI PHIỆT LOGISTICS</h3>
+          <p style="font-size:12px; color:#cbd5e1; margin-bottom:12px; line-height:1.4;">Chuyên chở cấu kiện nặng dầm thép, xi măng, gỗ khối xuất khẩu. Tăng 40% giá trị hợp đồng giao nhận.</p>
+          <button class="btn-primary-action" onclick="selectPlayerCareer('logistics')" style="background:#d97706; width:100%;">GIA NHẬP LOGISTICS</button>
+        </div>
+        <div class="career-card" style="background:rgba(88,28,135,0.3); border:2px solid #a855f7; border-radius:14px; padding:15px; text-align:center;">
+          <div style="font-size:36px; margin-bottom:8px;">🕶️</div>
+          <h3 style="color:#c084fc; margin:0 0 6px 0; font-size:16px;">TRÙM ĐẠO TẶC CHỢ ĐEN</h3>
+          <p style="font-size:12px; color:#cbd5e1; margin-bottom:12px; line-height:1.4;">Khả năng bẻ khóa [F] cướp quỹ, bán hàng lậu chợ đen x2 tiền mặt. Cực kỳ nguy hiểm nếu bị Cảnh sát phát hiện!</p>
+          <button class="btn-primary-action" onclick="selectPlayerCareer('underworld')" style="background:#7e22ce; width:100%;">GIA NHẬP THẾ GIỚI NGẦM</button>
+        </div>
+      </div>
+    </div>
+  </div>
+
+  <!-- 6. Central Trading Post / Marketplace Modal -->
+  <div id="market-modal" class="modal-overlay">
+    <div class="modal-card modal-wide">
+      <div class="modal-card-header">
+        <h2>🛒 SÀN CHỢ GIAO DỊCH ĐÔ THỊ TỰ DO (P2P TRADING POST)</h2>
+        <button id="btn-close-market" class="btn-close-panel">✖</button>
+      </div>
+      <p class="modal-subtitle">Giao thương tự do giữa những người chơi: Mua bán Ván gỗ, Dầm thép, Xi măng và Lương thực!</p>
+      
+      <div style="background:rgba(30,41,59,0.7); padding:12px; border-radius:12px; margin-bottom:14px; display:flex; gap:10px; flex-wrap:wrap; align-items:center;">
+        <span style="font-weight:bold; font-size:13px; color:#facc15;">📦 Đăng Bán:</span>
+        <select id="market-input-item" style="padding:6px 10px; border-radius:8px; background:#0f172a; color:#fff; border:1px solid #475569;">
+          <option value="planks">🪵 Ván Gỗ Chịu Lực</option>
+          <option value="steel">🏗️ Dầm Thép Siêu Cường</option>
+          <option value="cement">🧱 Bao Xi Măng Nghiền</option>
+          <option value="rations">🥫 Hộp Lương Thực</option>
+        </select>
+        <input id="market-input-qty" type="number" min="1" max="100" value="5" placeholder="Số lượng" style="width:70px; padding:6px 10px; border-radius:8px; background:#0f172a; color:#fff; border:1px solid #475569;" />
+        <input id="market-input-price" type="number" min="1" max="10000" value="40" placeholder="Giá USD/cái" style="width:90px; padding:6px 10px; border-radius:8px; background:#0f172a; color:#fff; border:1px solid #475569;" />
+        <button id="btn-market-post" class="btn-primary-action" type="button" style="background:#10b981; padding:6px 14px;">+ ĐĂNG BÁN</button>
+      </div>
+
+      <div id="market-listings-container" style="max-height:280px; overflow-y:auto; display:flex; flex-direction:column; gap:8px;"></div>
+    </div>
+  </div>
+
+  <!-- Emergency 911 Alert Banner -->
+  <div id="emergency-alert-banner" style="display:none; position:fixed; top:116px; left:50%; transform:translateX(-50%); z-index:9999; background:linear-gradient(90deg, #b91c1c, #dc2626); border:2px solid #fef08a; border-radius:16px; padding:10px 20px; box-shadow:0 8px 30px rgba(220,38,38,0.7); align-items:center; gap:14px;">
+    <div style="font-size:28px;">🚨</div>
+    <div>
+      <div id="emergency-banner-title" style="font-weight:bold; color:#fff; font-size:14px;">BÁO ĐỘNG ĐỎ 911: HỎA HOẠN KHẨN CẤP!</div>
+      <div id="emergency-banner-desc" style="font-size:12px; color:#fef08a;">Lái Xe Cứu Hỏa tới hiện trường dập lửa nhận $3,500 + 15 Gems!</div>
+    </div>
+    <button onclick="dismissEmergencyBanner()" style="background:rgba(0,0,0,0.4); border:1px solid #fff; color:#fff; border-radius:8px; padding:6px 12px; cursor:pointer;">ĐÃ RÕ</button>
+  </div>
+
+  <!-- 7. Active Fishing Reeling Mini-Game HUD Widget -->
+  <div id="fishing-reeling-widget" style="display:none; position:fixed; bottom:140px; left:50%; transform:translateX(-50%); z-index:9999; background:rgba(15,23,42,0.95); border:2px solid #38bdf8; border-radius:18px; padding:16px 24px; box-shadow:0 10px 40px rgba(56,189,248,0.5); text-align:center; min-width:320px;">
+    <div style="font-size:24px; margin-bottom:4px;">🎣 CÁ ĐANG CẮN CÂU!</div>
+    <div style="font-size:12px; color:#94a3b8; margin-bottom:12px;">Nhấn giữ hoặc nhấp nhanh phím <b style="color:#facc15;">[SPACE]</b> để giữ thanh kim nằm trong <span style="color:#4ade80;">VÙNG XANH</span>!</div>
+    <div style="position:relative; width:100%; height:28px; background:#1e293b; border-radius:14px; overflow:hidden; border:2px solid #475569; margin-bottom:12px;">
+      <!-- Vùng xanh may mắn -->
+      <div id="reel-sweet-spot" style="position:absolute; left:35%; width:30%; height:100%; background:linear-gradient(90deg, #10b981, #34d399); border-radius:10px;"></div>
+      <!-- Kim câu cá -->
+      <div id="reel-needle" style="position:absolute; left:50%; top:0; width:8px; height:100%; background:#f87171; border-radius:4px; box-shadow:0 0 10px #ef4444; transform:translateX(-50%); transition:left 0.04s linear;"></div>
+    </div>
+    <!-- Thanh tiến độ kéo cá -->
+    <div style="width:100%; height:10px; background:#334155; border-radius:5px; overflow:hidden; margin-bottom:12px;">
+      <div id="reel-progress-fill" style="width:40%; height:100%; background:#facc15; transition:width 0.1s linear;"></div>
+    </div>
+    <button id="btn-reel-pull" class="btn-primary-action" style="background:#0284c7; width:100%; padding:8px 0; font-weight:bold;">KÉO DÂY CÂU (BẤM SPACE) 🐟</button>
+  </div>
+
+  <!-- 8. Highway Speed Circuit Lap Timer Widget -->
+  <div id="race-lap-widget" style="display:none; position:fixed; top:120px; right:20px; z-index:9998; background:rgba(15,23,42,0.92); border:2px solid #e11d48; border-radius:16px; padding:14px 20px; box-shadow:0 8px 30px rgba(225,29,72,0.4); min-width:210px;">
+    <div style="display:flex; justify-content:space-between; align-items:center; margin-bottom:8px;">
+      <span style="font-weight:bold; font-size:13px; color:#f43f5e;">🏁 ĐUA CAO TỐC</span>
+      <span id="race-checkpoint-badge" style="background:#e11d48; color:#fff; font-size:11px; padding:2px 8px; border-radius:10px; font-weight:bold;">VÒNG 1/1</span>
+    </div>
+    <div style="font-size:28px; font-weight:900; color:#facc15; font-family:monospace; margin-bottom:4px;" id="race-timer-display">00:00.0</div>
+    <div style="font-size:11px; color:#cbd5e1; display:flex; justify-content:space-between;">
+      <span>Kỷ lục: <b id="race-best-time" style="color:#4ade80;">--:--</b></span>
+      <span>Thưởng: <b style="color:#38bdf8;">$5,000 💵</b></span>
+    </div>
+  </div>
+
+  <!-- 9. Coastal Luxury Villa Management Modal -->
+  <div id="villa-modal" class="modal-overlay">
+    <div class="modal-card">
+      <div class="modal-card-header">
+        <h2>🏡 DINH THỰ VEN BIỂN & NGHỈ DƯỠNG</h2>
+        <button id="btn-close-villa" class="btn-close-panel">✖</button>
+      </div>
+      <p class="modal-subtitle">Tận hưởng cuộc sống tài phiệt thượng lưu: Hồ bơi vô cực, ban công ngắm biển & doanh thu thụ động!</p>
+      
+      <div style="background:rgba(30,41,59,0.7); padding:16px; border-radius:14px; margin-bottom:14px; text-align:center;">
+        <div style="font-size:40px; margin-bottom:8px;">🏖️</div>
+        <h3 id="villa-ownership-status" style="color:#38bdf8; margin:0 0 6px 0;">CHƯA SỞ HỮU</h3>
+        <p id="villa-desc-status" style="font-size:12px; color:#94a3b8; margin:0 0 12px 0;">Mua quyền sở hữu Dinh thự để thu tiền thuê thụ động và nhận bùa lợi tăng tốc độ bơi lội!</p>
+        <div style="display:flex; justify-content:center; gap:12px; margin-bottom:12px;">
+          <div style="background:rgba(15,23,42,0.8); padding:8px 16px; border-radius:10px;">
+            <div style="font-size:11px; color:#94a3b8;">Tiền thuê tích lũy</div>
+            <div id="villa-accumulated-rent" style="font-size:18px; font-weight:bold; color:#4ade80;">$0</div>
+          </div>
+          <div style="background:rgba(15,23,42,0.8); padding:8px 16px; border-radius:10px;">
+            <div style="font-size:11px; color:#94a3b8;">Suất sinh lời</div>
+            <div style="font-size:18px; font-weight:bold; color:#facc15;">+$350/phút</div>
+          </div>
+        </div>
+        <div style="display:flex; gap:10px; justify-content:center;">
+          <button id="btn-buy-villa" class="btn-primary-action" onclick="purchasePlayerVilla()" style="background:#10b981; padding:8px 20px;">🏡 MUA DINH THỰ ($25,000)</button>
+          <button id="btn-collect-villa-rent" class="btn-primary-action" onclick="collectPlayerVillaRent()" style="background:#d97706; padding:8px 20px;">💵 THU TIỀN THUÊ</button>
+        </div>
+      </div>
+    </div>
+  </div>
+
+  <!-- 10. Central Bank & Vault Heist Modal -->
+  <div id="bank-modal" class="modal-overlay">
+    <div class="modal-card">
+      <div class="modal-card-header">
+        <h2>🏦 NGÂN HÀNG TRUNG ƯƠNG EMPIRE BANK</h2>
+        <button id="btn-close-bank" class="btn-close-panel" onclick="document.getElementById('bank-modal').classList.remove('open')">✖</button>
+      </div>
+      <p class="modal-subtitle">Trung tâm tài chính tối mật: Nhận hợp đồng áp tải tiền hợp pháp hoặc thực hiện Phi Vụ Đột Kích Hầm Vàng 5 Sao!</p>
+      
+      <div style="display:grid; grid-template-columns:1fr 1fr; gap:14px; margin-top:14px;">
+        <div style="background:rgba(30,58,138,0.4); border:2px solid #3b82f6; border-radius:14px; padding:15px; text-align:center;">
+          <div style="font-size:36px; margin-bottom:6px;">🛡️</div>
+          <h3 style="color:#60a5fa; margin:0 0 6px 0;">ÁP TẢI TIỀN AN TOÀN</h3>
+          <p style="font-size:11px; color:#cbd5e1; margin:0 0 12px 0;">Vận chuyển tiền mặt hợp pháp từ cây ATM về kho bạc ngân hàng an toàn tuyệt đối.</p>
+          <button class="btn-primary-action" onclick="startBankEscortMission()" style="background:#2563eb; width:100%;">NHẬN THÙ LAO (+$2,500)</button>
+        </div>
+        <div style="background:rgba(185,28,28,0.4); border:2px solid #ef4444; border-radius:14px; padding:15px; text-align:center;">
+          <div style="font-size:36px; margin-bottom:6px;">💣</div>
+          <h3 style="color:#f87171; margin:0 0 6px 0;">ĐỘT KÍCH HẦM VÀNG</h3>
+          <p style="font-size:11px; color:#cbd5e1; margin:0 0 12px 0;">Khoan laser cắt két sắt! Báo động 5 ⭐ cảnh sát SWAT truy đuổi! Trốn thoát nhận thưởng cực lớn!</p>
+          <button class="btn-primary-action" onclick="startBankVaultHeist()" style="background:#dc2626; width:100%;">CƯỚP KHO BÁU (+$12,500 & 15 GEMS)</button>
+        </div>
+      </div>
+    </div>
+  </div>
+
+  <!-- 11. Pet Sanctuary & Auto Drone Modal -->
+  <div id="pet-modal" class="modal-overlay">
+    <div class="modal-card modal-wide">
+      <div class="modal-card-header">
+        <h2>🐾 CỬA HÀNG THÚ CƯNG & AUTO-DRONE</h2>
+        <button id="btn-close-pet" class="btn-close-panel" onclick="document.getElementById('pet-modal').classList.remove('open')">✖</button>
+      </div>
+      <p class="modal-subtitle">Nhận nuôi các bạn đồng hành trung thành và kích hoạt Drone thu gom tài nguyên tự động!</p>
+      
+      <div style="display:grid; grid-template-columns:repeat(auto-fit, minmax(210px, 1fr)); gap:14px; margin-top:14px;">
+        <div style="background:rgba(217,119,6,0.25); border:2px solid #d97706; border-radius:14px; padding:14px; text-align:center;">
+          <div style="font-size:36px; margin-bottom:6px;">🐕</div>
+          <h3 style="color:#f59e0b; margin:0 0 4px 0;">CHÓ SHIBA INU</h3>
+          <p style="font-size:11px; color:#cbd5e1; margin:0 0 10px 0;">Chạy lon ton theo chủ nhân. Tăng 20% tốc độ di chuyển và hút gỗ rộng 4m!</p>
+          <button class="btn-primary-action" onclick="adoptCompanionPet('shiba')" style="background:#d97706; width:100%;">KÍCH HOẠT SHIBA</button>
+        </div>
+        <div style="background:rgba(147,51,234,0.25); border:2px solid #a855f7; border-radius:14px; padding:14px; text-align:center;">
+          <div style="font-size:36px; margin-bottom:6px;">🐱</div>
+          <h3 style="color:#c084fc; margin:0 0 4px 0;">MÈO CYBER NEON</h3>
+          <p style="font-size:11px; color:#cbd5e1; margin:0 0 10px 0;">Mèo máy mắt laser phát sáng. Tăng 25% tỷ lệ rơi Gỗ Quý và Đá Quý!</p>
+          <button class="btn-primary-action" onclick="adoptCompanionPet('cyber_cat')" style="background:#9333ea; width:100%;">KÍCH HOẠT MÈO CYBER</button>
+        </div>
+        <div style="background:rgba(6,182,212,0.25); border:2px solid #06b6d4; border-radius:14px; padding:14px; text-align:center;">
+          <div style="font-size:36px; margin-bottom:6px;">🛸</div>
+          <h3 style="color:#22d3ee; margin:0 0 4px 0;">AUTO-LOOT DRONE</h3>
+          <p style="font-size:11px; color:#cbd5e1; margin:0 0 10px 0;">Bay lượn trên vai, quét tia laser và tự động hút tiền xu, quặng, gỗ trong bán kính 16m!</p>
+          <button class="btn-primary-action" onclick="adoptCompanionPet('drone')" style="background:#0891b2; width:100%;">BẬT AUTO-DRONE</button>
+        </div>
+      </div>
+    </div>
+  </div>
+
+  <!-- 12. Multi-Tier Supply Chain & Crafting Hub Modal -->
+  <div id="crafting-modal" class="modal-overlay">
+    <div class="modal-card modal-wide">
+      <div class="modal-card-header">
+        <h2>🏭 XƯỞNG CHẾ TÁC & CHUỖI CUNG ỨNG ĐA TẦNG</h2>
+        <button id="btn-close-crafting" class="btn-close-panel" onclick="document.getElementById('crafting-modal').classList.remove('open')">✖</button>
+      </div>
+      <p class="modal-subtitle">Kết hợp nguyên liệu thô và bán thành phẩm để chế tác hàng hóa công nghệ cao xuất khẩu siêu lợi nhuận!</p>
+      
+      <div id="crafting-recipes-grid" style="display:grid; grid-template-columns:repeat(auto-fit, minmax(240px, 1fr)); gap:14px; margin-top:14px;">
+        <!-- Recipes will be injected dynamically -->
+      </div>
+    </div>
+  </div>
+
+  <!-- 13. RPG Talent Tree & Specializations Modal -->
+  <div id="talent-modal" class="modal-overlay">
+    <div class="modal-card modal-wide">
+      <div class="modal-card-header">
+        <h2>🧬 CÂY THIÊN PHÚ & CHUYÊN MÔN HÓA TYCOON</h2>
+        <button id="btn-close-talent" class="btn-close-panel" onclick="document.getElementById('talent-modal').classList.remove('open')">✖</button>
+      </div>
+      <div class="stocks-modal-sub" style="display:flex; justify-content:space-between; align-items:center;">
+        <span>Phân bổ điểm thiên phú tích lũy từ thăng cấp để định hình phong cách chơi riêng!</span>
+        <span class="dividend-badge" style="background:#9333ea; color:#fff;">Điểm thiên phú: <b id="val-talent-points">0 TP</b></span>
+      </div>
+      <div id="talents-grid" style="display:grid; grid-template-columns:repeat(auto-fit, minmax(230px, 1fr)); gap:14px; margin-top:14px;">
+        <!-- Talent nodes will be injected dynamically -->
+      </div>
+    </div>
+  </div>
+
+  <!-- 14. City Hall & Municipal Decrees Modal -->
+  <div id="city-hall-modal" class="modal-overlay">
+    <div class="modal-card modal-wide">
+      <div class="modal-card-header">
+        <h2>🏛️ TÒA THỊ CHÍNH & SẮC LỆNH ĐÔ THỊ</h2>
+        <button id="btn-close-city-hall" class="btn-close-panel" onclick="document.getElementById('city-hall-modal').classList.remove('open')">✖</button>
+      </div>
+      <p class="modal-subtitle">Ban hành chính sách phát triển thành phố, thanh lọc môi trường, nâng cao chất lượng sống và kích cầu thị trường!</p>
+      
+      <div id="city-decrees-grid" style="display:grid; grid-template-columns:repeat(auto-fit, minmax(230px, 1fr)); gap:14px; margin-top:14px;">
+        <!-- City Decrees will be injected dynamically -->
+      </div>
+    </div>
+  </div>
+
+  <!-- 15. Mega Corporation & Syndicates Modal -->
+  <div id="syndicate-modal" class="modal-overlay">
+    <div class="modal-card modal-wide">
+      <div class="modal-card-header">
+        <h2>🌐 TẬP ĐOÀN ĐA NGÀNH & NGHIỆP ĐOÀN ĐẾ CHẾ</h2>
+        <button id="btn-close-syndicate" class="btn-close-panel" onclick="document.getElementById('syndicate-modal').classList.remove('open')">✖</button>
+      </div>
+      <p class="modal-subtitle">Góp quỹ tập đoàn, đấu giá mua độc quyền cơ sở hạ tầng (Cảng, Sân Bay, Cao Tốc) để thu cổ tức thụ động toàn server!</p>
+      
+      <div id="syndicate-content" style="margin-top:14px;">
+        <!-- Corporation overview and monopolies will be injected dynamically -->
+      </div>
+    </div>
+  </div>
+
+  <!-- Modular Scripts in Proper Dependency Order -->
+  <script src="vendor/three.min.js?v=9.19.0"></script>
+  <script src="vendor/OrbitControls.js?v=9.19.0"></script>
+  <script src="vendor/GLTFLoader.js?v=9.19.0"></script>
+  <script src="js/config.js?v=9.19.0"></script>
+  <script src="js/audio.js?v=9.19.0"></script>
+  <script src="js/textures.js?v=9.19.0"></script>
+  <script src="js/ui.js?v=9.19.0"></script>
+  <script src="js/auth.js?v=9.19.0"></script>
+  <script src="js/storage.js?v=9.19.0"></script>
+  <script src="js/player.js?v=9.19.0"></script>
+  <script src="js/world.js?v=9.19.0"></script>
+  <script src="js/vehicles.js?v=9.19.0"></script>
+  <script src="js/model_loader.js?v=9.19.0"></script>
+  <script src="js/multiplayer.js?v=9.19.0"></script>
+  <script src="js/game.js?v=9.19.0"></script>
+
+  <!-- MODAL BẤT ĐỘNG SẢN & NỘI THẤT DINH THỰ CAO CẤP -->
+  <div id="real-estate-modal" class="modal-overlay">
+    <div class="modal-card modal-wide">
+      <div class="modal-card-header">
+        <h2 class="modal-title">🏰 QUẢN LÝ BẤT ĐỘNG SẢN & NỘI THẤT THƯỢNG LƯU</h2>
+        <button id="btn-close-real-estate" class="btn-close-panel" onclick="document.getElementById('real-estate-modal').classList.remove('open')">✖</button>
+      </div>
+      <p class="modal-subtitle">Sở hữu biệt thự nghỉ dưỡng, nâng cấp nội thất hoàng gia, hồi phục thể lực và nhận dòng tiền thụ động!</p>
+
+      <div class="real-estate-grid" style="display:grid; grid-template-columns: repeat(auto-fit, minmax(280px, 1fr)); gap:14px; margin-top:14px;">
+        <!-- Dinh thự ven biển -->
+        <div class="syndicate-card" style="background:#0f172a; border:1px solid #334155; border-radius:10px; padding:16px;">
+          <h3 style="color:#38bdf8; margin:0 0 8px 0;">🏖️ Dinh Thự Maldives Ocean View</h3>
+          <p style="font-size:13px; color:#94a3b8; margin:0 0 10px 0;">Vị trí vàng bờ Đông: Bến du thuyền riêng, hồ bơi vô cực & sân thượng ngắm hoàng hôn.</p>
+          <div style="font-size:13px; color:#e2e8f0; margin-bottom:10px;">
+            Trạng thái: <b id="re-villa-status" style="color:#22c55e;">ĐÃ SỞ HỮU</b><br>
+            Thu nhập thụ động: <b id="re-villa-income" style="color:#facc15;">+$1,200 USD / 2 phút</b>
+          </div>
+          <div style="display:flex; gap:8px;">
+            <button class="btn-primary" style="flex:1; padding:8px;" onclick="window.teleportToHomeVilla()">🚀 Về Nhà</button>
+            <button class="btn-primary" style="flex:1; padding:8px; background:#10b981;" onclick="window.toggleVillaRental()">💼 Cho Thuê</button>
+          </div>
+        </div>
+
+        <!-- Penthouse chung cư -->
+        <div class="syndicate-card" style="background:#0f172a; border:1px solid #334155; border-radius:10px; padding:16px;">
+          <h3 style="color:#f59e0b; margin:0 0 8px 0;">🌆 Sky Penthouse Hoàng Gia</h3>
+          <p style="font-size:13px; color:#94a3b8; margin:0 0 10px 0;">Tầng thượng Khu Căn Hộ Cao Cấp: Kính tràn viền Panorama bao trọn thành phố.</p>
+          <div style="font-size:13px; color:#e2e8f0; margin-bottom:10px;">
+            Giá mua: <b>$25,000 USD + 150 Ván Gỗ</b><br>
+            Trạng thái: <b id="re-penthouse-status" style="color:#38bdf8;">Đang mở bán</b>
+          </div>
+          <button class="btn-primary" style="width:100%; padding:8px; background:#3b82f6;" onclick="window.buySkyPenthouse()">🔑 Mua Penthouse</button>
+        </div>
+
+        <!-- Tiện ích nội thất -->
+        <div class="syndicate-card" style="background:#0f172a; border:1px solid #334155; border-radius:10px; padding:16px;">
+          <h3 style="color:#a855f7; margin:0 0 8px 0;">👑 Tiện Ích Nội Thất Phòng Ngủ</h3>
+          <ul style="font-size:12px; color:#cbd5e1; padding-left:18px; margin:0 0 10px 0; line-height:1.6;">
+            <li>🛏️ <b>Giường Hoàng Gia</b>: Bấm [E] ngủ qua đêm hồi phục x2 Thể lực.</li>
+            <li>🔒 <b>Két Sắt Cá Nhân</b>: Cất giữ tài sản an toàn tuyệt đối.</li>
+            <li>🏆 <b>Tủ Cúp Danh Vọng</b>: Lưu dấu chiến tích tài phiệt.</li>
+          </ul>
+          <button class="btn-primary" style="width:100%; padding:8px; background:#8b5cf6;" onclick="window.hostPartyAtHome()">🎉 Tổ Chức Tiệc Tùng ($500)</button>
+        </div>
+      </div>
+    </div>
+  </div>
+
+  <!-- MODAL HẠM ĐỘI VẬN TẢI HÀNG HẢI & GIAO THƯƠNG QUỐC TẾ -->
+  <div id="maritime-modal" class="modal-overlay">
+    <div class="modal-card modal-wide">
+      <div class="modal-card-header">
+        <h2 class="modal-title">⚓ HẠM ĐỘI HÀNG HẢI & THƯƠNG CẢNG QUỐC TẾ</h2>
+        <button id="btn-close-maritime" class="btn-close-panel" onclick="document.getElementById('maritime-modal').classList.remove('open')">✖</button>
+      </div>
+      <p class="modal-subtitle">Điều phối các tuyến tàu viễn dương xuất khẩu hàng hóa sang Singapore, Rotterdam và Tokyo để thu lợi nhuận nghìn USD!</p>
+
+      <div class="maritime-routes-grid" style="display:grid; grid-template-columns: repeat(auto-fit, minmax(280px, 1fr)); gap:14px; margin-top:14px;">
+        <!-- Tuyến Singapore -->
+        <div class="syndicate-card" style="background:#0f172a; border:1px solid #334155; border-radius:10px; padding:16px;">
+          <h3 style="color:#38bdf8; margin:0 0 8px 0;">🇸🇬 Tuyến Siêu Cảng Singapore</h3>
+          <p style="font-size:13px; color:#94a3b8; margin:0 0 10px 0;">Thời gian hải trình: <b>90s</b> | Mặt hàng chuộng: <b>Ván gỗ ép công nghiệp</b></p>
+          <div style="font-size:13px; color:#e2e8f0; margin-bottom:10px;">
+            Yêu cầu tải trọng: <b>40 Ván Gỗ</b><br>
+            Doanh thu ước tính: <b style="color:#22c55e;">+$8,500 USD</b>
+          </div>
+          <button class="btn-primary" style="width:100%; padding:8px; background:#0284c7;" onclick="window.dispatchMaritimeFleet('singapore')">🚢 Xuất Bến Ngay</button>
+        </div>
+
+        <!-- Tuyến Rotterdam -->
+        <div class="syndicate-card" style="background:#0f172a; border:1px solid #334155; border-radius:10px; padding:16px;">
+          <h3 style="color:#f59e0b; margin:0 0 8px 0;">🇳🇱 Tuyến Đại Cảng Rotterdam</h3>
+          <p style="font-size:13px; color:#94a3b8; margin:0 0 10px 0;">Thời gian hải trình: <b>140s</b> | Mặt hàng chuộng: <b>Dầu thô & Nhiên liệu sạch</b></p>
+          <div style="font-size:13px; color:#e2e8f0; margin-bottom:10px;">
+            Yêu cầu tải trọng: <b>25 Thùng Dầu</b><br>
+            Doanh thu ước tính: <b style="color:#22c55e;">+$14,000 USD</b>
+          </div>
+          <button class="btn-primary" style="width:100%; padding:8px; background:#d97706;" onclick="window.dispatchMaritimeFleet('rotterdam')">🛢️ Xuất Bến Ngay</button>
+        </div>
+
+        <!-- Tuyến Tokyo -->
+        <div class="syndicate-card" style="background:#0f172a; border:1px solid #334155; border-radius:10px; padding:16px;">
+          <h3 style="color:#ec4899; margin:0 0 8px 0;">🇯🇵 Tuyến Thương Cảng Tokyo</h3>
+          <p style="font-size:13px; color:#94a3b8; margin:0 0 10px 0;">Thời gian hải trình: <b>180s</b> | Mặt hàng chuộng: <b>Cá ngừ & Gỗ tuyết tùng</b></p>
+          <div style="font-size:13px; color:#e2e8f0; margin-bottom:10px;">
+            Yêu cầu tải trọng: <b>30 Hải sản cao cấp</b><br>
+            Doanh thu ước tính: <b style="color:#22c55e;">+$22,000 USD</b>
+          </div>
+          <button class="btn-primary" style="width:100%; padding:8px; background:#db2777;" onclick="window.dispatchMaritimeFleet('tokyo')">🐟 Xuất Bến Ngay</button>
+        </div>
+      </div>
+    </div>
+  </div>
+
+  <!-- HIỆU ỨNG GIỌT NƯỚC ĐỌNG TRÊN CAMERA KHI MƯA (MỤC 5) -->
+  <div id="rain-camera-overlay" style="position:fixed; inset:0; pointer-events:none; z-index:99; opacity:0; transition:opacity 0.6s; background:radial-gradient(circle at 20% 30%, rgba(255,255,255,0.22) 2px, transparent 4px), radial-gradient(circle at 65% 75%, rgba(255,255,255,0.18) 3px, transparent 6px), radial-gradient(circle at 80% 25%, rgba(255,255,255,0.15) 2.5px, transparent 5px), radial-gradient(circle at 35% 85%, rgba(255,255,255,0.2) 2px, transparent 4px);"></div>
+</body>
+</html>

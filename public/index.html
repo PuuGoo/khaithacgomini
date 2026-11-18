@@ -1,0 +1,218 @@
+<!DOCTYPE html>
+<html lang="vi">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
+  <title>TimberPort 3D — Đế Chế Gỗ & Cảng Biển Thương Mại</title>
+  <meta name="description" content="Game 3D Stylized Low-Poly PBR quản lý chuỗi cung ứng Gỗ, Xưởng Cưa, Cảng Biển, Vé Mùa, Hợp Đồng Xuất Khẩu và Đế Chế Thương Mại.">
+  <meta property="og:title" content="TimberPort 3D — Đế Chế Gỗ & Cảng Biển Thương Mại">
+  <meta property="og:description" content="Xây dựng đế chế lâm nghiệp và thương cảng 3D hiện đại trên PC và Mobile.">
+  <link rel="preconnect" href="https://fonts.googleapis.com">
+  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+  <link href="https://fonts.googleapis.com/css2?family=JetBrains+Mono:wght@500;600;700&family=Outfit:wght@600;700&family=Plus+Jakarta+Sans:wght@400;500;600;700&display=swap" rel="stylesheet">
+  <link rel="stylesheet" href="/css/style.css?v=2.0.0">
+  <link rel="icon" href="data:image/svg+xml,<svg xmlns=%22http://www.w3.org/2000/svg%22 viewBox=%220 0 100 100%22><text y=%22.9em%22 font-size=%2290%22>🪵</text></svg>">
+  <script type="importmap">
+  {
+    "imports": {
+      "three": "/vendor/three/build/three.module.js",
+      "three/addons/": "/vendor/three/examples/jsm/"
+    }
+  }
+  </script>
+</head>
+<body>
+  <!-- Fullscreen 3D WebGL Viewport -->
+  <div id="webgl-container" aria-label="Cảnh 3D TimberPort"></div>
+
+  <!-- WebGL Unavailable / Context Lost Fallback -->
+  <div id="webgl-fallback" class="webgl-fallback" hidden>
+    <div class="fallback-card">
+      <h2>Không thể khởi tạo đồ họa 3D WebGL</h2>
+      <p>Vui lòng bật tăng tốc phần cứng trong trình duyệt hoặc tải lại trang để tiếp tục trải nghiệm TimberPort 3D.</p>
+      <button type="button" id="btn-retry-webgl" class="btn-primary">Tải lại cảnh 3D</button>
+    </div>
+  </div>
+
+  <!-- World-Space Floating Feedback Container -->
+  <div id="floating-container" aria-hidden="true"></div>
+
+  <!-- Compact 3-Zone Top Bar (PC & Mobile Responsive) -->
+  <header id="top-bar" class="top-bar">
+    <!-- Zone 1: Brand & Branch Status -->
+    <div class="top-zone-brand">
+      <span class="brand-wordmark">TimberPort</span>
+      <span class="meta-sep" aria-hidden="true">·</span>
+      <span id="hud-branch" class="brand-meta">Vịnh Thông Xanh</span>
+      <span class="meta-sep hide-sm" aria-hidden="true">·</span>
+      <span id="hud-level" class="brand-meta tabular-nums hide-sm">Cấp 1</span>
+    </div>
+
+    <!-- Zone 2: Clean Unboxed Resource Strip -->
+    <div class="top-zone-resources tabular-nums" aria-label="Tài nguyên hiện có">
+      <span class="res-item res-cash" title="Tiền mặt">
+        <span class="res-val" id="val-cash">$100</span>
+      </span>
+      <span class="meta-sep" aria-hidden="true">·</span>
+      <span class="res-item" title="Gỗ trong Balo">
+        🪵 <span class="res-val" id="val-logs">0/6</span>
+      </span>
+      <span class="meta-sep" aria-hidden="true">·</span>
+      <span class="res-item" title="Ván xẻ tại xưởng">
+        📦 <span class="res-val" id="val-planks">0</span>
+      </span>
+      <span class="meta-sep hide-xs" aria-hidden="true">·</span>
+      <span class="res-item hide-xs" title="Kiện Pallet xuất khẩu">
+        🏗️ <span class="res-val" id="val-pallets">0</span>
+      </span>
+      <span class="meta-sep hide-sm" aria-hidden="true">·</span>
+      <span class="res-item hide-sm" title="Cá hộp xuất khẩu">
+        🥫 <span class="res-val" id="val-canned">0</span>
+      </span>
+      <span class="meta-sep" aria-hidden="true">·</span>
+      <span class="res-item res-gems" title="Đá quý thương mại">
+        💎 <span class="res-val" id="val-gems">30</span>
+      </span>
+    </div>
+
+    <!-- Zone 3: Primary System Actions -->
+    <div class="top-zone-actions">
+      <button type="button" id="btn-audio" class="top-btn" title="Bật hoặc tắt âm thanh">🔊</button>
+      <button type="button" id="btn-leaderboard" class="top-btn" title="Bảng xếp hạng & Đế chế online">
+        <span>🏆</span>
+        <span class="hide-sm">Xếp hạng</span>
+      </button>
+      <button type="button" id="btn-account" class="top-btn top-btn-accent" title="Tài khoản & Lưu tiến trình">
+        <span>👤</span>
+        <span id="hud-username" class="hide-sm">Chủ tịch</span>
+      </button>
+    </div>
+  </header>
+
+  <!-- Subtle Top-Left Quest & Branch Telemetry Strip -->
+  <button type="button" id="quest-strip" class="quest-strip" title="Nhấn để mở Hợp đồng & Nhiệm vụ">
+    <span class="quest-kicker" id="quest-strip-title">Mục tiêu</span>
+    <span class="meta-sep" aria-hidden="true">·</span>
+    <span class="quest-desc" id="quest-strip-desc">Đốn 6 khúc gỗ đầu tiên</span>
+    <span class="meta-sep" aria-hidden="true">·</span>
+    <span class="quest-progress tabular-nums" id="quest-strip-progress">0/6</span>
+  </button>
+
+  <!-- Top-Right Active Boost / VIP Status Line (Visible only when boost active or VIP > 0) -->
+  <div id="status-strip" class="status-strip" hidden>
+    <span id="status-vip-text">VIP 0</span>
+    <span class="meta-sep" aria-hidden="true">·</span>
+    <span id="status-boost-text" class="tabular-nums">Bình thường</span>
+  </div>
+
+  <!-- Contextual Prompt for Vehicles / Harbor / Saw Hopper -->
+  <button type="button" id="action-prompt" class="action-prompt" hidden>
+    <span class="prompt-key" id="action-prompt-key">E</span>
+    <span id="action-prompt-label">Lái xe</span>
+  </button>
+
+  <!-- Mobile / Pointer Virtual Joystick -->
+  <div id="virtual-joystick-base" aria-hidden="true">
+    <div id="virtual-joystick-stick"></div>
+  </div>
+
+  <!-- Collapsible Bottom Control Dock (Zero Viewport Occlusion) -->
+  <div id="bottom-dock-wrap" class="bottom-dock-wrap">
+    <button type="button" id="btn-toggle-dock" class="dock-toggle-btn" title="Ẩn hoặc hiện thanh điều khiển (Phím H)">
+      ▾ Ẩn bảng
+    </button>
+    <nav id="bottom-dock" class="bottom-dock" aria-label="Điều khiển đế chế">
+      <button type="button" class="dock-btn" data-hub-tab="upgrades">
+        <span class="dock-icon">🏭</span>
+        <span class="dock-label">Xưởng</span>
+      </button>
+      <button type="button" class="dock-btn" data-hub-tab="contracts">
+        <span class="dock-icon">🚢</span>
+        <span class="dock-label">Hợp đồng</span>
+      </button>
+      <button type="button" class="dock-btn" data-hub-tab="season">
+        <span class="dock-icon">🎫</span>
+        <span class="dock-label">Vé Mùa</span>
+        <span id="badge-season" class="dock-count tabular-nums" hidden>0</span>
+      </button>
+      <button type="button" class="dock-btn" data-hub-tab="locker">
+        <span class="dock-icon">🚘</span>
+        <span class="dock-label">Tủ đồ</span>
+      </button>
+      <button type="button" class="dock-btn dock-btn-vip" data-hub-tab="vip">
+        <span class="dock-icon">👑</span>
+        <span class="dock-label">VIP</span>
+      </button>
+      <button type="button" id="btn-boost" class="dock-btn dock-btn-boost" title="Kích hoạt Rìu Vàng & Tăng Tốc (Phím R)">
+        <span class="dock-icon">⚡</span>
+        <span class="dock-label" id="btn-boost-label">Tăng tốc</span>
+      </button>
+    </nav>
+  </div>
+
+  <!-- Unified Commercial Empire Hub Modal (5 Organized Tabs) -->
+  <div id="hub-modal" class="modal-backdrop" role="dialog" aria-modal="true" aria-labelledby="hub-title" hidden>
+    <div class="modal-panel modal-panel-wide">
+      <div class="modal-header">
+        <div>
+          <h2 id="hub-title" class="modal-title">Trung Tâm Điều Hành TimberPort</h2>
+          <p class="modal-subtitle" id="hub-subtitle">Quản lý dây chuyền sản xuất, hợp đồng cảng biển, vé mùa và trang bị cao cấp.</p>
+        </div>
+        <button type="button" id="btn-close-hub" class="modal-close" aria-label="Đóng">✕</button>
+      </div>
+
+      <div class="hub-tabs" role="tablist">
+        <button type="button" class="hub-tab active" data-tab="upgrades" role="tab">🏭 Nâng cấp Xưởng</button>
+        <button type="button" class="hub-tab" data-tab="contracts" role="tab">🚢 Hợp đồng & Chi nhánh</button>
+        <button type="button" class="hub-tab" data-tab="season" role="tab">🎫 Vé Mùa & Nhiệm vụ</button>
+        <button type="button" class="hub-tab" data-tab="locker" role="tab">🚘 Tủ đồ & Siêu xe</button>
+        <button type="button" class="hub-tab" data-tab="vip" role="tab">👑 Cửa hàng VIP</button>
+      </div>
+
+      <div id="hub-body" class="hub-body">
+        <!-- Rendered dynamically by ui.js -->
+      </div>
+    </div>
+  </div>
+
+  <!-- Account & Save Management Modal -->
+  <div id="account-modal" class="modal-backdrop" role="dialog" aria-modal="true" aria-labelledby="account-modal-title" hidden>
+    <div class="modal-panel">
+      <div class="modal-header">
+        <div>
+          <h2 id="account-modal-title" class="modal-title">Tài Khoản & Đế Chế</h2>
+          <p class="modal-subtitle">Đồng bộ dữ liệu lên máy chủ và tùy chỉnh tên Đế Chế của bạn.</p>
+        </div>
+        <button type="button" id="btn-close-account" class="modal-close" aria-label="Đóng">✕</button>
+      </div>
+
+      <div id="account-body" class="hub-body">
+        <!-- Rendered dynamically by ui.js -->
+      </div>
+    </div>
+  </div>
+
+  <!-- Leaderboard & Multiplayer Modal -->
+  <div id="leaderboard-modal" class="modal-backdrop" role="dialog" aria-modal="true" aria-labelledby="lb-modal-title" hidden>
+    <div class="modal-panel">
+      <div class="modal-header">
+        <div>
+          <h2 id="lb-modal-title" class="modal-title">Bảng Xếp Hạng Thương Gia</h2>
+          <p class="modal-subtitle" id="lb-online-summary">Đang kết nối sảnh trực tuyến...</p>
+        </div>
+        <button type="button" id="btn-close-lb" class="modal-close" aria-label="Đóng">✕</button>
+      </div>
+
+      <div id="leaderboard-body" class="hub-body">
+        <!-- Rendered dynamically by ui.js -->
+      </div>
+    </div>
+  </div>
+
+  <!-- Toast Stack -->
+  <div id="toast-container" class="toast-container" aria-live="polite"></div>
+
+  <!-- Application Entry Point (Modern ES Modules) -->
+  <script type="module" src="/js/engine.js?v=2.0.0"></script>
+</body>
+</html>
