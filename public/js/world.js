@@ -19,6 +19,7 @@ import {
   createHarborStructure,
   createLogMesh,
   createPlankMesh,
+  syncBuildingEvolution,
   disposeObject3D
 } from './models.js';
 import { gameState, getUpgradeCost, UPGRADE_CATALOG } from './state.js';
@@ -53,6 +54,7 @@ export class WorldManager {
     this.sawmill = null;
     this.harbor = null;
     this.questRing = null;
+    this.currentQuestTarget = ZONES.hopper;
 
     this.buildTerrainAndOcean();
     this.buildPerimeterNature();
@@ -227,6 +229,10 @@ export class WorldManager {
     this.harbor = createHarborStructure();
     this.harbor.position.set(2, 0, 24);
     this.worldGroup.add(this.harbor);
+  }
+
+  syncEvolution(sawTier, harborTier) {
+    syncBuildingEvolution(this.sawmill, this.harbor, sawTier, harborTier);
   }
 
   buildHarvestableForest() {
@@ -478,6 +484,9 @@ export class WorldManager {
     if (this.harbor && this.harbor.userData.ship) {
       this.harbor.userData.ship.position.y = 0.08 + Math.sin(elapsed * 1.4) * 0.14;
       this.harbor.userData.hoistedCrate.position.y = 4.0 + Math.sin(elapsed * 1.1) * 0.6;
+      if (this.harbor.userData.tier2Group?.visible && this.harbor.userData.lhBeacon) {
+        this.harbor.userData.lhBeacon.rotation.y += dt * 1.6;
+      }
     }
 
     for (const tree of this.trees) {
@@ -537,6 +546,7 @@ export class WorldManager {
         const nearTree = this.trees.find((t) => t.alive);
         if (nearTree) target = nearTree.pos;
       }
+      this.currentQuestTarget = target;
       this.questRing.position.set(target.x, 0.06, target.z);
       const pulseScale = 1 + Math.sin(elapsed * 4) * 0.1;
       this.questRing.scale.setScalar(pulseScale);

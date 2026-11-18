@@ -10,11 +10,18 @@ import {
   gameState,
   VEHICLES,
   UPGRADE_CATALOG,
+  MARKET_COMMODITIES,
+  marketState,
+  updateMarketPrices,
+  calculateOfflineEarnings,
   getBackpackCapacity,
   getActiveBranch,
   getSkinData,
   getRevenueMultiplier,
   getUpgradeCost,
+  getSawmillVisualTier,
+  getHarborVisualTier,
+  recordRevenue,
   addVipXp,
   addSeasonXp,
   advanceDailyQuest,
@@ -126,7 +133,8 @@ class TimberPortEngine {
     }
     this.isSoftwareGl = this.hw.isSoftwareGl;
 
-    loadGameLocal();
+    const prevUpdatedAt = loadGameLocal();
+    const offlineData = calculateOfflineEarnings(prevUpdatedAt);
     this.activeProfile = this.resolveProfile(gameState.graphicsQuality || 'auto');
 
     this.rafId = 0;
@@ -136,10 +144,18 @@ class TimberPortEngine {
     this.fpsAccum = 0;
     this.currentFps = 60;
 
+    // Pre-allocated daylight & atmosphere colors (Zero GC inside render loop)
+    this._daySkyBase = new THREE.Color('#8ecae6');
+    this._dayFogBase = new THREE.Color('#bfe3f2');
+    this._warmSunTint = new THREE.Color('#f59e0b');
+    this._skyGoldenColor = new THREE.Color();
+    this._fogGoldenColor = new THREE.Color();
+
     this.initThree();
 
     this.world = new WorldManager(this.scene, { lowSpec: this.activeProfile === 'low' });
     this.applyBranchAtmosphere(getActiveBranch());
+    this.world.syncEvolution(getSawmillVisualTier(), getHarborVisualTier());
 
     // Pre-allocated math vectors (Zero GC inside render loop)
     this._vecForward = new THREE.Vector3();
@@ -214,9 +230,11 @@ class TimberPortEngine {
       onContextAction: () => this.handleContextAction(),
       onUpgrade: (id) => this.handleUpgradeEffect(id),
       onDeliverContract: (instant) => this.handleDeliverContract(instant),
+      onSellCommodity: (key) => this.sellCommodityAtMarket(key),
       onBranchChange: (br) => {
         this.applyBranchAtmosphere(br);
         this.rebuildWorkforce();
+        this.world.syncEvolution(getSawmillVisualTier(), getHarborVisualTier());
       },
       onSkinChange: () => {
         updatePlayerModelSkin(this.playerModel, getSkinData(), gameState.vipLevel);
@@ -234,9 +252,12 @@ class TimberPortEngine {
     this.connectMultiplayer();
     this.syncSawmillVisuals();
     this.ui.refreshHUD();
+    this.ui.showWelcomeOverlay(offlineData, this.getGraphicsInfo(), (data) => this.applyOfflineEarnings(data));
 
     this.autoSaveAccum = 0;
     this.hudSyncAccum = 0;
+    this.marketAccum = 0;
+    this.minimapAccum = 0;
     this.lastTime = performance.now();
     this.lastRenderTime = this.lastTime;
     this.elapsed = 0;
@@ -484,7 +505,15 @@ class TimberPortEngine {
   }
 
   applyBranchAtmosphere(branch) {
-    this.scene.background = new THREE.Color(branch.skyColor);
+    this._daySkyBase.set(branch.skyColor);
+    this._dayFogBase.set(branch.fogColor);
+    this._skyGoldenColor.copy(this._daySkyBase).lerp(this._warmSunTint, 0.25);
+    this._fogGoldenColor.copy(this._dayFogBase).lerp(this._warmSunTint, 0.22);
+    if (!this.scene.background || !(this.scene.background instanceof THREE.Color)) {
+      this.scene.background = new THREE.Color(branch.skyColor);
+    } else {
+      this.scene.background.copy(this._daySkyBase);
+    }
     this.scene.fog = new THREE.FogExp2(branch.fogColor, 0.0072);
     this.world?.applyBranchTheme(branch);
   }
@@ -585,6 +614,7 @@ class TimberPortEngine {
     if (id === 'lumberjacks' || id === 'autoForklifts' || id === 'fishingBoats') {
       this.rebuildWorkforce();
     }
+    this.world.syncEvolution(getSawmillVisualTier(), getHarborVisualTier());
     for (const pad of this.world.arcadePads) {
       this.world.refreshArcadePad(pad, true);
     }
@@ -790,6 +820,7 @@ class TimberPortEngine {
 
     earned = Math.round(earned);
     gameState.cash += earned;
+    recordRevenue('sawmill', earned);
     gameState.xp += Math.min(80, units * 2);
     if (gameState.xp >= gameState.level * 120) gameState.level++;
     addSeasonXp(Math.min(25, Math.ceil(units / 2)));
@@ -799,6 +830,41 @@ class TimberPortEngine {
     this.syncSawmillVisuals();
     saveGameServer();
     this.ui.refreshHUD();
+  }
+
+  applyOfflineEarnings(data) {
+    if (!data || data.cash <= 0) return;
+    gameState.cash += data.cash;
+    if (data.planks > 0) gameState.planks += data.planks;
+    recordRevenue('offline', data.cash);
+    sound.playCash();
+    this.syncSawmillVisuals();
+    this.ui.refreshHUD();
+    this.ui.toast(`💼 Nhận +$${data.cash.toLocaleString()} thu nhập ngoại tuyến!`);
+    saveGameServer();
+  }
+
+  sellCommodityAtMarket(key) {
+    const def = MARKET_COMMODITIES.find((c) => c.key === key);
+    const entry = marketState.items[key];
+    const qty = Math.floor(gameState[key] || 0);
+    if (!def || !entry || qty <= 0) return false;
+
+    const unitPrice = Math.round(def.basePrice * entry.mult * getRevenueMultiplier());
+    const earned = qty * unitPrice;
+    gameState[key] = 0;
+    gameState.cash += earned;
+    recordRevenue('market', earned);
+    gameState.xp += Math.min(90, qty * 2);
+    if (gameState.xp >= gameState.level * 120) gameState.level++;
+    addSeasonXp(Math.min(35, Math.max(5, Math.ceil(qty / 2))));
+    sound.playCash();
+    this.spawnWorldText(ZONES.harborExport, `+$${earned.toLocaleString()}`, 'cash');
+    this.ui.toast(`📊 Đã bán ${qty} ${def.unit} ${def.name} thu về +$${earned.toLocaleString()}!`);
+    this.syncSawmillVisuals();
+    saveGameServer();
+    this.ui.refreshHUD();
+    return true;
   }
 
   handleDeliverContract(instant = false) {
@@ -839,6 +905,7 @@ class TimberPortEngine {
     ) {
       const cashGain = Math.round(ct.rewardCash * getRevenueMultiplier());
       gameState.cash += cashGain;
+      recordRevenue('contracts', cashGain);
       gameState.gems += ct.rewardGems;
       gameState.contractsCompleted += 1;
       gameState.xp += 80;
@@ -849,6 +916,7 @@ class TimberPortEngine {
       this.spawnWorldText(ZONES.harborExport, `+$${cashGain.toLocaleString()} · +${ct.rewardGems}💎`, 'cash');
       this.ui.toast(`🚢 Hoàn thành ${ct.title}! Nhận +$${cashGain.toLocaleString()} & +${ct.rewardGems} 💎`);
       generateNextContract();
+      this.world.syncEvolution(getSawmillVisualTier(), getHarborVisualTier());
     }
 
     this.syncSawmillVisuals();
@@ -904,6 +972,14 @@ class TimberPortEngine {
 
     this.world.update(dt, this.elapsed, gameState.sawmillBuffer > 0);
 
+    // Subtle Golden-Hour Daylight Cycle (hardware-gated OFF on <8GB RAM low-spec laptops)
+    if (this.activeProfile !== 'low' && this.scene.background instanceof THREE.Color && this.scene.fog) {
+      const goldenBlend = (0.5 - 0.5 * Math.cos(this.elapsed * 0.045)) * 0.45;
+      this.scene.background.lerpColors(this._daySkyBase, this._skyGoldenColor, goldenBlend);
+      this.scene.fog.color.lerpColors(this._dayFogBase, this._fogGoldenColor, goldenBlend);
+      this.sunLight.intensity = 2.25 - goldenBlend * 0.25;
+    }
+
     this.hudSyncAccum += dt;
     if (this.hudSyncAccum >= 0.14) {
       this.hudSyncAccum = 0;
@@ -911,6 +987,24 @@ class TimberPortEngine {
       if (prompt) this.ui.setPrompt(true, prompt.key, prompt.label);
       else this.ui.setPrompt(false);
       this.ui.refreshHUD();
+    }
+
+    this.minimapAccum += dt;
+    if (this.minimapAccum >= 0.16) {
+      this.minimapAccum = 0;
+      this.ui.renderMinimap(this.playerPos, this.playerYaw, this.world.trees, this.world.currentQuestTarget);
+    }
+
+    this.marketAccum += dt;
+    if (this.marketAccum >= 18) {
+      this.marketAccum = 0;
+      const surged = updateMarketPrices();
+      if (surged.length) {
+        this.ui.toast(`📈 Sàn gỗ tăng mạnh: ${surged.join(', ')}`);
+      }
+      if (!this.ui.els.hubModal.hidden && this.ui.activeTab === 'contracts') {
+        this.ui.renderHub();
+      }
     }
 
     this.autoSaveAccum += dt;
@@ -1160,6 +1254,7 @@ class TimberPortEngine {
           gameState.pallets -= 1;
           const earn = Math.round(115 * mult);
           gameState.cash += earn;
+          recordRevenue('sawmill', earn);
           sound.playCash();
           this.spawnWorldText(ZONES.sawOutput, `+$${earn}`, 'cash');
           this.syncSawmillVisuals();
@@ -1168,6 +1263,7 @@ class TimberPortEngine {
           gameState.planks -= batch;
           const earn = Math.round(24 * batch * mult);
           gameState.cash += earn;
+          recordRevenue('sawmill', earn);
           sound.playCash();
           this.spawnWorldText(ZONES.sawOutput, `+$${earn}`, 'cash');
           this.syncSawmillVisuals();
@@ -1218,6 +1314,7 @@ class TimberPortEngine {
         gameState.cannedFish -= 1;
         const earn = Math.round(75 * getRevenueMultiplier());
         gameState.cash += earn;
+        recordRevenue('fishery', earn);
         sound.playCash();
         this.spawnWorldText(ZONES.canneryDock, `+$${earn} 🥫`, 'cash');
       }
@@ -1314,6 +1411,7 @@ class TimberPortEngine {
         if (f.toHarbor && f.carrying) {
           const earn = Math.round(68 * getRevenueMultiplier());
           gameState.cash += earn;
+          recordRevenue('sawmill', earn);
           f.carrying = false;
         } else if (!f.toHarbor && gameState.planks > 0) {
           gameState.planks -= 1;

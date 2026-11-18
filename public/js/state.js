@@ -1,6 +1,6 @@
 /**
- * TimberPort 3D — Commercial Game State, Progression Catalogs & Persistence
- * Zero external dependencies, unified supply chain + retention + VIP economy
+ * TimberPort 3D — Commercial Game State, Market Economy, Retention & Persistence
+ * Zero external dependencies, unified supply chain + 7-day streak + offline income + market + achievements
  */
 
 export const API_BASE = window.location.protocol === 'file:' ? 'http://127.0.0.1:3000' : '';
@@ -122,6 +122,57 @@ export const SEASON_PASS_TIERS = Array.from({ length: 12 }, (_, idx) => {
   };
 });
 
+export const DAILY_REWARDS = [
+  { day: 1, title: 'Ngày 1', type: 'cash', amount: 500, label: '+$500 Cash', icon: '💵' },
+  { day: 2, title: 'Ngày 2', type: 'gems', amount: 15, label: '+15 💎', icon: '💎' },
+  { day: 3, title: 'Ngày 3', type: 'cash', amount: 1400, label: '+$1,400 Cash', icon: '💵' },
+  { day: 4, title: 'Ngày 4', type: 'gems', amount: 25, label: '+25 💎', icon: '💎' },
+  { day: 5, title: 'Ngày 5', type: 'cash', amount: 3200, label: '+$3,200 Cash', icon: '💰' },
+  { day: 6, title: 'Ngày 6', type: 'gems', amount: 40, label: '+40 💎', icon: '💎' },
+  { day: 7, title: 'Ngày 7', type: 'gems', amount: 85, label: '+85 💎 · +120 VIP', icon: '👑' }
+];
+
+export const ACHIEVEMENTS = [
+  { id: 'ach_logs_50', title: 'Tiều Phu Chăm Chỉ', desc: 'Đốn tổng cộng 50 khúc gỗ tại rừng.', statKey: 'totalLogsCut', target: 50, rewardCash: 600, rewardGems: 12 },
+  { id: 'ach_logs_300', title: 'Vua Rừng Nguyên Sinh', desc: 'Đốn tổng cộng 300 khúc gỗ.', statKey: 'totalLogsCut', target: 300, rewardCash: 3500, rewardGems: 35 },
+  { id: 'ach_saw_120', title: 'Chủ Xưởng Công Nghiệp', desc: 'Xẻ thành công 120 thanh ván gỗ.', statKey: 'totalPlanksSawn', target: 120, rewardCash: 1800, rewardGems: 20 },
+  { id: 'ach_contract_1', title: 'Chuyến Tàu Vượt Biển', desc: 'Hoàn thành 1 hợp đồng xuất khẩu cảng.', statKey: 'contractsCompleted', target: 1, rewardCash: 1200, rewardGems: 18 },
+  { id: 'ach_contract_5', title: 'Đế Chế Hàng Hải', desc: 'Hoàn thành 5 hợp đồng xuất khẩu.', statKey: 'contractsCompleted', target: 5, rewardCash: 9000, rewardGems: 65 },
+  { id: 'ach_cash_15k', title: 'Triệu Phú Thương Cảng', desc: 'Tích lũy $15,000 tiền mặt trong két.', statKey: 'cash', target: 15000, rewardCash: 2500, rewardGems: 40 }
+];
+
+export const MARKET_COMMODITIES = [
+  { key: 'planks', name: 'Ván Gỗ Xẻ', unit: 'thanh', basePrice: 24, color: '#f59e0b' },
+  { key: 'pallets', name: 'Kiện Pallet Đai Thép', unit: 'kiện', basePrice: 115, color: '#10b981' },
+  { key: 'cannedFish', name: 'Cá Hộp Xuất Khẩu', unit: 'hộp', basePrice: 75, color: '#38bdf8' }
+];
+
+export const marketState = {
+  lastUpdateMs: Date.now(),
+  items: {
+    planks: { mult: 1.05, history: [0.96, 1.0, 1.02, 0.99, 1.04, 1.08, 1.03, 1.05] },
+    pallets: { mult: 1.12, history: [1.0, 0.98, 1.05, 1.09, 1.14, 1.1, 1.08, 1.12] },
+    cannedFish: { mult: 0.98, history: [1.04, 1.01, 0.97, 0.95, 0.99, 1.02, 1.0, 0.98] }
+  }
+};
+
+export function updateMarketPrices() {
+  const surged = [];
+  for (const c of MARKET_COMMODITIES) {
+    const entry = marketState.items[c.key];
+    // Mean-reverting stochastic step within [0.82, 1.48]
+    const pull = (1.08 - entry.mult) * 0.25;
+    const shock = (Math.random() - 0.48) * 0.22;
+    const next = Math.max(0.82, Math.min(1.48, Number((entry.mult + pull + shock).toFixed(2))));
+    entry.mult = next;
+    entry.history.push(next);
+    if (entry.history.length > 12) entry.history.shift();
+    if (next >= 1.25) surged.push(`${c.name} (+${Math.round((next - 1) * 100)}%)`);
+  }
+  marketState.lastUpdateMs = Date.now();
+  return surged;
+}
+
 export function createDefaultState() {
   return {
     playerId: 'player_' + Math.random().toString(36).slice(2, 8),
@@ -172,7 +223,7 @@ export function createDefaultState() {
       timeLeft: 240
     },
 
-    // Season Pass & Daily Quests
+    // Season Pass, Daily Quests & 7-Day Streak
     seasonXp: 0,
     seasonPremium: false,
     claimedFreeTiers: [],
@@ -182,6 +233,18 @@ export function createDefaultState() {
       { id: 'dq_saw', title: 'Xẻ 20 thanh ván tại xưởng', key: 'planksSawn', progress: 0, target: 20, rewardCash: 900, rewardGems: 12, rewardXp: 70, claimed: false },
       { id: 'dq_export', title: 'Xuất khẩu 15 hàng tại cảng', key: 'goodsExported', progress: 0, target: 15, rewardCash: 1600, rewardGems: 18, rewardXp: 100, claimed: false }
     ],
+    loginStreakDay: 0,
+    lastCheckInDate: '',
+
+    // Achievements & Revenue Analytics
+    claimedAchievements: [],
+    revenueStats: {
+      sawmill: 0,
+      contracts: 0,
+      fishery: 0,
+      market: 0,
+      offline: 0
+    },
 
     // Cosmetics & Fleet
     equippedSkin: 'classic',
@@ -242,6 +305,28 @@ export function getUpgradeCost(item) {
   return cost;
 }
 
+export function getSawmillVisualTier() {
+  if ((gameState.sawSpeedTier || 1) >= 5 || (gameState.plankValueTier || 1) >= 4) return 3;
+  if ((gameState.sawSpeedTier || 1) >= 3 || (gameState.conveyorTier || 0) >= 1) return 2;
+  return 1;
+}
+
+export function getHarborVisualTier() {
+  if ((gameState.contractsCompleted || 0) >= 5 || (gameState.unlockedBranches?.length || 1) >= 2) return 3;
+  if ((gameState.contractsCompleted || 0) >= 2 || (gameState.fishingBoats || 0) >= 2) return 2;
+  return 1;
+}
+
+export function recordRevenue(source, amount) {
+  if (!amount || amount <= 0) return;
+  if (!gameState.revenueStats) {
+    gameState.revenueStats = { sawmill: 0, contracts: 0, fishery: 0, market: 0, offline: 0 };
+  }
+  if (source in gameState.revenueStats) {
+    gameState.revenueStats[source] += Math.round(amount);
+  }
+}
+
 export function addVipXp(amount) {
   gameState.vipXp = (gameState.vipXp || 0) + amount;
   let newLv = 0;
@@ -265,6 +350,58 @@ export function advanceDailyQuest(key, delta = 1) {
       q.progress = Math.min(q.target, q.progress + delta);
     }
   }
+}
+
+export function todayIsoDate() {
+  return new Date().toISOString().slice(0, 10);
+}
+
+export function canClaimDailyCheckIn() {
+  return gameState.lastCheckInDate !== todayIsoDate();
+}
+
+export function claimDailyCheckIn() {
+  if (!canClaimDailyCheckIn()) return null;
+  const nextDay = ((gameState.loginStreakDay || 0) % 7) + 1;
+  const reward = DAILY_REWARDS[nextDay - 1];
+  gameState.loginStreakDay = nextDay;
+  gameState.lastCheckInDate = todayIsoDate();
+  if (reward.type === 'gems') gameState.gems += reward.amount;
+  else {
+    gameState.cash += reward.amount;
+    recordRevenue('offline', reward.amount);
+  }
+  if (nextDay === 7) addVipXp(120);
+  addSeasonXp(40);
+  return reward;
+}
+
+export function isAchievementReady(ach) {
+  const claimed = gameState.claimedAchievements || [];
+  if (claimed.includes(ach.id)) return false;
+  return (gameState[ach.statKey] || 0) >= ach.target;
+}
+
+export function getReadyAchievementCount() {
+  return ACHIEVEMENTS.filter((a) => isAchievementReady(a)).length;
+}
+
+export function calculateOfflineEarnings(previousUpdatedAt) {
+  if (!previousUpdatedAt) return null;
+  const prevMs = Date.parse(previousUpdatedAt);
+  if (Number.isNaN(prevMs)) return null;
+  const elapsedSec = Math.floor((Date.now() - prevMs) / 1000);
+  if (elapsedSec < 20) return null;
+
+  const cappedSec = Math.min(4 * 3600, elapsedSec);
+  const workforceScore = (gameState.lumberjacks || 0) * 1.4
+    + (gameState.autoForklifts || 0) * 2.5
+    + Math.max(1, gameState.fishingBoats || 0) * 1.1;
+
+  const mult = getRevenueMultiplier();
+  const cash = Math.max(25, Math.round((cappedSec / 12) * workforceScore * mult));
+  const planks = Math.min(40, Math.floor((cappedSec / 45) * Math.max(1, gameState.lumberjacks || 0)));
+  return { seconds: cappedSec, cash, planks };
 }
 
 export function generateNextContract() {
@@ -332,14 +469,21 @@ export async function saveGameServer(immediate = false) {
 export function loadGameLocal() {
   try {
     const raw = localStorage.getItem('timberport_save_v2');
-    if (!raw) return false;
+    if (!raw) return null;
     const parsed = JSON.parse(raw);
     if (parsed && typeof parsed === 'object') {
+      const prevUpdatedAt = parsed.updatedAt || null;
       Object.assign(gameState, parsed);
-      return true;
+      if (!gameState.revenueStats) {
+        gameState.revenueStats = { sawmill: 0, contracts: 0, fishery: 0, market: 0, offline: 0 };
+      }
+      if (!Array.isArray(gameState.claimedAchievements)) {
+        gameState.claimedAchievements = [];
+      }
+      return prevUpdatedAt;
     }
   } catch (e) {}
-  return false;
+  return null;
 }
 
 export async function authRequest(endpoint, payload) {

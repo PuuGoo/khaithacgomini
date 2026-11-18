@@ -13,10 +13,20 @@ import {
   VIP_TIERS,
   GEM_PACKS,
   SEASON_PASS_TIERS,
+  DAILY_REWARDS,
+  ACHIEVEMENTS,
+  MARKET_COMMODITIES,
+  marketState,
   getBackpackCapacity,
   getActiveBranch,
   getRevenueMultiplier,
   getUpgradeCost,
+  getSawmillVisualTier,
+  getHarborVisualTier,
+  canClaimDailyCheckIn,
+  claimDailyCheckIn,
+  isAchievementReady,
+  getReadyAchievementCount,
   addVipXp,
   addSeasonXp,
   generateNextContract,
@@ -56,6 +66,17 @@ export class UIManager {
       btnBoost: document.getElementById('btn-boost'),
       btnBoostLabel: document.getElementById('btn-boost-label'),
       badgeSeason: document.getElementById('badge-season'),
+      badgeAch: document.getElementById('badge-ach'),
+      minimapWrap: document.getElementById('minimap-wrap'),
+      minimapToggle: document.getElementById('btn-toggle-minimap'),
+      minimapCanvas: document.getElementById('minimap-canvas'),
+      minimapCtx: document.getElementById('minimap-canvas')?.getContext('2d') || null,
+      welcomeOverlay: document.getElementById('welcome-overlay'),
+      welcomeEmpire: document.getElementById('welcome-empire'),
+      welcomeStats: document.getElementById('welcome-stats'),
+      welcomeOfflineBox: document.getElementById('welcome-offline-box'),
+      welcomeOfflineDesc: document.getElementById('welcome-offline-desc'),
+      welcomeHwNote: document.getElementById('welcome-hw-note'),
       hubModal: document.getElementById('hub-modal'),
       hubBody: document.getElementById('hub-body'),
       accountModal: document.getElementById('account-modal'),
@@ -66,6 +87,12 @@ export class UIManager {
       toastContainer: document.getElementById('toast-container'),
       floatingContainer: document.getElementById('floating-container')
     };
+
+    this.minimapCollapsed = window.innerWidth <= 960;
+    if (this.minimapCollapsed && this.els.minimapWrap) {
+      this.els.minimapWrap.classList.add('is-collapsed');
+      if (this.els.minimapToggle) this.els.minimapToggle.textContent = '▴';
+    }
 
     this.bindEvents();
     this.refreshHUD();
@@ -79,6 +106,7 @@ export class UIManager {
     });
 
     this.els.dockToggle?.addEventListener('click', () => this.toggleDock());
+    this.els.minimapToggle?.addEventListener('click', () => this.toggleMinimap());
 
     document.querySelectorAll('[data-hub-tab]').forEach((btn) => {
       btn.addEventListener('click', () => this.openHub(btn.dataset.hubTab));
@@ -129,10 +157,134 @@ export class UIManager {
     this.dockCollapsed = !this.dockCollapsed;
     this.els.dockWrap.classList.toggle('is-collapsed', this.dockCollapsed);
     this.els.dockToggle.textContent = this.dockCollapsed ? '▴ Hiện bảng' : '▾ Ẩn bảng';
+    this.els.minimapWrap?.classList.toggle('is-hidden-hud', this.dockCollapsed);
+  }
+
+  toggleMinimap() {
+    this.minimapCollapsed = !this.minimapCollapsed;
+    this.els.minimapWrap?.classList.toggle('is-collapsed', this.minimapCollapsed);
+    if (this.els.minimapToggle) {
+      this.els.minimapToggle.textContent = this.minimapCollapsed ? '▴' : '▾';
+    }
+  }
+
+  showWelcomeOverlay(offlineData, gfxInfo, onClaimOffline) {
+    if (!this.els.welcomeOverlay) return;
+    const branch = getActiveBranch();
+    this.els.welcomeEmpire.textContent = gameState.empireName || 'TimberPort Empire';
+    this.els.welcomeStats.textContent = `Cấp ${gameState.level} · ${branch.name} · $${Math.floor(gameState.cash).toLocaleString()} · ${gameState.gems} 💎`;
+
+    if (offlineData && offlineData.cash > 0) {
+      const mins = Math.max(1, Math.round(offlineData.seconds / 60));
+      const timeText = mins >= 60 ? `${Math.floor(mins / 60)}g ${mins % 60}p` : `${mins} phút`;
+      this.els.welcomeOfflineBox.hidden = false;
+      this.els.welcomeOfflineDesc.textContent = `+$${offlineData.cash.toLocaleString()} Cash${offlineData.planks > 0 ? ` · +${offlineData.planks} Ván gỗ` : ''} (${timeText} ngoại tuyến)`;
+    } else {
+      this.els.welcomeOfflineBox.hidden = true;
+    }
+
+    if (gfxInfo && this.els.welcomeHwNote) {
+      this.els.welcomeHwNote.textContent = `🛡️ Đồ họa: ${gfxInfo.profileLabel} (${gfxInfo.reason})`;
+    }
+
+    let claimed = false;
+    const finishWelcome = (openHubTab = null) => {
+      this.els.welcomeOverlay.hidden = true;
+      if (!claimed && offlineData && offlineData.cash > 0 && onClaimOffline) {
+        claimed = true;
+        onClaimOffline(offlineData);
+      }
+      if (openHubTab) {
+        this.openHub(openHubTab);
+      }
+    };
+
+    const btnPlay = document.getElementById('btn-welcome-play');
+    const btnHub = document.getElementById('btn-welcome-hub');
+    if (btnPlay) btnPlay.onclick = () => finishWelcome(null);
+    if (btnHub) btnHub.onclick = () => finishWelcome(canClaimDailyCheckIn() ? 'season' : 'contracts');
+    this.els.welcomeOverlay.hidden = false;
+  }
+
+  renderMinimap(playerPos, playerYaw, trees, questTarget) {
+    const ctx = this.els.minimapCtx;
+    if (!ctx || this.minimapCollapsed || this.dockCollapsed) return;
+
+    const w = 148;
+    const h = 148;
+    const toMapX = (wx) => ((wx + 46) / 92) * w;
+    const toMapY = (wz) => ((wz + 42) / 84) * h;
+
+    // Terrain & Ocean
+    ctx.fillStyle = '#183624';
+    ctx.fillRect(0, 0, w, h);
+
+    const beachY = toMapY(22);
+    ctx.fillStyle = '#a38954';
+    ctx.fillRect(0, beachY, w, toMapY(26) - beachY);
+
+    ctx.fillStyle = '#0c4a6e';
+    ctx.fillRect(0, toMapY(26), w, h - toMapY(26));
+
+    // Asphalt roads
+    ctx.fillStyle = '#334155';
+    ctx.fillRect(toMapX(-25), toMapY(-6.5), toMapX(21) - toMapX(-25), 9);
+    ctx.fillRect(toMapX(-1), toMapY(-6), 10, toMapY(26) - toMapY(-6));
+
+    // Sawmill building & Harbor Pier
+    ctx.fillStyle = '#d97706';
+    ctx.fillRect(toMapX(-6), toMapY(-19), 26, 18);
+    ctx.fillStyle = '#92623a';
+    ctx.fillRect(toMapX(-11), toMapY(24.5), 42, 22);
+    ctx.fillStyle = '#0ea5e9';
+    ctx.fillRect(toMapX(2), toMapY(29), 18, 9);
+
+    // Harvestable alive trees
+    if (trees && trees.length) {
+      ctx.fillStyle = '#4ade80';
+      for (const t of trees) {
+        if (!t.alive) continue;
+        ctx.fillRect(toMapX(t.pos.x) - 1.5, toMapY(t.pos.z) - 1.5, 3, 3);
+      }
+    }
+
+    // Active quest target beacon ring
+    if (questTarget) {
+      const qx = toMapX(questTarget.x);
+      const qy = toMapY(questTarget.z);
+      ctx.strokeStyle = '#facc15';
+      ctx.lineWidth = 2;
+      ctx.beginPath();
+      ctx.arc(qx, qy, 5.5, 0, Math.PI * 2);
+      ctx.stroke();
+    }
+
+    // Player directional triangle
+    if (playerPos) {
+      const px = toMapX(playerPos.x);
+      const py = toMapY(playerPos.z);
+      ctx.save();
+      ctx.translate(px, py);
+      ctx.rotate(-playerYaw + Math.PI);
+      ctx.fillStyle = '#f59e0b';
+      ctx.strokeStyle = '#ffffff';
+      ctx.lineWidth = 1.4;
+      ctx.beginPath();
+      ctx.moveTo(0, -6);
+      ctx.lineTo(4.5, 5);
+      ctx.lineTo(-4.5, 5);
+      ctx.closePath();
+      ctx.fill();
+      ctx.stroke();
+      ctx.restore();
+    }
   }
 
   isAnyModalOpen() {
-    return !this.els.hubModal.hidden || !this.els.accountModal.hidden || !this.els.lbModal.hidden;
+    return !this.els.hubModal.hidden
+      || !this.els.accountModal.hidden
+      || !this.els.lbModal.hidden
+      || (this.els.welcomeOverlay && !this.els.welcomeOverlay.hidden);
   }
 
   openHub(tab = 'upgrades') {
@@ -234,8 +386,9 @@ export class UIManager {
       this.els.btnBoostLabel.textContent = 'Tăng tốc';
     }
 
-    // Claimable Daily Quests / Season Pass badge count
-    let claimable = gameState.dailyQuests.filter((q) => !q.claimed && q.progress >= q.target).length;
+    // Claimable Daily Check-In + Quests + Season Pass badge count
+    let claimable = canClaimDailyCheckIn() ? 1 : 0;
+    claimable += gameState.dailyQuests.filter((q) => !q.claimed && q.progress >= q.target).length;
     for (const tier of SEASON_PASS_TIERS) {
       if (gameState.seasonXp >= tier.xpReq) {
         if (!gameState.claimedFreeTiers.includes(tier.tier)) claimable++;
@@ -244,6 +397,12 @@ export class UIManager {
     }
     this.els.badgeSeason.textContent = claimable;
     this.els.badgeSeason.hidden = claimable === 0;
+
+    if (this.els.badgeAch) {
+      const readyAch = getReadyAchievementCount();
+      this.els.badgeAch.textContent = readyAch;
+      this.els.badgeAch.hidden = readyAch === 0;
+    }
   }
 
   renderHub() {
@@ -258,10 +417,37 @@ export class UIManager {
     else if (this.activeTab === 'contracts') this.renderContractsTab(body);
     else if (this.activeTab === 'season') this.renderSeasonTab(body);
     else if (this.activeTab === 'locker') this.renderLockerTab(body);
+    else if (this.activeTab === 'achievements') this.renderAchievementsTab(body);
     else if (this.activeTab === 'vip') this.renderVipTab(body);
   }
 
   renderUpgradesTab(root) {
+    const sawTier = getSawmillVisualTier();
+    const harborTier = getHarborVisualTier();
+    const evoSec = document.createElement('section');
+    evoSec.innerHTML = `
+      <div class="section-heading">
+        <h3>Kiến Trúc 3D Theo Cấp Độ</h3>
+        <span>Tự động mở rộng silo, đèn pha &amp; hải đăng trên bản đồ 3D</span>
+      </div>
+      <div class="evo-summary-strip">
+        <div class="evo-card">
+          <div>
+            <div class="card-title">🏭 Xưởng Cưa Công Nghiệp</div>
+            <div class="card-meta">${sawTier === 1 ? 'Nâng Máy cưa cấp 3 hoặc Băng chuyền để lên Cấp 2' : sawTier === 2 ? 'Nâng Máy cưa cấp 5 hoặc Gỗ sấy cấp 4 để lên Cấp 3' : 'Đã lắp đặt Silo Hút Mùn &amp; Mái Năng Lượng Mặt Trời'}</div>
+          </div>
+          <div class="evo-tier-val tabular-nums">Cấp ${sawTier}/3</div>
+        </div>
+        <div class="evo-card">
+          <div>
+            <div class="card-title">🚢 Cảng Biển Thương Mại</div>
+            <div class="card-meta">${harborTier === 1 ? 'Hoàn thành 2 Hợp đồng hoặc mua 2 Tàu để lên Cấp 2' : harborTier === 2 ? 'Hoàn thành 5 Hợp đồng hoặc mở Chi nhánh mới để lên Cấp 3' : 'Đã hoàn thiện Hải Đăng Xoay &amp; Tháp Điều Khiển'}</div>
+          </div>
+          <div class="evo-tier-val tabular-nums">Cấp ${harborTier}/3</div>
+        </div>
+      </div>
+    `;
+    root.appendChild(evoSec);
     const groups = [
       { key: 'player', title: 'Trang bị Cá nhân', sub: 'Khai thác nhanh hơn & mang nhiều gỗ hơn' },
       { key: 'sawmill', title: 'Dây chuyền Xưởng Cưa', sub: 'Tăng sản lượng & giá trị ván gỗ' },
@@ -402,9 +588,104 @@ export class UIManager {
     }
     brSec.appendChild(grid);
     root.appendChild(brSec);
+
+    // Real-Time Commodity Market with SVG Sparkline Charts
+    const mkSec = document.createElement('section');
+    mkSec.innerHTML = `<div class="section-heading"><h3>Sàn Giao Dịch Hàng Hóa Trực Tiếp</h3><span>Giá thị trường biến động mỗi 18 giây · Canh đỉnh giá để bán</span></div>`;
+    const mkGrid = document.createElement('div');
+    mkGrid.className = 'market-grid';
+    const mult = getRevenueMultiplier();
+
+    for (const c of MARKET_COMMODITIES) {
+      const entry = marketState.items[c.key];
+      const stock = Math.floor(gameState[c.key] || 0);
+      const unitPrice = Math.round(c.basePrice * entry.mult * mult);
+      const pctDelta = Math.round((entry.mult - 1) * 100);
+      const deltaClass = pctDelta >= 2 ? 'is-up' : pctDelta <= -2 ? 'is-down' : 'is-flat';
+      const deltaLabel = pctDelta >= 0 ? `+${pctDelta}%` : `${pctDelta}%`;
+      const totalValue = stock * unitPrice;
+
+      // Build inline SVG sparkline points cleanly
+      const hist = entry.history;
+      const minV = 0.78;
+      const maxV = 1.52;
+      const points = hist.map((val, idx) => {
+        const x = ((idx / Math.max(1, hist.length - 1)) * 200).toFixed(1);
+        const y = (36 - ((val - minV) / (maxV - minV)) * 32).toFixed(1);
+        return `${x},${y}`;
+      }).join(' ');
+
+      const card = document.createElement('div');
+      card.className = 'market-card';
+      card.innerHTML = `
+        <div>
+          <div class="card-title">${c.name}</div>
+          <div class="card-meta tabular-nums">Trong kho: ${stock.toLocaleString()} ${c.unit}</div>
+        </div>
+        <div class="market-price-row">
+          <span class="market-price tabular-nums">$${unitPrice.toLocaleString()} / ${c.unit}</span>
+          <span class="market-delta ${deltaClass} tabular-nums">${deltaLabel}</span>
+        </div>
+        <div class="market-sparkline" aria-hidden="true">
+          <svg viewBox="0 0 200 38" preserveAspectRatio="none">
+            <polyline fill="none" stroke="${c.color}" stroke-width="2.4" stroke-linecap="round" stroke-linejoin="round" points="${points}" />
+          </svg>
+        </div>
+        <button type="button" class="btn-primary tabular-nums" ${stock <= 0 ? 'disabled' : ''}>
+          ${stock > 0 ? `Bán hết (${stock}) · +$${totalValue.toLocaleString()}` : 'Kho đang trống'}
+        </button>
+      `;
+      card.querySelector('button').addEventListener('click', () => {
+        if (stock <= 0) return;
+        if (this.cb.onSellCommodity && this.cb.onSellCommodity(c.key)) {
+          this.renderHub();
+        }
+      });
+      mkGrid.appendChild(card);
+    }
+    mkSec.appendChild(mkGrid);
+    root.appendChild(mkSec);
   }
 
   renderSeasonTab(root) {
+    // 7-Day Login Streak Check-In Grid
+    const streakSec = document.createElement('section');
+    const canCheckIn = canClaimDailyCheckIn();
+    const claimedCount = gameState.loginStreakDay || 0;
+    const nextDay = (claimedCount % 7) + 1;
+    streakSec.innerHTML = `<div class="section-heading"><h3>Điểm Danh Thương Gia 7 Ngày</h3><span>Chuỗi hiện tại: ${claimedCount}/7 ngày</span></div>`;
+    const streakGrid = document.createElement('div');
+    streakGrid.className = 'checkin-grid';
+
+    for (const d of DAILY_REWARDS) {
+      const isClaimed = !canCheckIn ? d.day <= claimedCount : d.day <= (claimedCount === 7 ? 0 : claimedCount);
+      const isToday = canCheckIn && d.day === nextDay;
+
+      const box = document.createElement('div');
+      box.className = `checkin-day ${isToday ? 'is-today' : isClaimed ? 'is-claimed' : ''}`;
+      box.innerHTML = `
+        <div class="checkin-day-title">${d.title}</div>
+        <div class="checkin-day-icon">${d.icon}</div>
+        <div class="checkin-day-reward tabular-nums">${d.label}</div>
+        <button type="button" class="${isToday ? 'btn-primary' : 'btn-secondary'}" ${!isToday ? 'disabled' : ''}>
+          ${isClaimed ? 'Đã nhận ✓' : isToday ? 'Nhận ngay' : 'Sắp tới'}
+        </button>
+      `;
+      box.querySelector('button').addEventListener('click', () => {
+        if (!isToday) return;
+        const reward = claimDailyCheckIn();
+        if (!reward) return;
+        sound.playUpgrade();
+        this.toast(`🎁 Điểm danh ${reward.title}: ${reward.label}`);
+        saveGameServer();
+        this.refreshHUD();
+        this.renderHub();
+      });
+      streakGrid.appendChild(box);
+    }
+    streakSec.appendChild(streakGrid);
+    root.appendChild(streakSec);
+
     // Daily Quests
     const dqSec = document.createElement('section');
     dqSec.innerHTML = `<div class="section-heading"><h3>Nhiệm vụ Ngày</h3><span>Hoàn thành để nhận Cash, Đá quý & XP Vé Mùa</span></div>`;
@@ -590,6 +871,92 @@ export class UIManager {
     root.appendChild(sec);
   }
 
+  renderAchievementsTab(root) {
+    // 1. Revenue Analytics Breakdown
+    const stats = gameState.revenueStats || { sawmill: 0, contracts: 0, fishery: 0, market: 0, offline: 0 };
+    const sources = [
+      { key: 'sawmill', label: 'Xưởng Cưa & Pallet', color: '#f59e0b' },
+      { key: 'contracts', label: 'Hợp Đồng Cảng Biển', color: '#10b981' },
+      { key: 'market', label: 'Sàn Giao Dịch Gỗ', color: '#a855f7' },
+      { key: 'fishery', label: 'Thủy Sản Cá Hộp', color: '#38bdf8' },
+      { key: 'offline', label: 'Ngoại Tuyến & Thưởng', color: '#ec4899' }
+    ];
+    const totalRev = sources.reduce((sum, s) => sum + (stats[s.key] || 0), 0);
+    const maxSource = Math.max(1, ...sources.map((s) => stats[s.key] || 0));
+
+    const revSec = document.createElement('section');
+    revSec.innerHTML = `
+      <div class="section-heading"><h3>Thống Kê Doanh Thu Đế Chế</h3><span>Phân tích tỷ trọng nguồn thu thực tế</span></div>
+      <div class="rev-analytics">
+        <div class="rev-header">
+          <span class="card-meta">Tổng doanh thu tích lũy</span>
+          <span class="rev-total tabular-nums">$${totalRev.toLocaleString()}</span>
+        </div>
+        <div class="rev-bars">
+          ${sources.map((s) => {
+            const val = stats[s.key] || 0;
+            const barPct = Math.round((val / maxSource) * 100);
+            const sharePct = totalRev > 0 ? Math.round((val / totalRev) * 100) : 0;
+            return `
+              <div class="rev-bar-row">
+                <span class="rev-bar-label">${s.label}</span>
+                <div class="rev-bar-track"><div class="rev-bar-fill" style="width:${barPct}%; background:${s.color};"></div></div>
+                <span class="rev-bar-val tabular-nums">$${val.toLocaleString()} (${sharePct}%)</span>
+              </div>
+            `;
+          }).join('')}
+        </div>
+      </div>
+    `;
+    root.appendChild(revSec);
+
+    // 2. Empire Achievements
+    const achSec = document.createElement('section');
+    const claimedList = gameState.claimedAchievements || [];
+    achSec.innerHTML = `<div class="section-heading"><h3>Thành Tựu Đế Chế</h3><span>Đã hoàn thành ${claimedList.length}/${ACHIEVEMENTS.length} cột mốc</span></div>`;
+    const achGrid = document.createElement('div');
+    achGrid.className = 'card-grid';
+
+    for (const ach of ACHIEVEMENTS) {
+      const claimed = claimedList.includes(ach.id);
+      const curVal = Math.floor(gameState[ach.statKey] || 0);
+      const ready = isAchievementReady(ach);
+      const pct = Math.min(100, Math.round((curVal / ach.target) * 100));
+
+      const card = document.createElement('div');
+      card.className = `hub-card ${claimed ? 'is-equipped' : ''}`;
+      card.innerHTML = `
+        <div>
+          <div class="card-title">${ach.title}</div>
+          <p class="card-desc" style="margin-top:4px;">${ach.desc}</p>
+          <div class="card-meta tabular-nums" style="margin-top:6px;">
+            Tiến độ: ${Math.min(curVal, ach.target).toLocaleString()}/${ach.target.toLocaleString()} · +$${ach.rewardCash.toLocaleString()} · +${ach.rewardGems}💎
+          </div>
+          <div class="progress-track" style="margin-top:8px;"><div class="progress-fill" style="width:${pct}%"></div></div>
+        </div>
+        <button type="button" class="${ready ? 'btn-primary' : 'btn-secondary'}" ${!ready ? 'disabled' : ''}>
+          ${claimed ? 'Đã nhận thưởng ✓' : ready ? 'Nhận thưởng ngay' : 'Chưa đạt mốc'}
+        </button>
+      `;
+      card.querySelector('button').addEventListener('click', () => {
+        if (!ready) return;
+        if (!Array.isArray(gameState.claimedAchievements)) gameState.claimedAchievements = [];
+        gameState.claimedAchievements.push(ach.id);
+        gameState.cash += ach.rewardCash;
+        gameState.gems += ach.rewardGems;
+        addVipXp(35);
+        sound.playUpgrade();
+        this.toast(`🏆 Mở khóa thành tựu "${ach.title}": +$${ach.rewardCash.toLocaleString()} & +${ach.rewardGems} 💎`);
+        saveGameServer();
+        this.refreshHUD();
+        this.renderHub();
+      });
+      achGrid.appendChild(card);
+    }
+    achSec.appendChild(achGrid);
+    root.appendChild(achSec);
+  }
+
   renderVipTab(root) {
     const curVip = gameState.vipLevel || 0;
     const nextVip = VIP_TIERS.find((v) => v.level === curVip + 1);
@@ -771,6 +1138,16 @@ export class UIManager {
       gameState.playerId = res.user.username;
       if (res.empireData && res.empireData.timberportState) {
         Object.assign(gameState, res.empireData.timberportState);
+        if (!gameState.revenueStats) {
+          gameState.revenueStats = { sawmill: 0, contracts: 0, fishery: 0, market: 0, offline: 0 };
+        }
+        if (!Array.isArray(gameState.claimedAchievements)) {
+          gameState.claimedAchievements = [];
+        }
+        if (this.cb.onUpgrade) this.cb.onUpgrade('lumberjacks');
+        if (this.cb.onSkinChange) this.cb.onSkinChange();
+        if (this.cb.onPetChange) this.cb.onPetChange();
+        if (this.cb.onVehicleChange) this.cb.onVehicleChange();
       }
       await saveGameServer(true);
       sound.playUpgrade();

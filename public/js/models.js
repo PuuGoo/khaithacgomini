@@ -688,7 +688,39 @@ export function createSawmillModel() {
   }
   g.add(visualOutputGroup);
 
-  g.userData = { sawBlade, visualBufferGroup, visualOutputGroup, palletSlots, plankSlots };
+  // Pre-built Tier 2 & Tier 3 architectural upgrades (Zero runtime allocation)
+  const tier2Group = new THREE.Group();
+  tier2Group.visible = false;
+  const siloMat = new THREE.MeshStandardMaterial({ color: 0x94a3b8, roughness: 0.35, metalness: 0.72 });
+  const silo = new THREE.Mesh(new THREE.CylinderGeometry(1.15, 1.25, 5.4, 8), siloMat);
+  silo.position.set(-4.5, 4.4, -3.5);
+  silo.castShadow = true;
+  const pipe = new THREE.Mesh(new THREE.CylinderGeometry(0.32, 0.32, 4.6, 6), siloMat);
+  pipe.rotation.z = Math.PI / 3;
+  pipe.position.set(-2.5, 4.5, -1.8);
+  const floodBar = new THREE.Mesh(new THREE.BoxGeometry(8.5, 0.28, 0.35), steelMat);
+  floodBar.position.set(0, 6.45, 4.4);
+  tier2Group.add(silo, pipe, floodBar);
+  g.add(tier2Group);
+
+  const tier3Group = new THREE.Group();
+  tier3Group.visible = false;
+  const solarMat = new THREE.MeshStandardMaterial({ color: 0x0f172a, roughness: 0.18, metalness: 0.85 });
+  const solarL = new THREE.Mesh(new THREE.BoxGeometry(11.5, 0.14, 3.8), solarMat);
+  solarL.position.set(0, 6.2, -2.5);
+  solarL.rotation.x = -0.22;
+  const solarR = new THREE.Mesh(new THREE.BoxGeometry(11.5, 0.14, 3.8), solarMat);
+  solarR.position.set(0, 6.2, 2.5);
+  solarR.rotation.x = 0.22;
+  const trimGold = new THREE.Mesh(
+    new THREE.BoxGeometry(16.2, 0.24, 0.35),
+    new THREE.MeshStandardMaterial({ color: 0xf59e0b, roughness: 0.28, metalness: 0.75 })
+  );
+  trimGold.position.set(0, 5.55, 5.3);
+  tier3Group.add(solarL, solarR, trimGold);
+  g.add(tier3Group);
+
+  g.userData = { sawBlade, visualBufferGroup, visualOutputGroup, palletSlots, plankSlots, tier2Group, tier3Group };
   return g;
 }
 
@@ -771,8 +803,56 @@ export function createHarborStructure() {
   }
   g.add(ship);
 
-  g.userData = { ship, trolley, hoistedCrate };
+  // Pre-built Tier 2 & Tier 3 Harbor Extensions (Lighthouse + Pier Containers + Control Tower)
+  const tier2Group = new THREE.Group();
+  tier2Group.visible = false;
+  const lhTower = new THREE.Mesh(
+    new THREE.CylinderGeometry(0.85, 1.35, 7.2, 8),
+    new THREE.MeshStandardMaterial({ color: 0xf8fafc, roughness: 0.55 })
+  );
+  lhTower.position.set(-11.5, 4.2, 11.5);
+  lhTower.castShadow = true;
+  const lhBand = new THREE.Mesh(
+    new THREE.CylinderGeometry(1.02, 1.15, 2.0, 8),
+    new THREE.MeshStandardMaterial({ color: 0xdc2626, roughness: 0.5 })
+  );
+  lhBand.position.set(-11.5, 4.5, 11.5);
+  const beaconMat = new THREE.MeshStandardMaterial({ color: 0xfef08a, emissive: 0xfacc15, emissiveIntensity: 1.1, roughness: 0.2 });
+  const lhBeacon = new THREE.Mesh(new THREE.CylinderGeometry(0.7, 0.7, 1.1, 8), beaconMat);
+  lhBeacon.position.set(-11.5, 8.3, 11.5);
+  const lhCap = new THREE.Mesh(new THREE.ConeGeometry(0.95, 1.0, 8), steelMat);
+  lhCap.position.set(-11.5, 9.3, 11.5);
+  const stackA = new THREE.Mesh(contGeo, new THREE.MeshStandardMaterial({ color: 0x0ea5e9, roughness: 0.5 }));
+  stackA.position.set(-1.5, 1.45, 10.5);
+  const stackB = new THREE.Mesh(contGeo, new THREE.MeshStandardMaterial({ color: 0xf59e0b, roughness: 0.5 }));
+  stackB.position.set(-1.5, 2.95, 10.5);
+  tier2Group.add(lhTower, lhBand, lhBeacon, lhCap, stackA, stackB);
+  g.add(tier2Group);
+
+  const tier3Group = new THREE.Group();
+  tier3Group.visible = false;
+  const ctrlTower = new THREE.Mesh(new THREE.BoxGeometry(3.8, 5.4, 3.6), steelMat);
+  ctrlTower.position.set(0.2, 3.4, 4.6);
+  ctrlTower.castShadow = true;
+  const ctrlCab = new THREE.Mesh(
+    new THREE.BoxGeometry(4.4, 1.6, 4.2),
+    new THREE.MeshStandardMaterial({ color: 0x38bdf8, roughness: 0.2, metalness: 0.3 })
+  );
+  ctrlCab.position.set(0.2, 6.8, 4.6);
+  const ctrlRoof = new THREE.Mesh(new THREE.BoxGeometry(4.8, 0.3, 4.6), craneMat);
+  ctrlRoof.position.set(0.2, 7.75, 4.6);
+  tier3Group.add(ctrlTower, ctrlCab, ctrlRoof);
+  g.add(tier3Group);
+
+  g.userData = { ship, trolley, hoistedCrate, lhBeacon, tier2Group, tier3Group };
   return g;
+}
+
+export function syncBuildingEvolution(sawmill, harbor, sawTier, harborTier) {
+  if (sawmill?.userData?.tier2Group) sawmill.userData.tier2Group.visible = sawTier >= 2;
+  if (sawmill?.userData?.tier3Group) sawmill.userData.tier3Group.visible = sawTier >= 3;
+  if (harbor?.userData?.tier2Group) harbor.userData.tier2Group.visible = harborTier >= 2;
+  if (harbor?.userData?.tier3Group) harbor.userData.tier3Group.visible = harborTier >= 3;
 }
 
 export function createFishingBoatModel(index = 0) {

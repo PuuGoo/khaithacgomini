@@ -873,3 +873,356 @@ html, body {
     padding: 0 10px;
   }
 }
+
+/* =========================================================================
+   Commercial Expansion Styles (Welcome Briefing, Minimap, Check-In, Market, Analytics)
+   ========================================================================= */
+
+.tab-badge {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  min-width: 18px;
+  height: 18px;
+  padding: 0 5px;
+  margin-left: 4px;
+  border-radius: 6px;
+  background: var(--accent-rose);
+  color: #ffffff;
+  font-size: 11px;
+  font-weight: 700;
+}
+.tab-badge[hidden] { display: none; }
+
+/* Welcome Briefing Card */
+.welcome-card {
+  max-width: 460px;
+  padding: 22px;
+  gap: 16px;
+}
+.welcome-kicker {
+  font-family: var(--font-mono);
+  font-size: 11px;
+  font-weight: 700;
+  letter-spacing: 0.08em;
+  color: var(--accent-amber);
+  margin-bottom: 4px;
+}
+.welcome-title {
+  font-family: var(--font-display);
+  font-size: 24px;
+  font-weight: 700;
+  color: var(--text-primary);
+}
+.welcome-stats {
+  font-size: 13px;
+  font-weight: 600;
+  color: var(--text-secondary);
+  margin-top: 4px;
+}
+.welcome-offline {
+  background: #14261f;
+  border: 1px solid rgba(16, 185, 129, 0.4);
+  border-radius: var(--radius-md);
+  padding: 12px 14px;
+}
+.welcome-offline[hidden] { display: none; }
+.welcome-offline-label {
+  font-size: 12px;
+  color: #a7f3d0;
+  margin-bottom: 4px;
+}
+.welcome-offline-val {
+  font-size: 16px;
+  font-weight: 700;
+  color: #34d399;
+}
+.welcome-hw-note {
+  background: var(--bg-card);
+  border: 1px solid var(--border-hairline);
+  border-radius: var(--radius-sm);
+  padding: 10px 12px;
+  font-size: 12.5px;
+  color: var(--text-secondary);
+}
+.welcome-actions {
+  display: grid;
+  grid-template-columns: 1.35fr 1fr;
+  gap: 10px;
+}
+
+/* Compact 2D Tactical Minimap */
+.minimap-wrap {
+  position: fixed;
+  bottom: 16px;
+  left: 16px;
+  z-index: 30;
+  width: 164px;
+  background: var(--bg-surface);
+  border: 1px solid var(--border-hairline);
+  border-radius: var(--radius-md);
+  box-shadow: 0 10px 26px rgba(0, 0, 0, 0.4);
+  overflow: hidden;
+  transition: transform 0.2s ease, opacity 0.2s ease;
+}
+.minimap-wrap.is-hidden-hud {
+  opacity: 0;
+  pointer-events: none;
+  transform: translateY(12px);
+}
+.minimap-head {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  padding: 6px 10px;
+  border-bottom: 1px solid var(--border-hairline);
+}
+.minimap-title {
+  font-size: 11.5px;
+  font-weight: 700;
+  color: var(--text-secondary);
+}
+.minimap-toggle {
+  min-width: 24px;
+  min-height: 22px;
+  border-radius: 6px;
+  border: 1px solid var(--border-hairline);
+  background: var(--bg-card);
+  color: var(--text-primary);
+  font-size: 11px;
+  cursor: pointer;
+}
+.minimap-body {
+  padding: 8px;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 6px;
+}
+.minimap-wrap.is-collapsed .minimap-body {
+  display: none;
+}
+#minimap-canvas {
+  width: 148px;
+  height: 148px;
+  border-radius: var(--radius-sm);
+  background: #0b1120;
+  border: 1px solid var(--border-hairline);
+  display: block;
+}
+.minimap-legend {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  gap: 4px;
+  font-size: 10.5px;
+  color: var(--text-muted);
+  white-space: nowrap;
+}
+
+@media (max-width: 960px) {
+  .minimap-wrap {
+    top: 104px;
+    bottom: auto;
+    left: 10px;
+    width: 132px;
+  }
+  #minimap-canvas {
+    width: 116px;
+    height: 116px;
+  }
+  .minimap-legend {
+    display: none;
+  }
+}
+
+@media (max-width: 520px) {
+  .welcome-actions {
+    grid-template-columns: 1fr;
+  }
+}
+
+/* 3D Evolution Summary Strip */
+.evo-summary-strip {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(220px, 1fr));
+  gap: 10px;
+}
+.evo-card {
+  background: var(--bg-card);
+  border: 1px solid var(--border-hairline);
+  border-radius: var(--radius-md);
+  padding: 12px 14px;
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 12px;
+}
+.evo-tier-val {
+  font-family: var(--font-mono);
+  font-size: 13px;
+  font-weight: 700;
+  color: var(--accent-amber);
+}
+
+/* 7-Day Login Streak Grid */
+.checkin-grid {
+  display: grid;
+  grid-template-columns: repeat(auto-fill, minmax(106px, 1fr));
+  gap: 8px;
+}
+.checkin-day {
+  background: var(--bg-card);
+  border: 1px solid var(--border-hairline);
+  border-radius: var(--radius-md);
+  padding: 10px 8px;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  text-align: center;
+  gap: 6px;
+  transition: transform 0.16s ease, border-color 0.16s ease;
+}
+.checkin-day.is-today {
+  border-color: var(--accent-amber);
+  background: #241f14;
+}
+.checkin-day.is-claimed {
+  border-color: rgba(16, 185, 129, 0.45);
+  opacity: 0.78;
+}
+.checkin-day-title {
+  font-size: 12px;
+  font-weight: 700;
+  color: var(--text-secondary);
+}
+.checkin-day-icon {
+  font-size: 20px;
+  line-height: 1;
+}
+.checkin-day-reward {
+  font-size: 11.5px;
+  font-weight: 600;
+  color: var(--text-primary);
+}
+.checkin-day .btn-primary,
+.checkin-day .btn-secondary {
+  min-height: 30px;
+  padding: 4px 8px;
+  font-size: 11.5px;
+}
+
+/* Real-Time Commodity Market Cards & SVG Sparklines */
+.market-grid {
+  display: grid;
+  grid-template-columns: repeat(auto-fill, minmax(240px, 1fr));
+  gap: 12px;
+}
+.market-card {
+  background: var(--bg-card);
+  border: 1px solid var(--border-hairline);
+  border-radius: var(--radius-md);
+  padding: 14px;
+  display: flex;
+  flex-direction: column;
+  gap: 10px;
+}
+.market-price-row {
+  display: flex;
+  align-items: baseline;
+  justify-content: space-between;
+  gap: 8px;
+}
+.market-price {
+  font-family: var(--font-mono);
+  font-size: 18px;
+  font-weight: 700;
+  color: var(--text-primary);
+}
+.market-delta {
+  font-family: var(--font-mono);
+  font-size: 12px;
+  font-weight: 700;
+}
+.market-delta.is-up { color: #34d399; }
+.market-delta.is-down { color: #fb7185; }
+.market-delta.is-flat { color: var(--text-muted); }
+.market-sparkline {
+  width: 100%;
+  height: 44px;
+  background: #0b1120;
+  border: 1px solid var(--border-hairline);
+  border-radius: var(--radius-sm);
+  padding: 4px;
+}
+.market-sparkline svg {
+  width: 100%;
+  height: 100%;
+  display: block;
+}
+
+/* Revenue Analytics & Achievements */
+.rev-analytics {
+  background: var(--bg-card);
+  border: 1px solid var(--border-hairline);
+  border-radius: var(--radius-md);
+  padding: 16px;
+  display: flex;
+  flex-direction: column;
+  gap: 12px;
+}
+.rev-header {
+  display: flex;
+  align-items: baseline;
+  justify-content: space-between;
+  gap: 12px;
+}
+.rev-total {
+  font-family: var(--font-mono);
+  font-size: 20px;
+  font-weight: 700;
+  color: #34d399;
+}
+.rev-bars {
+  display: flex;
+  flex-direction: column;
+  gap: 9px;
+}
+.rev-bar-row {
+  display: grid;
+  grid-template-columns: 138px 1fr 86px;
+  align-items: center;
+  gap: 10px;
+  font-size: 12.5px;
+}
+.rev-bar-label {
+  color: var(--text-secondary);
+  font-weight: 600;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+.rev-bar-track {
+  width: 100%;
+  height: 8px;
+  border-radius: 4px;
+  background: #0b1120;
+  overflow: hidden;
+}
+.rev-bar-fill {
+  height: 100%;
+  border-radius: 4px;
+  transition: width 0.25s ease;
+}
+.rev-bar-val {
+  text-align: right;
+  font-weight: 700;
+  color: var(--text-primary);
+}
+@media (max-width: 520px) {
+  .rev-bar-row {
+    grid-template-columns: 105px 1fr 72px;
+    font-size: 11.5px;
+  }
+}
+

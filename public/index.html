@@ -10,7 +10,7 @@
   <link rel="preconnect" href="https://fonts.googleapis.com">
   <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
   <link href="https://fonts.googleapis.com/css2?family=JetBrains+Mono:wght@500;600;700&family=Outfit:wght@600;700&family=Plus+Jakarta+Sans:wght@400;500;600;700&display=swap" rel="stylesheet">
-  <link rel="stylesheet" href="/css/style.css?v=2.0.0">
+  <link rel="stylesheet" href="/css/style.css?v=2.1.0">
   <link rel="icon" href="data:image/svg+xml,<svg xmlns=%22http://www.w3.org/2000/svg%22 viewBox=%220 0 100 100%22><text y=%22.9em%22 font-size=%2290%22>🪵</text></svg>">
   <script type="importmap">
   {
@@ -116,6 +116,24 @@
     <div id="virtual-joystick-stick"></div>
   </div>
 
+  <!-- Compact 2D Tactical Minimap (Bottom-Left, Collapsible) -->
+  <aside id="minimap-wrap" class="minimap-wrap" aria-label="Bản đồ chiến thuật khu vực">
+    <div class="minimap-head">
+      <span class="minimap-title">Bản đồ khu vực</span>
+      <button type="button" id="btn-toggle-minimap" class="minimap-toggle" title="Thu gọn hoặc mở rộng bản đồ">▾</button>
+    </div>
+    <div class="minimap-body">
+      <canvas id="minimap-canvas" width="148" height="148"></canvas>
+      <div class="minimap-legend">
+        <span>🌲 Rừng</span>
+        <span class="meta-sep" aria-hidden="true">·</span>
+        <span>🏭 Xưởng</span>
+        <span class="meta-sep" aria-hidden="true">·</span>
+        <span>🚢 Cảng</span>
+      </div>
+    </div>
+  </aside>
+
   <!-- Collapsible Bottom Control Dock (Zero Viewport Occlusion) -->
   <div id="bottom-dock-wrap" class="bottom-dock-wrap">
     <button type="button" id="btn-toggle-dock" class="dock-toggle-btn" title="Ẩn hoặc hiện thanh điều khiển (Phím H)">
@@ -163,9 +181,10 @@
 
       <div class="hub-tabs" role="tablist">
         <button type="button" class="hub-tab active" data-tab="upgrades" role="tab">🏭 Nâng cấp Xưởng</button>
-        <button type="button" class="hub-tab" data-tab="contracts" role="tab">🚢 Hợp đồng & Chi nhánh</button>
-        <button type="button" class="hub-tab" data-tab="season" role="tab">🎫 Vé Mùa & Nhiệm vụ</button>
+        <button type="button" class="hub-tab" data-tab="contracts" role="tab">🚢 Hợp đồng & Sàn giá</button>
+        <button type="button" class="hub-tab" data-tab="season" role="tab">🎫 Điểm danh & Vé Mùa</button>
         <button type="button" class="hub-tab" data-tab="locker" role="tab">🚘 Tủ đồ & Siêu xe</button>
+        <button type="button" class="hub-tab" data-tab="achievements" role="tab">🏆 Thành tựu <span id="badge-ach" class="tab-badge tabular-nums" hidden>0</span></button>
         <button type="button" class="hub-tab" data-tab="vip" role="tab">👑 Cửa hàng VIP</button>
       </div>
 
@@ -209,10 +228,37 @@
     </div>
   </div>
 
+  <!-- Lightweight Commercial Welcome Briefing Overlay -->
+  <div id="welcome-overlay" class="modal-backdrop" role="dialog" aria-modal="true" aria-labelledby="welcome-empire" hidden>
+    <div class="modal-panel welcome-card">
+      <div class="welcome-head">
+        <div>
+          <div class="welcome-kicker">TIMBERPORT 3D · BÁO CÁO ĐIỀU HÀNH</div>
+          <h2 id="welcome-empire" class="welcome-title">TimberPort Empire</h2>
+          <p id="welcome-stats" class="welcome-stats tabular-nums">Cấp 1 · $160 · 40 💎</p>
+        </div>
+      </div>
+
+      <div id="welcome-offline-box" class="welcome-offline" hidden>
+        <div class="welcome-offline-label">Thu nhập ngoại tuyến đã tích lũy</div>
+        <div id="welcome-offline-desc" class="welcome-offline-val tabular-nums">+$0 Cash</div>
+      </div>
+
+      <div id="welcome-hw-note" class="welcome-hw-note tabular-nums">
+        🛡️ Chế độ đồ họa: Đang tự động tối ưu
+      </div>
+
+      <div class="welcome-actions">
+        <button type="button" id="btn-welcome-play" class="btn-primary">Vào Điều Hành Ngay</button>
+        <button type="button" id="btn-welcome-hub" class="btn-secondary">Điểm danh & Sàn gỗ</button>
+      </div>
+    </div>
+  </div>
+
   <!-- Toast Stack -->
   <div id="toast-container" class="toast-container" aria-live="polite"></div>
 
   <!-- Application Entry Point (Modern ES Modules) -->
-  <script type="module" src="/js/engine.js?v=2.0.0"></script>
+  <script type="module" src="/js/engine.js?v=2.1.0"></script>
 </body>
 </html>
