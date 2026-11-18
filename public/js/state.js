@@ -439,6 +439,54 @@ export const MILESTONE_QUESTS = [
   { id: 'ms_5', title: 'Cột Mốc V: Bá Chủ Hải Cảng', desc: 'Hoàn thành 8 Hợp đồng Xuất khẩu', statKey: 'contractsCompleted', target: 8, rewardCash: 38000, rewardGems: 160, rewardVipXp: 350 }
 ];
 
+// Phase 7: Deep-Water Container Port, Commodity Futures, Maritime Insurance, Green Energy & R&D Patents
+export const DEEP_PORT_TIERS = [
+  { tier: 1, name: 'Bến Container Nước Sâu', costCash: 8200, royalty10s: 210, voyageMult: 1.0, desc: 'Mở cầu cảng nước sâu & Cần cẩu Gantry hạng nặng đón tàu container siêu trọng.' },
+  { tier: 2, name: 'Siêu Cảng Cẩu Gantry Kép', costCash: 26500, royalty10s: 560, voyageMult: 1.45, desc: 'Nâng cấp cẩu giàn đôi & bãi container 2 tầng, +45% thưởng chuyến tàu đại dương.' },
+  { tier: 3, name: 'Trung Tâm Trung Chuyển Toàn Cầu', costCash: 74000, royalty10s: 1420, voyageMult: 2.05, desc: 'Siêu cảng trung chuyển container tối thượng, x2.05 lợi nhuận tuyến viễn dương.' }
+];
+
+export const CONTAINER_ROUTES = [
+  { id: 'rt_east_asia', name: 'Tuyến Đông Á Express', reqPlanks: 16, reqPallets: 2, reqCanned: 2, reqFurniture: 0, durationSec: 32, rewardCash: 2600, rewardGems: 18, rewardVipXp: 45, desc: 'Chuyến tàu nhanh giao gỗ sấy, pallet & cá hộp tới Thượng Hải – Busan.' },
+  { id: 'rt_eu_rotterdam', name: 'Siêu Tuyến Bắc Âu Rotterdam', reqPlanks: 24, reqPallets: 4, reqCanned: 4, reqFurniture: 1, durationSec: 48, rewardCash: 5800, rewardGems: 34, rewardVipXp: 85, desc: 'Vận tải container hỗn hợp gồm Nội thất cao cấp qua Kênh Suez.' },
+  { id: 'rt_trans_pacific', name: 'Tuyến Xuyên Thái Bình Dương', reqPlanks: 32, reqPallets: 6, reqCanned: 6, reqFurniture: 3, durationSec: 65, rewardCash: 12400, rewardGems: 62, rewardVipXp: 140, desc: 'Siêu chuyến hàng đại dương tải trọng cực đại tới Bờ Tây Bắc Mỹ.' }
+];
+
+export const INSURANCE_TIERS = [
+  { tier: 1, name: 'Bảo Hiểm Hàng Hải Cơ Bản', costCash: 3800, protectionPct: 35, discountFeePct: 12, desc: 'Bồi hoàn 35% giá trị khi hết giờ bão/rủi ro & giảm 12% chi phí nâng cấp cảng.' },
+  { tier: 2, name: 'Bảo Hiểm Đội Tàu Toàn Diện', costCash: 14500, protectionPct: 65, discountFeePct: 24, desc: 'Bồi hoàn 65% tổn thất thời tiết biển & tăng biên an toàn hợp đồng tương lai.' },
+  { tier: 3, name: 'Quỹ Bảo Chứng Rủi Ro Đế Chế', costCash: 42000, protectionPct: 90, discountFeePct: 40, desc: 'Bảo chứng tối đa 90% trước bão biển & giảm mạnh phí duy trì đòn bẩy ngân hàng.' }
+];
+
+export const FUTURES_TEMPLATES = [
+  { id: 'fut_planks', name: 'HĐ Tương Lai Ván Sấy 30s', itemKey: 'planks', itemLabel: 'Ván gỗ', qty: 18, durationSec: 30, lockedMult: 1.48, basePrice: 24, rewardGems: 12 },
+  { id: 'fut_pallets', name: 'HĐ Tương Lai Kiện Pallet 42s', itemKey: 'pallets', itemLabel: 'Pallet', qty: 6, durationSec: 42, lockedMult: 1.62, basePrice: 115, rewardGems: 18 },
+  { id: 'fut_fish', name: 'HĐ Tương Lai Thủy Sản 45s', itemKey: 'cannedFish', itemLabel: 'Cá hộp', qty: 8, durationSec: 45, lockedMult: 1.68, basePrice: 75, rewardGems: 22 },
+  { id: 'fut_furn', name: 'HĐ Tương Lai Nội Thất 55s', itemKey: 'furniture', itemLabel: 'Nội thất', qty: 4, durationSec: 55, lockedMult: 1.85, basePrice: 320, rewardGems: 35 }
+];
+
+export const GREEN_ENERGY_TIERS = [
+  { tier: 1, name: 'Pin Mặt Trời Mái Cảng', costCash: 4800, creditsPer10s: 2.2, loanDiscountPct: 10, costReductionPct: 5, desc: 'Lắp pin năng lượng mặt trời sản sinh Tín chỉ Carbon & giảm 10% lãi vay ngân hàng.' },
+  { tier: 2, name: 'Trang Trại Tuabin Gió Biển', costCash: 17500, creditsPer10s: 5.4, loanDiscountPct: 20, costReductionPct: 10, desc: 'Cung cấp điện sạch cho Cảng Nước Sâu, sinh +5.4 Tín chỉ/10s & giảm 10% chi phí nâng cấp.' },
+  { tier: 3, name: 'Lưới Điện Xanh Tuần Hoàn', costCash: 52000, creditsPer10s: 12.5, loanDiscountPct: 35, costReductionPct: 16, desc: 'Đạt chuẩn ESG hạng A+, giảm 35% lãi suất vay & giảm 16% chi phí nâng cấp dây chuyền.' }
+];
+
+export const carbonMarketState = {
+  price: 44,
+  prevPrice: 42,
+  lastUpdateMs: Date.now(),
+  history: [36, 38, 37, 40, 41, 39, 43, 42, 44]
+};
+
+export const RD_TECH_CATALOG = [
+  { id: 'pat_kiln', name: 'Bằng Sáng Chế Lò Sấy Siêu Tốc', category: 'Sản xuất', icon: '🔥', costType: 'cash', cost: 4200, bonusText: '+22% giá trị Gỗ & Nội thất', desc: 'Tối ưu độ ẩm gỗ sấy công nghiệp, tăng vĩnh viễn +22% doanh thu xưởng & nội thất.' },
+  { id: 'pat_container', name: 'Công Nghệ Xếp Dỡ Container AI', category: 'Hàng hải', icon: '🚢', costType: 'cash', cost: 9800, bonusText: '+30% thưởng Tàu Container', desc: 'Thuật toán cân bằng trọng tải cẩu Gantry tăng +30% doanh thu tuyến container.' },
+  { id: 'pat_eco_resin', name: 'Keo Sinh Học Tiết Kiệm Vật Liệu', category: 'Tài chính', icon: '🧪', costType: 'cash', cost: 14500, bonusText: '-15% chi phí nâng cấp xưởng', desc: 'Giảm 15% chi phí nâng cấp toàn bộ Trang bị, Máy cưa & Nhân sự tự động.' },
+  { id: 'pat_cold_cryo', name: 'Chuỗi Lạnh Cryo Xuất Khẩu', category: 'Thủy sản', icon: '❄️', costType: 'gems', cost: 55, bonusText: '+25% giá trị Thủy sản & Ngoại tuyến', desc: 'Bảo quản cá hồi chuẩn xuất khẩu Bắc Âu và tăng thu nhập ngoại tuyến +25%.' },
+  { id: 'pat_fin_hedge', name: 'Thuật Toán Phòng Hộ Phái Sinh', category: 'Thị trường', icon: '📈', costType: 'gems', cost: 75, bonusText: '+18% giá chốt Hợp đồng & Tương lai', desc: 'Khuếch đại vĩnh viễn +18% giá trị Hợp đồng cảng, Liên minh và Hợp đồng tương lai.' },
+  { id: 'pat_green_grid', name: 'Bằng Sáng Chế Điện Xanh ESG', category: 'Năng lượng', icon: '🌿', costType: 'gems', cost: 95, bonusText: '+35% Tín chỉ Carbon & +12% Danh tiếng', desc: 'Tăng +35% tốc độ sinh Tín chỉ Carbon và nâng điểm tín nhiệm thương hiệu Đế chế.' }
+];
+
 // Rolling 60s Cash Telemetry (Zero GC ring of timestamped entries)
 const cashFlowSamples = [];
 
@@ -461,6 +509,12 @@ export function getCashPerMinute() {
   const resortPerMin = resortDef ? resortDef.cashPer10s * 6 * getPrestigeMultiplier() : 0;
   const hqDef = HQ_TIERS.find((h) => h.tier === (gameState.hqTier || 0));
   const hqDivPerMin = hqDef ? Math.round((hqDef.dividend45s * (60 / 45)) * getPrestigeMultiplier()) : 0;
+  const deepDef = DEEP_PORT_TIERS.find((d) => d.tier === (gameState.deepPortTier || 0));
+  const deepPerMin = deepDef ? deepDef.royalty10s * 6 * getPrestigeMultiplier() : 0;
+  const greenDef = GREEN_ENERGY_TIERS.find((g) => g.tier === (gameState.greenEnergyTier || 0));
+  const carbonPerMin = greenDef
+    ? Math.round(greenDef.creditsPer10s * (hasPatent('pat_green_grid') ? 1.35 : 1) * 6 * (carbonMarketState.price || 44))
+    : 0;
   const franchisePerMin = getFranchiseRoyaltyPer10s() * 6;
   const realEstatePerMin = getRealEstateIncomePer10s() * 6;
   const logisticsPerMin = (gameState.logisticsTier || 0) * 140 * getRevenueMultiplier();
@@ -472,6 +526,8 @@ export function getCashPerMinute() {
     + yachtPerMin
     + resortPerMin
     + hqDivPerMin
+    + deepPerMin
+    + carbonPerMin
     + franchisePerMin
     + realEstatePerMin
     + logisticsPerMin
@@ -660,6 +716,27 @@ export function createDefaultState() {
       revFurniture: 0
     },
 
+    // Phase 7: Deep-Water Container Port, Futures, Insurance, Green Carbon, R&D Patents & P&L Ledger
+    deepPortTier: 0,
+    activeContainerVoyage: null,
+    containerAccumCash: 0,
+    containerVoyagesCompleted: 0,
+    insuranceTier: 0,
+    insuranceSavedCash: 0,
+    activeFutures: [],
+    futuresCompleted: 0,
+    greenEnergyTier: 0,
+    carbonCredits: 0,
+    carbonSoldCash: 0,
+    unlockedPatents: [],
+    pnlLedger: {
+      grossRevenue: 0,
+      loanRepaid: 0,
+      upgradeSpend: 0,
+      insuranceSaved: 0,
+      greenSaved: 0
+    },
+
     // Cosmetics & Fleet
     equippedSkin: 'classic',
     unlockedSkins: ['classic'],
@@ -771,6 +848,15 @@ export function getRealEstateIncomePer10s() {
   return Math.round(sum * getPrestigeMultiplier());
 }
 
+export function hasPatent(id) {
+  return Array.isArray(gameState.unlockedPatents) && gameState.unlockedPatents.includes(id);
+}
+
+export function getGreenCostReductionPct() {
+  const ge = GREEN_ENERGY_TIERS.find((g) => g.tier === (gameState.greenEnergyTier || 0));
+  return ge ? ge.costReductionPct : 0;
+}
+
 export function getRevenueMultiplier() {
   const branchMult = getActiveBranch().multiplier;
   const plankMult = 1 + ((gameState.plankValueTier || 1) - 1) * 0.35;
@@ -780,6 +866,7 @@ export function getRevenueMultiplier() {
   const badgeMult = 1 + getBadgeRevenueBonus();
   const hqMult = 1 + getHqMultiplierBonus();
   const franchiseMult = 1 + getFranchiseBonusPct() / 100;
+  const patentKilnMult = hasPatent('pat_kiln') ? 1.22 : 1.0;
   const ev = activeEventState.current;
   const eventMult = ev && ev.multTarget === 'sawmill' ? 1 + ev.multBonus : 1.0;
   const expo = expoState.current;
@@ -787,7 +874,7 @@ export function getRevenueMultiplier() {
   let skinMult = 1.0;
   if (gameState.equippedSkin === 'captain') skinMult = 1.15;
   if (gameState.equippedSkin === 'gold_tycoon') skinMult = 1.25;
-  return branchMult * plankMult * vipMult * skinMult * mgrMult * prestigeMult * badgeMult * hqMult * franchiseMult * eventMult * expoMult;
+  return branchMult * plankMult * vipMult * skinMult * mgrMult * prestigeMult * badgeMult * hqMult * franchiseMult * patentKilnMult * eventMult * expoMult;
 }
 
 export function getContractMultiplier() {
@@ -796,7 +883,8 @@ export function getContractMultiplier() {
   const expo = expoState.current;
   const expoMult = expo && expo.target === 'contracts' ? 1 + expo.bonusPct / 100 : 1.0;
   const lhMult = 1 + getLighthouseContractBonus();
-  return getRevenueMultiplier() * (1 + getManagerBonus('contractBonus')) * eventMult * expoMult * lhMult;
+  const hedgeMult = hasPatent('pat_fin_hedge') ? 1.18 : 1.0;
+  return getRevenueMultiplier() * (1 + getManagerBonus('contractBonus')) * eventMult * expoMult * lhMult * hedgeMult;
 }
 
 export function getUpgradeCost(item) {
@@ -805,7 +893,10 @@ export function getUpgradeCost(item) {
   const baseLevel = item.id === 'conveyorTier' || item.category === 'workforce' ? cur : Math.max(0, cur - 1);
   let cost = Math.floor(item.baseCost * Math.pow(item.scale, baseLevel));
   if (gameState.vipLevel >= 4) cost = Math.floor(cost * 0.8);
-  return cost;
+  if (hasPatent('pat_eco_resin')) cost = Math.floor(cost * 0.85);
+  const greenRed = getGreenCostReductionPct();
+  if (greenRed > 0) cost = Math.floor(cost * (1 - greenRed / 100));
+  return Math.max(10, cost);
 }
 
 export function getSawmillVisualTier() {
@@ -848,12 +939,17 @@ export function recordRevenue(source, amount) {
   if (!amount || amount <= 0) return;
   const rounded = Math.round(amount);
   if (!gameState.revenueStats) {
-    gameState.revenueStats = { sawmill: 0, contracts: 0, fishery: 0, market: 0, offline: 0, stocks: 0, resort: 0, furniture: 0, franchise: 0, realestate: 0 };
+    gameState.revenueStats = { sawmill: 0, contracts: 0, fishery: 0, market: 0, offline: 0, stocks: 0, resort: 0, furniture: 0, franchise: 0, realestate: 0, container: 0, carbon: 0, futures: 0 };
   }
   if (!(source in gameState.revenueStats)) {
     gameState.revenueStats[source] = 0;
   }
   gameState.revenueStats[source] += rounded;
+
+  if (!gameState.pnlLedger) {
+    gameState.pnlLedger = { grossRevenue: 0, loanRepaid: 0, upgradeSpend: 0, insuranceSaved: 0, greenSaved: 0 };
+  }
+  gameState.pnlLedger.grossRevenue = (gameState.pnlLedger.grossRevenue || 0) + rounded;
 
   // Automatic safe loan repayment on positive earnings
   if (gameState.activeLoan && gameState.activeLoan.remaining > 0 && source !== 'offline') {
@@ -873,6 +969,14 @@ export function recordRevenue(source, amount) {
 
   cashFlowSamples.push({ t: Date.now(), amt: rounded });
   if (cashFlowSamples.length > 240) cashFlowSamples.shift();
+}
+
+export function recordPnlExpense(kind, amount) {
+  if (!amount || amount <= 0) return;
+  if (!gameState.pnlLedger) {
+    gameState.pnlLedger = { grossRevenue: 0, loanRepaid: 0, upgradeSpend: 0, insuranceSaved: 0, greenSaved: 0 };
+  }
+  gameState.pnlLedger[kind] = (gameState.pnlLedger[kind] || 0) + Math.round(amount);
 }
 
 export function addVipXp(amount) {
@@ -946,7 +1050,8 @@ export function calculateOfflineEarnings(previousUpdatedAt) {
     + (gameState.autoForklifts || 0) * 2.5
     + Math.max(1, gameState.fishingBoats || 0) * 1.1;
 
-  const mult = getRevenueMultiplier() * (1 + getManagerBonus('offlineBonus'));
+  const cryoMult = hasPatent('pat_cold_cryo') ? 1.25 : 1.0;
+  const mult = getRevenueMultiplier() * (1 + getManagerBonus('offlineBonus')) * cryoMult;
   const cash = Math.max(25, Math.round((cappedSec / 12) * workforceScore * mult));
   const planks = Math.min(40, Math.floor((cappedSec / 45) * Math.max(1, gameState.lumberjacks || 0)));
   return { seconds: cappedSec, cash, planks };
@@ -1069,6 +1174,13 @@ export function performPrestige() {
   gameState.franchiseAccumCash = 0;
   gameState.activeLoan = null;
   gameState.realEstateAccumCash = 0;
+  gameState.deepPortTier = 0;
+  gameState.activeContainerVoyage = null;
+  gameState.containerAccumCash = 0;
+  gameState.insuranceTier = 0;
+  gameState.activeFutures = [];
+  gameState.greenEnergyTier = 0;
+  gameState.carbonCredits = 0;
   gameState.stockPortfolio = {
     TMBR: { shares: 0, avgPrice: 0 },
     PORT: { shares: 0, avgPrice: 0 },
@@ -1591,7 +1703,8 @@ export function getTotalPendingYields() {
     + Math.floor(gameState.resortAccumCash || 0)
     + Math.floor(gameState.pendingDividendCash || 0)
     + Math.floor(gameState.franchiseAccumCash || 0)
-    + Math.floor(gameState.realEstateAccumCash || 0);
+    + Math.floor(gameState.realEstateAccumCash || 0)
+    + Math.floor(gameState.containerAccumCash || 0);
 }
 
 export function collectAllEmpireYields() {
@@ -1619,6 +1732,10 @@ export function collectAllEmpireYields() {
   const re = claimRealEstateYield();
   if (re) {
     cash += re.cash;
+  }
+  const dc = claimContainerYield();
+  if (dc) {
+    cash += dc.cash;
   }
   if (cash <= 0 && gems <= 0) return null;
   return { cash, gems };
@@ -1821,9 +1938,28 @@ export function hydrateLoadedState() {
   if (!gameState.exportBreakdown || typeof gameState.exportBreakdown !== 'object') {
     gameState.exportBreakdown = { planks: 0, pallets: 0, cannedFish: 0, furniture: 0, revPlanks: 0, revPallets: 0, revCanned: 0, revFurniture: 0 };
   }
-  ['furniture', 'franchise', 'realestate'].forEach((k) => {
+  ['furniture', 'franchise', 'realestate', 'container', 'carbon', 'futures'].forEach((k) => {
     if (typeof gameState.revenueStats[k] !== 'number') gameState.revenueStats[k] = 0;
   });
+
+  // Phase 7 safe hydration
+  if (typeof gameState.deepPortTier !== 'number') gameState.deepPortTier = 0;
+  if (gameState.activeContainerVoyage && typeof gameState.activeContainerVoyage.timeLeft !== 'number') {
+    gameState.activeContainerVoyage = null;
+  }
+  if (typeof gameState.containerAccumCash !== 'number') gameState.containerAccumCash = 0;
+  if (typeof gameState.containerVoyagesCompleted !== 'number') gameState.containerVoyagesCompleted = 0;
+  if (typeof gameState.insuranceTier !== 'number') gameState.insuranceTier = 0;
+  if (typeof gameState.insuranceSavedCash !== 'number') gameState.insuranceSavedCash = 0;
+  if (!Array.isArray(gameState.activeFutures)) gameState.activeFutures = [];
+  if (typeof gameState.futuresCompleted !== 'number') gameState.futuresCompleted = 0;
+  if (typeof gameState.greenEnergyTier !== 'number') gameState.greenEnergyTier = 0;
+  if (typeof gameState.carbonCredits !== 'number') gameState.carbonCredits = 0;
+  if (typeof gameState.carbonSoldCash !== 'number') gameState.carbonSoldCash = 0;
+  if (!Array.isArray(gameState.unlockedPatents)) gameState.unlockedPatents = [];
+  if (!gameState.pnlLedger || typeof gameState.pnlLedger !== 'object') {
+    gameState.pnlLedger = { grossRevenue: 0, loanRepaid: 0, upgradeSpend: 0, insuranceSaved: 0, greenSaved: 0 };
+  }
 }
 
 // ---------------------------------------------------------------------------
@@ -1883,7 +2019,13 @@ export function getEmpireNetWorth() {
     + (gameState.unlockedFranchises?.length || 0) * 8500
     + (gameState.unlockedPlanes?.length || 0) * 4200
     + (gameState.logisticsTier || 0) * 3200
+    + (gameState.unlockedBranches?.length || 1 - 1) * 0
     + ((gameState.unlockedBranches?.length || 1) - 1) * 12000
+    + (gameState.deepPortTier || 0) * 10500
+    + (gameState.greenEnergyTier || 0) * 7200
+    + (gameState.insuranceTier || 0) * 5400
+    + (gameState.unlockedPatents?.length || 0) * 6500
+    + Math.round((gameState.carbonCredits || 0) * (carbonMarketState.price || 44))
   );
 }
 
@@ -1902,19 +2044,28 @@ export function takeBankLoan(packageId) {
   if (nw < pkg.minNetWorth) {
     return { ok: false, reason: `Cần định giá Đế chế tối thiểu $${pkg.minNetWorth.toLocaleString()} để mở gói này.` };
   }
-  const totalDue = Math.round(pkg.principal * (1 + pkg.interestPct / 100));
+  const geDef = GREEN_ENERGY_TIERS.find((g) => g.tier === (gameState.greenEnergyTier || 0));
+  const insDef = INSURANCE_TIERS.find((i) => i.tier === (gameState.insuranceTier || 0));
+  const loanDiscount = (geDef ? geDef.loanDiscountPct : 0) + (insDef ? Math.round(insDef.discountFeePct * 0.35) : 0);
+  const effRate = Math.max(3, Number((pkg.interestPct * (1 - Math.min(0.65, loanDiscount / 100))).toFixed(1)));
+  const baseDue = Math.round(pkg.principal * (1 + pkg.interestPct / 100));
+  const totalDue = Math.round(pkg.principal * (1 + effRate / 100));
+  const savedInt = Math.max(0, baseDue - totalDue);
+  if (savedInt > 0) {
+    recordPnlExpense('greenSaved', savedInt);
+  }
   gameState.activeLoan = {
     packageId: pkg.id,
     name: pkg.name,
     principal: pkg.principal,
     totalDue,
     remaining: totalDue,
-    ratePct: pkg.interestPct,
+    ratePct: effRate,
     autoDeductRate: pkg.autoDeductRate
   };
   gameState.cash += pkg.principal;
-  logTransaction('bank', `Giải ngân ${pkg.name}`, pkg.principal, 0);
-  return { ok: true, pkg, totalDue };
+  logTransaction('bank', `Giải ngân ${pkg.name} (Lãi ${effRate}%)`, pkg.principal, 0);
+  return { ok: true, pkg, totalDue, effRate, savedInt };
 }
 
 export function processLoanAutoDeduct(earnedCash) {
@@ -1924,6 +2075,7 @@ export function processLoanAutoDeduct(earnedCash) {
   if (deduct <= 0) return 0;
   gameState.cash -= deduct;
   loan.remaining -= deduct;
+  recordPnlExpense('loanRepaid', deduct);
   if (loan.remaining <= 0) {
     const paidName = loan.name;
     gameState.activeLoan = null;
@@ -1942,6 +2094,7 @@ export function repayBankLoan() {
     return { ok: false, reason: `Cần đủ $${payAmt.toLocaleString()} để tất toán dứt điểm.` };
   }
   gameState.cash -= payAmt;
+  recordPnlExpense('loanRepaid', payAmt);
   const paidName = loan.name;
   gameState.activeLoan = null;
   gameState.loansRepaidCount = (gameState.loansRepaidCount || 0) + 1;
@@ -2149,3 +2302,379 @@ export async function fetchLeaderboard() {
     return [];
   }
 }
+
+// ---------------------------------------------------------------------------
+// Phase 7: Deep-Water Container Port, Futures, Insurance, Green Carbon, R&D Patents, P&L & ROI
+// ---------------------------------------------------------------------------
+export function getDeepPortNextTier() {
+  const cur = gameState.deepPortTier || 0;
+  return DEEP_PORT_TIERS.find((d) => d.tier === cur + 1) || null;
+}
+
+export function upgradeDeepPort() {
+  const next = getDeepPortNextTier();
+  if (!next) return { ok: false, reason: 'Cảng Nước Sâu đã đạt Cấp 3/3 tối đa.' };
+  if (gameState.cash < next.costCash) return { ok: false, reason: 'Chưa đủ tiền mặt xây dựng Cảng Nước Sâu!' };
+  gameState.cash -= next.costCash;
+  gameState.deepPortTier = next.tier;
+  recordPnlExpense('upgradeSpend', next.costCash);
+  addVipXp(75);
+  addSeasonXp(50);
+  logTransaction('fleet', `Khánh thành ${next.name} (Cấp ${next.tier})`, -next.costCash, 0);
+  return { ok: true, tierDef: next };
+}
+
+export function dispatchContainerVoyage(routeId) {
+  const portLv = gameState.deepPortTier || 0;
+  if (portLv <= 0) return { ok: false, reason: 'Cần xây Bến Container Nước Sâu Cấp 1 trước!' };
+  if (gameState.activeContainerVoyage) return { ok: false, reason: 'Tàu Container đang thực hiện hải trình!' };
+  const rt = CONTAINER_ROUTES.find((r) => r.id === routeId);
+  if (!rt) return { ok: false, reason: 'Tuyến vận tải không tồn tại.' };
+  if (
+    gameState.planks < rt.reqPlanks
+    || gameState.pallets < rt.reqPallets
+    || gameState.cannedFish < rt.reqCanned
+    || (gameState.furniture || 0) < rt.reqFurniture
+  ) {
+    return { ok: false, reason: 'Kho hàng chưa đủ số lượng đóng container cho tuyến này!' };
+  }
+  gameState.planks -= rt.reqPlanks;
+  gameState.pallets -= rt.reqPallets;
+  gameState.cannedFish -= rt.reqCanned;
+  gameState.furniture = (gameState.furniture || 0) - rt.reqFurniture;
+
+  const portDef = DEEP_PORT_TIERS.find((d) => d.tier === portLv) || DEEP_PORT_TIERS[0];
+  const patMult = hasPatent('pat_container') ? 1.3 : 1.0;
+  const cashEst = Math.round(rt.rewardCash * portDef.voyageMult * patMult * getContractMultiplier());
+  const qty = rt.reqPlanks + rt.reqPallets + rt.reqCanned + rt.reqFurniture;
+  gameState.totalExported = (gameState.totalExported || 0) + qty;
+  advanceDailyQuest('goodsExported', qty);
+
+  gameState.activeContainerVoyage = {
+    routeId: rt.id,
+    name: rt.name,
+    totalSec: rt.durationSec,
+    timeLeft: rt.durationSec,
+    rewardCash: cashEst,
+    rewardGems: rt.rewardGems,
+    rewardVipXp: rt.rewardVipXp
+  };
+  logTransaction('export', `Xuất bến Tàu Container: ${rt.name}`, 0, 0);
+  return { ok: true, voyage: gameState.activeContainerVoyage };
+}
+
+export function tickContainerVoyage(dt) {
+  const v = gameState.activeContainerVoyage;
+  if (!v) return null;
+  v.timeLeft -= dt;
+  if (v.timeLeft <= 0) {
+    gameState.cash += v.rewardCash;
+    gameState.gems += v.rewardGems;
+    gameState.containerVoyagesCompleted = (gameState.containerVoyagesCompleted || 0) + 1;
+    recordRevenue('container', v.rewardCash);
+    addVipXp(v.rewardVipXp || 45);
+    addSeasonXp(45);
+    logTransaction('export', `Tàu Container cập cảng đích: ${v.name}`, v.rewardCash, v.rewardGems);
+    const done = { ...v };
+    gameState.activeContainerVoyage = null;
+    return done;
+  }
+  return null;
+}
+
+export function claimContainerYield() {
+  const cash = Math.floor(gameState.containerAccumCash || 0);
+  if (cash <= 0) return null;
+  gameState.cash += cash;
+  gameState.containerAccumCash = 0;
+  recordRevenue('container', cash);
+  addVipXp(16);
+  logTransaction('export', 'Thu Phí Bốc Dỡ Cảng Container', cash, 0);
+  return { cash };
+}
+
+export function getInsuranceNextTier() {
+  const cur = gameState.insuranceTier || 0;
+  return INSURANCE_TIERS.find((i) => i.tier === cur + 1) || null;
+}
+
+export function upgradeInsurance() {
+  const next = getInsuranceNextTier();
+  if (!next) return { ok: false, reason: 'Bảo hiểm Hàng hải đã đạt cấp tối đa 3/3.' };
+  if (gameState.cash < next.costCash) return { ok: false, reason: 'Chưa đủ tiền mặt mua gói Bảo hiểm!' };
+  gameState.cash -= next.costCash;
+  gameState.insuranceTier = next.tier;
+  recordPnlExpense('upgradeSpend', next.costCash);
+  addVipXp(45);
+  logTransaction('bank', `Kích hoạt ${next.name}`, -next.costCash, 0);
+  return { ok: true, tierDef: next };
+}
+
+export function signFuturesContract(tplId) {
+  if (!Array.isArray(gameState.activeFutures)) gameState.activeFutures = [];
+  if (gameState.activeFutures.length >= 2) {
+    return { ok: false, reason: 'Tối đa 2 Hợp đồng Tương lai chạy song song!' };
+  }
+  const tpl = FUTURES_TEMPLATES.find((f) => f.id === tplId);
+  if (!tpl) return { ok: false, reason: 'Mẫu hợp đồng không hợp lệ.' };
+  const patMult = hasPatent('pat_fin_hedge') ? 1.18 : 1.0;
+  const lockedCash = Math.round(tpl.qty * tpl.basePrice * tpl.lockedMult * patMult * getRevenueMultiplier());
+  const contract = {
+    uid: 'fut_' + Date.now() + '_' + Math.floor(Math.random() * 999),
+    tplId: tpl.id,
+    name: tpl.name,
+    itemKey: tpl.itemKey,
+    itemLabel: tpl.itemLabel,
+    qty: tpl.qty,
+    totalSec: tpl.durationSec,
+    timeLeft: tpl.durationSec,
+    lockedCash,
+    rewardGems: tpl.rewardGems
+  };
+  gameState.activeFutures.push(contract);
+  logTransaction('stocks', `Ký ${tpl.name} (Chốt $${lockedCash.toLocaleString()})`, 0, 0);
+  return { ok: true, contract };
+}
+
+export function settleFuturesContract(uid, autoTrigger = false) {
+  if (!Array.isArray(gameState.activeFutures)) gameState.activeFutures = [];
+  const idx = gameState.activeFutures.findIndex((f) => f.uid === uid);
+  if (idx === -1) return { ok: false, reason: 'Không tìm thấy hợp đồng tương lai.' };
+  const fut = gameState.activeFutures[idx];
+  const stock = Math.floor(gameState[fut.itemKey] || 0);
+  if (stock < fut.qty) {
+    if (!autoTrigger) {
+      return { ok: false, reason: `Cần đủ ${fut.qty} ${fut.itemLabel} trong kho để giao tất toán.` };
+    }
+    // At maturity if short on goods, check Maritime Insurance mitigation or partial penalty
+    const insDef = INSURANCE_TIERS.find((i) => i.tier === (gameState.insuranceTier || 0));
+    if (insDef) {
+      const rebate = Math.round(fut.lockedCash * (insDef.protectionPct / 100) * 0.25);
+      gameState.cash += rebate;
+      gameState.insuranceSavedCash = (gameState.insuranceSavedCash || 0) + rebate;
+      recordPnlExpense('insuranceSaved', rebate);
+      logTransaction('bank', `Bảo hiểm bồi hoàn ${fut.name}`, rebate, 0);
+      gameState.activeFutures.splice(idx, 1);
+      return { ok: false, expiredInsured: true, rebate, name: fut.name };
+    }
+    gameState.activeFutures.splice(idx, 1);
+    return { ok: false, expired: true, name: fut.name };
+  }
+
+  gameState[fut.itemKey] -= fut.qty;
+  gameState.cash += fut.lockedCash;
+  gameState.gems += fut.rewardGems;
+  gameState.totalExported = (gameState.totalExported || 0) + fut.qty;
+  gameState.futuresCompleted = (gameState.futuresCompleted || 0) + 1;
+  recordRevenue('futures', fut.lockedCash);
+  recordExportItem(fut.itemKey, fut.qty, fut.lockedCash);
+  addVipXp(38);
+  addSeasonXp(30);
+  logTransaction('stocks', `Tất toán ${fut.name}`, fut.lockedCash, fut.rewardGems);
+  gameState.activeFutures.splice(idx, 1);
+  return { ok: true, cash: fut.lockedCash, gems: fut.rewardGems, name: fut.name };
+}
+
+export function tickFuturesContracts(dt) {
+  if (!Array.isArray(gameState.activeFutures) || gameState.activeFutures.length === 0) return [];
+  const events = [];
+  for (let i = gameState.activeFutures.length - 1; i >= 0; i--) {
+    const f = gameState.activeFutures[i];
+    f.timeLeft -= dt;
+    if (f.timeLeft <= 0) {
+      const res = settleFuturesContract(f.uid, true);
+      events.push(res);
+    }
+  }
+  return events;
+}
+
+export function getGreenEnergyNextTier() {
+  const cur = gameState.greenEnergyTier || 0;
+  return GREEN_ENERGY_TIERS.find((g) => g.tier === cur + 1) || null;
+}
+
+export function upgradeGreenEnergy() {
+  const next = getGreenEnergyNextTier();
+  if (!next) return { ok: false, reason: 'Lưới Năng lượng Xanh đã đạt Cấp 3/3 tối đa.' };
+  if (gameState.cash < next.costCash) return { ok: false, reason: 'Chưa đủ tiền mặt đầu tư Năng lượng Xanh!' };
+  gameState.cash -= next.costCash;
+  gameState.greenEnergyTier = next.tier;
+  recordPnlExpense('upgradeSpend', next.costCash);
+  addVipXp(65);
+  addSeasonXp(45);
+  logTransaction('fleet', `Triển khai ${next.name} (Cấp ${next.tier})`, -next.costCash, 0);
+  return { ok: true, tierDef: next };
+}
+
+export function updateCarbonMarket() {
+  const prev = carbonMarketState.price;
+  const pull = (46 - prev) * 0.22;
+  const shock = (Math.random() - 0.47) * 8.5;
+  const next = Math.max(26, Math.min(78, Math.round(prev + pull + shock)));
+  carbonMarketState.prevPrice = prev;
+  carbonMarketState.price = next;
+  carbonMarketState.history.push(next);
+  if (carbonMarketState.history.length > 14) carbonMarketState.history.shift();
+  carbonMarketState.lastUpdateMs = Date.now();
+  return next;
+}
+
+export function sellCarbonCredits(fraction = 1) {
+  const total = Math.floor(gameState.carbonCredits || 0);
+  if (total <= 0) return { ok: false, reason: 'Chưa có Tín chỉ Carbon khả dụng để giao dịch!' };
+  const qty = Math.max(1, Math.floor(total * fraction));
+  const unitPrice = Math.round(carbonMarketState.price * getPrestigeMultiplier());
+  const cashGain = qty * unitPrice;
+  gameState.carbonCredits -= qty;
+  gameState.cash += cashGain;
+  gameState.carbonSoldCash = (gameState.carbonSoldCash || 0) + cashGain;
+  recordRevenue('carbon', cashGain);
+  addVipXp(Math.min(45, Math.max(10, Math.floor(qty * 0.8))));
+  logTransaction('stocks', `Bán ${qty} Tín chỉ Carbon (@ $${unitPrice})`, cashGain, 0);
+  return { ok: true, qty, unitPrice, cash: cashGain };
+}
+
+export function unlockPatent(id) {
+  const pat = RD_TECH_CATALOG.find((p) => p.id === id);
+  if (!pat) return { ok: false, reason: 'Bằng sáng chế không tồn tại.' };
+  if (!Array.isArray(gameState.unlockedPatents)) gameState.unlockedPatents = [];
+  if (gameState.unlockedPatents.includes(id)) return { ok: false, reason: 'Đã nghiên cứu xong bằng sáng chế này.' };
+  if (pat.costType === 'cash') {
+    if (gameState.cash < pat.cost) return { ok: false, reason: 'Chưa đủ tiền mặt tài trợ R&D!' };
+    gameState.cash -= pat.cost;
+    recordPnlExpense('upgradeSpend', pat.cost);
+  } else {
+    if (gameState.gems < pat.cost) return { ok: false, reason: 'Chưa đủ Đá quý tài trợ R&D!' };
+    gameState.gems -= pat.cost;
+  }
+  gameState.unlockedPatents.push(id);
+  addVipXp(55);
+  addSeasonXp(40);
+  logTransaction('fleet', `Cấp Bằng sáng chế: ${pat.name}`, pat.costType === 'cash' ? -pat.cost : 0, pat.costType === 'gems' ? -pat.cost : 0);
+  return { ok: true, patent: pat };
+}
+
+export function getCorporateCreditRating() {
+  const nw = getEmpireNetWorth();
+  const patentsCount = (gameState.unlockedPatents || []).length;
+  const greenLv = gameState.greenEnergyTier || 0;
+  const insLv = gameState.insuranceTier || 0;
+  const loansPaid = gameState.loansRepaidCount || 0;
+  const hasDebt = Boolean(gameState.activeLoan && gameState.activeLoan.remaining > 0);
+  const rawScore = Math.min(100, Math.round(
+    Math.min(35, nw / 4500)
+    + patentsCount * 5
+    + greenLv * 8
+    + insLv * 7
+    + Math.min(12, loansPaid * 4)
+    + (gameState.deepPortTier || 0) * 5
+    - (hasDebt ? 6 : 0)
+  ));
+  const rating = rawScore >= 85 ? 'AAA' : rawScore >= 68 ? 'AA' : rawScore >= 50 ? 'A' : rawScore >= 32 ? 'BBB' : 'B';
+  const esgScore = Math.min(100, greenLv * 24 + (hasPatent('pat_green_grid') ? 16 : 0) + (hasPatent('pat_eco_resin') ? 12 : 0) + insLv * 4);
+  const esgGrade = esgScore >= 80 ? 'A+' : esgScore >= 55 ? 'A' : esgScore >= 30 ? 'B' : 'C';
+  return { rating, score: rawScore, esgGrade, esgScore, patentsCount, netWorth: nw };
+}
+
+export function getPnlStatement() {
+  const stats = gameState.revenueStats || {};
+  const ledger = gameState.pnlLedger || { grossRevenue: 0, loanRepaid: 0, upgradeSpend: 0, insuranceSaved: 0, greenSaved: 0 };
+  const opRevenue = (stats.sawmill || 0) + (stats.furniture || 0) + (stats.contracts || 0) + (stats.container || 0) + (stats.fishery || 0);
+  const marketRevenue = (stats.market || 0) + (stats.futures || 0) + (stats.carbon || 0);
+  const assetRevenue = (stats.franchise || 0) + (stats.realestate || 0) + (stats.resort || 0) + (stats.stocks || 0) + (stats.offline || 0);
+  const gross = Math.max(opRevenue + marketRevenue + assetRevenue, ledger.grossRevenue || 0);
+  const loanCost = ledger.loanRepaid || 0;
+  const capex = ledger.upgradeSpend || 0;
+  const savings = (ledger.insuranceSaved || 0) + (ledger.greenSaved || 0) + (gameState.insuranceSavedCash || 0);
+  const netOperatingProfit = gross - loanCost + savings;
+  const marginPct = gross > 0 ? Math.max(0, Math.min(99.9, Number(((netOperatingProfit / gross) * 100).toFixed(1)))) : 0;
+  return {
+    opRevenue,
+    marketRevenue,
+    assetRevenue,
+    gross,
+    loanCost,
+    capex,
+    savings,
+    netOperatingProfit,
+    marginPct
+  };
+}
+
+export function getRoiRecommendations() {
+  const mult = getRevenueMultiplier();
+  const list = [];
+
+  const nextDeep = getDeepPortNextTier();
+  if (nextDeep) {
+    const addedCpm = Math.round(nextDeep.royalty10s * 6 * getPrestigeMultiplier() + 260 * mult);
+    list.push({ id: 'deep_port', name: nextDeep.name, category: 'Cảng Nước Sâu', cost: nextDeep.costCash, addedCpm, paybackMin: Number((nextDeep.costCash / Math.max(1, addedCpm)).toFixed(1)) });
+  }
+  const nextHq = getHqNextTier();
+  if (nextHq) {
+    const addedCpm = Math.round((nextHq.dividend45s * (60 / 45)) * getPrestigeMultiplier() + 180 * mult);
+    list.push({ id: 'hq', name: nextHq.name, category: 'Trụ sở Tập đoàn', cost: nextHq.costCash, addedCpm, paybackMin: Number((nextHq.costCash / Math.max(1, addedCpm)).toFixed(1)) });
+  }
+  const nextGreen = getGreenEnergyNextTier();
+  if (nextGreen) {
+    const addedCpm = Math.round(nextGreen.creditsPer10s * 6 * (carbonMarketState.price || 44));
+    list.push({ id: 'green', name: nextGreen.name, category: 'Năng lượng Xanh', cost: nextGreen.costCash, addedCpm, paybackMin: Number((nextGreen.costCash / Math.max(1, addedCpm)).toFixed(1)) });
+  }
+  const nextYacht = getYachtNextTier();
+  if (nextYacht) {
+    const addedCpm = Math.round(nextYacht.cashPer10s * 6 * getPrestigeMultiplier());
+    list.push({ id: 'yacht', name: nextYacht.name, category: 'Du thuyền VIP', cost: nextYacht.costCash, addedCpm, paybackMin: Number((nextYacht.costCash / Math.max(1, addedCpm)).toFixed(1)) });
+  }
+  for (const item of UPGRADE_CATALOG.filter((u) => ['sawSpeedTier', 'plankValueTier', 'autoForklifts', 'fishingBoats'].includes(u.id))) {
+    const cost = getUpgradeCost(item);
+    if (cost !== null) {
+      const addedCpm = item.id === 'autoForklifts' ? Math.round(180 * mult) : item.id === 'fishingBoats' ? Math.round(95 * mult) : Math.round(135 * mult);
+      list.push({ id: `up_${item.id}`, itemId: item.id, name: `${item.name} (Cấp ${(gameState[item.id] || 0) + 1})`, category: 'Xưởng & Nhân sự', cost, addedCpm, paybackMin: Number((cost / Math.max(1, addedCpm)).toFixed(1)) });
+    }
+  }
+  for (const prop of REAL_ESTATE_CATALOG) {
+    const cost = getRealEstateCost(prop);
+    if (cost !== null) {
+      const addedCpm = Math.round(prop.cashPer10s * 6 * getPrestigeMultiplier());
+      list.push({ id: `re_${prop.id}`, propId: prop.id, name: prop.name, category: 'Bất động sản', cost, addedCpm, paybackMin: Number((cost / Math.max(1, addedCpm)).toFixed(1)) });
+    }
+  }
+  return list;
+}
+
+export function quickBatchSawAndPallet() {
+  let processedLogs = 0;
+  let sawnPlanks = 0;
+  if (gameState.logs > 0) {
+    processedLogs = gameState.logs;
+    gameState.sawmillBuffer += processedLogs;
+    gameState.logs = 0;
+  }
+  if (gameState.sawmillBuffer > 0) {
+    const logsToSaw = Math.min(gameState.sawmillBuffer, 12);
+    const yieldPerLog = Math.max(1, gameState.sawSpeedTier || 1);
+    sawnPlanks = logsToSaw * yieldPerLog;
+    gameState.sawmillBuffer -= logsToSaw;
+    gameState.planks += sawnPlanks;
+    gameState.totalPlanksSawn = (gameState.totalPlanksSawn || 0) + sawnPlanks;
+    advanceDailyQuest('planksSawn', sawnPlanks);
+  }
+  let packedPallets = 0;
+  while (gameState.planks >= 8 && packedPallets < 3) {
+    gameState.planks -= 4;
+    gameState.pallets += 1;
+    packedPallets += 1;
+  }
+  if (processedLogs === 0 && sawnPlanks === 0 && packedPallets === 0) {
+    return { ok: false, reason: 'Chưa có gỗ trong Balo/Phễu hoặc đủ ván để đóng Pallet!' };
+  }
+  addSeasonXp(8);
+  return { ok: true, processedLogs, sawnPlanks, packedPallets };
+}
+
+export function quickBatchFurniture() {
+  const res = craftFurnitureBatch(true);
+  return res;
+}
+

@@ -10,7 +10,7 @@
   <link rel="preconnect" href="https://fonts.googleapis.com">
   <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
   <link href="https://fonts.googleapis.com/css2?family=JetBrains+Mono:wght@500;600;700&family=Outfit:wght@600;700&family=Plus+Jakarta+Sans:wght@400;500;600;700&display=swap" rel="stylesheet">
-  <link rel="stylesheet" href="/css/style.css?v=2.5.0">
+  <link rel="stylesheet" href="/css/style.css?v=2.7.0">
   <link rel="icon" href="data:image/svg+xml,<svg xmlns=%22http://www.w3.org/2000/svg%22 viewBox=%220 0 100 100%22><text y=%22.9em%22 font-size=%2290%22>🪵</text></svg>">
   <script type="importmap">
   {
@@ -146,10 +146,19 @@
     <span id="action-prompt-label">Lái xe</span>
   </button>
 
-  <!-- Quick-Board Fleet Strip & 1-Tap Collect All Yields -->
-  <div id="fleet-quick-strip" class="fleet-quick-strip" aria-label="Điều khiển nhanh hạm đội">
+  <!-- Quick-Board Fleet Strip & 1-Tap Supply Chain / Collect All Yields -->
+  <div id="fleet-quick-strip" class="fleet-quick-strip" aria-label="Điều khiển nhanh chuỗi cung ứng và hạm đội">
     <button type="button" id="btn-collect-all" class="fleet-quick-btn is-collect tabular-nums" title="Thu hoạch 1 chạm toàn bộ Quỹ Du thuyền, Resort &amp; Cổ tức" hidden>
       <span>💰</span><span id="btn-collect-all-label">Thu Quỹ ($0)</span>
+    </button>
+    <button type="button" id="btn-quick-saw" class="fleet-quick-btn is-supply" title="Xẻ gỗ &amp; Đóng Pallet nhanh 1 chạm">
+      <span>⚙️</span><span>Xẻ/Pallet</span>
+    </button>
+    <button type="button" id="btn-quick-furn" class="fleet-quick-btn is-supply" title="Chế tác Nội thất xuất khẩu nhanh 1 chạm">
+      <span>🛋️</span><span>Nội thất</span>
+    </button>
+    <button type="button" id="btn-quick-export" class="fleet-quick-btn is-supply" title="Giao nhanh hàng vào Hợp đồng Cảng">
+      <span>📦</span><span>Xuất HĐ</span>
     </button>
     <button type="button" id="btn-quick-yacht" class="fleet-quick-btn" title="Lái Du thuyền ra khơi ngay">
       <span>🚤</span><span>Du thuyền</span>
@@ -395,6 +404,6 @@
   <div id="toast-container" class="toast-container" aria-live="polite"></div>
 
   <!-- Application Entry Point (Modern ES Modules) -->
-  <script type="module" src="/js/engine.js?v=2.5.0"></script>
+  <script type="module" src="/js/engine.js?v=2.7.0"></script>
 </body>
 </html>

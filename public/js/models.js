@@ -1673,7 +1673,183 @@ export function createLighthouseModel(lowSpec = false) {
   return g;
 }
 
+export function createDeepContainerPortModel(lowSpec = false) {
+  const g = new THREE.Group();
+  const concreteMat = new THREE.MeshStandardMaterial({ color: 0x64748b, roughness: 0.88, metalness: 0.08 });
+  const darkSlateMat = new THREE.MeshStandardMaterial({ color: 0x1e293b, roughness: 0.55, metalness: 0.35 });
+  const keelRedMat = new THREE.MeshStandardMaterial({ color: 0xb91c1c, roughness: 0.48, metalness: 0.15 });
+  const whiteMat = new THREE.MeshStandardMaterial({ color: 0xf8fafc, roughness: 0.4 });
+  const craneYellowMat = new THREE.MeshStandardMaterial({ color: 0xeab308, roughness: 0.38, metalness: 0.28 });
+  const solarMat = new THREE.MeshStandardMaterial({ color: 0x0284c7, roughness: 0.24, metalness: 0.65 });
+  const cBlueMat = new THREE.MeshStandardMaterial({ color: 0x2563eb, roughness: 0.52 });
+  const cTealMat = new THREE.MeshStandardMaterial({ color: 0x0d9488, roughness: 0.52 });
+  const cAmberMat = new THREE.MeshStandardMaterial({ color: 0xd97706, roughness: 0.52 });
 
+  // Tier 1: Deep-Water Concrete Pier Caisson + Mega Container Ship + Primary Gantry Crane
+  const tier1Group = new THREE.Group();
+  tier1Group.visible = false;
 
+  const pierDeck = new THREE.Mesh(new THREE.BoxGeometry(16, 1.4, 10), concreteMat);
+  pierDeck.position.set(0, 0.3, -1);
+  pierDeck.receiveShadow = !lowSpec;
+  pierDeck.castShadow = !lowSpec;
+  tier1Group.add(pierDeck);
 
+  // Mooring bollards
+  for (const bx of [-6.2, -2.0, 2.2, 6.2]) {
+    const bollard = new THREE.Mesh(new THREE.CylinderGeometry(0.24, 0.3, 0.75, 8), darkSlateMat);
+    bollard.position.set(bx, 1.25, 3.4);
+    tier1Group.add(bollard);
+  }
 
+  // Mega Container Ship moored alongside outer deep-water berth
+  const containerShip = new THREE.Group();
+  containerShip.position.set(0, 0.1, 7.6);
+  const hullUpper = new THREE.Mesh(new THREE.BoxGeometry(15.2, 1.65, 4.4), darkSlateMat);
+  hullUpper.position.y = 0.85;
+  hullUpper.castShadow = !lowSpec;
+  const hullKeel = new THREE.Mesh(new THREE.BoxGeometry(14.6, 0.75, 4.2), keelRedMat);
+  hullKeel.position.y = 0.05;
+  const bow = new THREE.Mesh(new THREE.ConeGeometry(2.35, 3.4, 4), darkSlateMat);
+  bow.rotation.z = -Math.PI / 2;
+  bow.rotation.x = Math.PI / 4;
+  bow.scale.set(0.65, 1, 1);
+  bow.position.set(8.6, 0.85, 0);
+
+  // Aft Bridge Superstructure & Funnel
+  const bridgeTower = new THREE.Mesh(new THREE.BoxGeometry(2.6, 3.2, 3.6), whiteMat);
+  bridgeTower.position.set(-5.4, 3.1, 0);
+  const bridgeVisor = new THREE.Mesh(new THREE.BoxGeometry(0.6, 0.55, 3.7), darkSlateMat);
+  bridgeVisor.position.set(-4.35, 4.1, 0);
+  const funnel = new THREE.Mesh(new THREE.CylinderGeometry(0.42, 0.52, 1.5, 8), keelRedMat);
+  funnel.position.set(-6.2, 5.1, 0);
+  containerShip.add(hullUpper, hullKeel, bow, bridgeTower, bridgeVisor, funnel);
+
+  // 2-tier Cargo Container Stacks on Ship Deck
+  const shipStacks = [
+    [-2.4, 2.15, -0.95, cBlueMat],
+    [-2.4, 2.15, 0.95, cAmberMat],
+    [-2.4, 3.1, -0.95, cTealMat],
+    [0.5, 2.15, -0.95, cAmberMat],
+    [0.5, 2.15, 0.95, cBlueMat],
+    [0.5, 3.1, 0.95, cTealMat],
+    [3.4, 2.15, -0.95, cTealMat],
+    [3.4, 2.15, 0.95, cAmberMat]
+  ];
+  for (const [cx, cy, cz, mat] of shipStacks) {
+    const box = new THREE.Mesh(new THREE.BoxGeometry(2.55, 0.92, 1.55), mat);
+    box.position.set(cx, cy, cz);
+    box.castShadow = !lowSpec;
+    containerShip.add(box);
+  }
+  tier1Group.add(containerShip);
+
+  // Heavy Rail-Mounted Gantry Crane
+  const craneBase = new THREE.Group();
+  craneBase.position.set(-1.5, 1.0, 2.1);
+  for (const lx of [-2.4, 2.4]) {
+    for (const lz of [-1.2, 1.2]) {
+      const leg = new THREE.Mesh(new THREE.BoxGeometry(0.45, 7.6, 0.45), craneYellowMat);
+      leg.position.set(lx, 3.8, lz);
+      leg.castShadow = !lowSpec;
+      craneBase.add(leg);
+    }
+  }
+  const boomBeam = new THREE.Mesh(new THREE.BoxGeometry(6.2, 0.72, 11.4), craneYellowMat);
+  boomBeam.position.set(0, 7.75, 2.8);
+  boomBeam.castShadow = !lowSpec;
+  craneBase.add(boomBeam);
+
+  // Animated Crane Trolley + Suspended Container
+  const trolley = new THREE.Group();
+  trolley.position.set(0, 7.2, 3.2);
+  const carriage = new THREE.Mesh(new THREE.BoxGeometry(1.5, 0.55, 1.7), darkSlateMat);
+  const cableL = new THREE.Mesh(new THREE.CylinderGeometry(0.05, 0.05, 2.2, 5), darkSlateMat);
+  cableL.position.set(-0.7, -1.2, 0);
+  const cableR = new THREE.Mesh(new THREE.CylinderGeometry(0.05, 0.05, 2.2, 5), darkSlateMat);
+  cableR.position.set(0.7, -1.2, 0);
+  const hoistedBox = new THREE.Mesh(new THREE.BoxGeometry(2.4, 0.95, 1.5), cBlueMat);
+  hoistedBox.position.set(0, -2.55, 0);
+  trolley.add(carriage, cableL, cableR, hoistedBox);
+  craneBase.add(trolley);
+  tier1Group.add(craneBase);
+  g.add(tier1Group);
+
+  // Tier 2: Twin Outer Gantry Crane & High-Bay Yard Containers
+  const tier2Group = new THREE.Group();
+  tier2Group.visible = false;
+  const crane2 = new THREE.Group();
+  crane2.position.set(4.8, 1.0, 2.1);
+  for (const lx of [-1.6, 1.6]) {
+    const leg = new THREE.Mesh(new THREE.BoxGeometry(0.38, 7.2, 0.38), craneYellowMat);
+    leg.position.set(lx, 3.6, 0);
+    crane2.add(leg);
+  }
+  const boom2 = new THREE.Mesh(new THREE.BoxGeometry(4.2, 0.6, 9.6), craneYellowMat);
+  boom2.position.set(0, 7.3, 2.4);
+  crane2.add(boom2);
+  tier2Group.add(crane2);
+
+  const yardBoxes = [
+    [-5.2, 1.45, -3.5, cTealMat],
+    [-5.2, 2.4, -3.5, cAmberMat],
+    [-2.1, 1.45, -3.5, cBlueMat]
+  ];
+  for (const [yx, yy, yz, mat] of yardBoxes) {
+    const yb = new THREE.Mesh(new THREE.BoxGeometry(2.6, 0.92, 1.55), mat);
+    yb.position.set(yx, yy, yz);
+    tier2Group.add(yb);
+  }
+  g.add(tier2Group);
+
+  // Tier 3: Automated Deep-Port Command Arch & Control Bridge
+  const tier3Group = new THREE.Group();
+  tier3Group.visible = false;
+  const ctrlRoom = new THREE.Mesh(new THREE.BoxGeometry(4.6, 2.4, 2.8), whiteMat);
+  ctrlRoom.position.set(2.2, 2.2, -3.6);
+  const ctrlGlass = new THREE.Mesh(new THREE.BoxGeometry(4.2, 0.8, 0.2), solarMat);
+  ctrlGlass.position.set(2.2, 2.6, -2.15);
+  const mastArch = new THREE.Mesh(new THREE.BoxGeometry(8.5, 0.4, 0.55), craneYellowMat);
+  mastArch.position.set(1.5, 9.2, 2.1);
+  tier3Group.add(ctrlRoom, ctrlGlass, mastArch);
+  g.add(tier3Group);
+
+  // Green Port Solar Microgrid & Offshore Wind Mast (toggled when greenEnergyTier >= 1)
+  const greenSolarArray = new THREE.Group();
+  greenSolarArray.visible = false;
+  for (let i = 0; i < 3; i++) {
+    const panel = new THREE.Mesh(new THREE.BoxGeometry(2.1, 0.14, 1.4), solarMat);
+    panel.position.set(-5.8 + i * 2.5, 1.55, -0.4);
+    panel.rotation.x = 0.28;
+    const stand = new THREE.Mesh(new THREE.CylinderGeometry(0.12, 0.16, 0.7, 6), darkSlateMat);
+    stand.position.set(-5.8 + i * 2.5, 1.15, -0.4);
+    greenSolarArray.add(panel, stand);
+  }
+  const windMast = new THREE.Mesh(new THREE.CylinderGeometry(0.16, 0.24, 6.2, 8), whiteMat);
+  windMast.position.set(-7.1, 3.9, 1.8);
+  const hub = new THREE.Mesh(new THREE.SphereGeometry(0.32, 8, 8), craneYellowMat);
+  hub.position.set(-7.1, 7.0, 1.95);
+  const blade1 = new THREE.Mesh(new THREE.BoxGeometry(0.22, 3.6, 0.08), whiteMat);
+  blade1.position.set(-7.1, 7.0, 2.1);
+  const blade2 = new THREE.Mesh(new THREE.BoxGeometry(3.6, 0.22, 0.08), whiteMat);
+  blade2.position.set(-7.1, 7.0, 2.1);
+  greenSolarArray.add(windMast, hub, blade1, blade2);
+  g.add(greenSolarArray);
+
+  // Port Beacon PointLight (auto-gated OFF on <8GB RAM lowSpec)
+  const beaconLight = new THREE.PointLight(0x38bdf8, 1.9, 28, 1.6);
+  beaconLight.position.set(0, 8.8, 4.5);
+  beaconLight.visible = false;
+  g.add(beaconLight);
+
+  g.userData = {
+    tier1Group,
+    tier2Group,
+    tier3Group,
+    greenSolarArray,
+    containerShip,
+    trolley,
+    beaconLight
+  };
+  return g;
+}

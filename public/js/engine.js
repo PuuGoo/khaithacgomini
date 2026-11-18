@@ -16,12 +16,16 @@ import {
   HQ_TIERS,
   ISLAND_RESORT_TIERS,
   FURNITURE_MILL_TIERS,
+  DEEP_PORT_TIERS,
+  GREEN_ENERGY_TIERS,
+  INSURANCE_TIERS,
   fleetMissionState,
   marketState,
   stormState,
   shiftSession,
   updateMarketPrices,
   updateStockPrices,
+  updateCarbonMarket,
   sampleRevenueHistory,
   calculateOfflineEarnings,
   getBackpackCapacity,
@@ -34,6 +38,7 @@ import {
   getContractMultiplier,
   getManagerBonus,
   getPrestigeMultiplier,
+  hasPatent,
   getActiveEvent,
   getUpgradeCost,
   getSawmillVisualTier,
@@ -42,8 +47,13 @@ import {
   getFranchiseRoyaltyPer10s,
   getRealEstateIncomePer10s,
   craftFurnitureBatch,
+  quickBatchSawAndPallet,
+  quickBatchFurniture,
   tickTradeExpo,
+  tickContainerVoyage,
+  tickFuturesContracts,
   recordExportItem,
+  recordPnlExpense,
   logTransaction,
   evaluateBadgeUnlocks,
   recordRevenue,
@@ -223,6 +233,7 @@ class TimberPortEngine {
     this.resortTickTimer = 0;
     this.furnitureCraftTimer = 0;
     this.empirePhase6Timer = 0;
+    this.phase7TickTimer = 0;
     this.revSampleTimer = 0;
     this.stockAccum = 0;
     this.chopCooldown = 0;
@@ -318,6 +329,40 @@ class TimberPortEngine {
       },
       onLighthouseChange: () => {
         this.world?.syncLighthouseTier(gameState.lighthouseTier || 0);
+      },
+      onDeepPortChange: () => {
+        this.world?.syncDeepPortTier(gameState.deepPortTier || 0, gameState.greenEnergyTier || 0);
+      },
+      onGreenEnergyChange: () => {
+        this.world?.syncDeepPortTier(gameState.deepPortTier || 0, gameState.greenEnergyTier || 0);
+      },
+      onQuickSawPallet: () => {
+        const res = quickBatchSawAndPallet();
+        if (!res.ok) {
+          this.ui.toast(res.reason);
+          return false;
+        }
+        sound.playUpgrade();
+        this.world.spawnParticles(ZONES.sawOutput, 0x38bdf8, 5);
+        this.syncSawmillVisuals();
+        saveGameServer();
+        this.ui.refreshHUD();
+        this.ui.toast(`⚙️ Đã xẻ ${res.sawnPlanks} ván & đóng ${res.packedPallets} Pallet!`);
+        return true;
+      },
+      onQuickCraftFurniture: () => {
+        const res = quickBatchFurniture();
+        if (!res.ok) {
+          this.ui.toast(res.reason);
+          return false;
+        }
+        sound.playUpgrade();
+        this.world.spawnParticles(ZONES.furnitureMill, 0xfb7185, 5);
+        this.syncSawmillVisuals();
+        saveGameServer();
+        this.ui.refreshHUD();
+        this.ui.toast(`🛋️ Chế tác nhanh +${res.produced} Bộ Nội thất!`);
+        return true;
       },
       onLiveryChange: () => this.applyFleetLiveries(),
       onPlaneChange: () => this.rebuildAirSeaFleet(),
@@ -1352,6 +1397,7 @@ class TimberPortEngine {
     this.world.syncResortTier(gameState.islandResortTier || 0);
     this.world.syncFurnitureMillTier(gameState.furnitureMillTier || 0);
     this.world.syncLighthouseTier(gameState.lighthouseTier || 0);
+    this.world.syncDeepPortTier(gameState.deepPortTier || 0, gameState.greenEnergyTier || 0);
     this.rebuildAirSeaFleet();
     this.lastVisualBuffer = -1;
     this.lastVisualPlanks = -1;
@@ -1470,6 +1516,7 @@ class TimberPortEngine {
     if (this.stockAccum >= 20) {
       this.stockAccum = 0;
       const movers = updateStockPrices();
+      updateCarbonMarket();
       if (movers.length) {
         this.ui.toast(`📊 Cổ phiếu biến động: ${movers[0]}`);
       }
@@ -1653,7 +1700,7 @@ class TimberPortEngine {
     if (millLv > 0) {
       const millDef = FURNITURE_MILL_TIERS.find((t) => t.tier === millLv) || FURNITURE_MILL_TIERS[0];
       this.furnitureCraftTimer += dt;
-      if (this.furnitureCraftTimer >= millDef.craftSec) {
+      if (this.furnitureCraftTimer >= (millDef.cycleSec || 6.5)) {
         this.furnitureCraftTimer = 0;
         const crafted = craftFurnitureBatch(false);
         if (crafted.ok) {
@@ -1676,6 +1723,53 @@ class TimberPortEngine {
       }
     }
 
+    // Phase 7: Deep Container Port & Green Carbon Passive Accumulation + Voyage & Futures Ticks
+    this.phase7TickTimer += dt;
+    if (this.phase7TickTimer >= 5.0) {
+      this.phase7TickTimer = 0;
+      const dpLv = gameState.deepPortTier || 0;
+      if (dpLv > 0) {
+        const dpDef = DEEP_PORT_TIERS.find((d) => d.tier === dpLv);
+        if (dpDef) {
+          const cAdd = Math.round((dpDef.royalty10s / 2) * getPrestigeMultiplier());
+          gameState.containerAccumCash = (gameState.containerAccumCash || 0) + cAdd;
+        }
+      }
+      const geLv = gameState.greenEnergyTier || 0;
+      if (geLv > 0) {
+        const geDef = GREEN_ENERGY_TIERS.find((g) => g.tier === geLv);
+        if (geDef) {
+          const patBonus = hasPatent('pat_green_grid') ? 1.35 : 1.0;
+          const crAdd = (geDef.creditsPer10s / 2) * patBonus;
+          gameState.carbonCredits = Number(((gameState.carbonCredits || 0) + crAdd).toFixed(2));
+        }
+      }
+    }
+
+    const doneVoyage = tickContainerVoyage(dt);
+    if (doneVoyage) {
+      sound.playShipHorn();
+      this.ui.triggerCelebration(
+        `Tàu Container Cập Cảng: ${doneVoyage.name}!`,
+        `+$${doneVoyage.rewardCash.toLocaleString()} · +${doneVoyage.rewardGems} 💎`,
+        true
+      );
+      saveGameServer();
+    }
+
+    const futEvents = tickFuturesContracts(dt);
+    for (const fe of futEvents) {
+      if (fe.ok) {
+        sound.playCash();
+        this.ui.toast(`📜 Tất toán HĐ Tương lai ${fe.name}: +$${fe.cash.toLocaleString()} · +${fe.gems}💎`);
+      } else if (fe.expiredInsured) {
+        sound.playCash();
+        this.ui.toast(`🛡️ Bảo hiểm hoàn trả +$${fe.rebate.toLocaleString()} cho HĐ ${fe.name}!`);
+      } else if (fe.expired) {
+        this.ui.toast(`⏳ HĐ Tương lai ${fe.name} đã đáo hạn (thiếu hàng).`);
+      }
+    }
+
     // Trade Expo Rotation
     const newExpo = tickTradeExpo(dt);
     if (newExpo) {
@@ -1688,7 +1782,22 @@ class TimberPortEngine {
       sound.playThunder();
       this.ui.toast(`⛈️ Cảnh báo Bão! ${stormState.targetLabel} cần ${stormState.kind === 'air' ? 'Máy bay' : 'Du thuyền'} cứu trợ!`);
     } else if (stormEv === 'expired') {
-      this.ui.toast('🌦️ Cơn bão ngoài khơi đã tan.');
+      const insDef = INSURANCE_TIERS.find((i) => i.tier === (gameState.insuranceTier || 0));
+      if (insDef) {
+        const rebate = Math.round(stormState.rewardCash * (insDef.protectionPct / 100) * 0.35);
+        if (rebate > 0) {
+          gameState.cash += rebate;
+          gameState.insuranceSavedCash = (gameState.insuranceSavedCash || 0) + rebate;
+          recordPnlExpense('insuranceSaved', rebate);
+          logTransaction('bank', 'Bảo hiểm Hàng hải bồi thường Bão biển', rebate, 0);
+          sound.playCash();
+          this.ui.toast(`🛡️ Bảo hiểm Hàng hải bồi thường +$${rebate.toLocaleString()} sau cơn bão!`);
+        } else {
+          this.ui.toast('🌦️ Cơn bão ngoài khơi đã tan.');
+        }
+      } else {
+        this.ui.toast('🌦️ Cơn bão ngoài khơi đã tan.');
+      }
     }
 
     // Real-time Revenue History Sampling (5s intervals -> 2-minute chart window)
@@ -1875,9 +1984,12 @@ class TimberPortEngine {
     this.playerPos.x = THREE.MathUtils.clamp(this.playerPos.x, SEA_BOUNDS.minX, SEA_BOUNDS.maxX);
     this.playerPos.z = THREE.MathUtils.clamp(this.playerPos.z, SEA_BOUNDS.minZ, SEA_BOUNDS.maxZ);
 
-    // Keep clear of main Harbor wooden pier
+    // Keep clear of main Harbor wooden pier & West Deep-Water Container Terminal
     if (this.playerPos.z < 33.5 && Math.abs(this.playerPos.x - 2) < 12.2) {
       this.playerPos.z = 33.5;
+    }
+    if (this.playerPos.z < 44 && Math.abs(this.playerPos.x + 20) < 10.5) {
+      this.playerPos.z = 44;
     }
     const waveAmp = stormState.active ? 0.24 : 0.1;
     const waveFreq = stormState.active ? 4.4 : 2.2;
@@ -2307,6 +2419,7 @@ class TimberPortEngine {
       if (gameState.padProgress[pad.id] >= cost - 0.5) {
         gameState.padProgress[pad.id] = 0;
         gameState[item.id] = (gameState[item.id] || 0) + 1;
+        recordPnlExpense('upgradeSpend', cost);
         gameState.xp += 25;
         if (gameState.xp >= gameState.level * 120) gameState.level++;
         addSeasonXp(20);

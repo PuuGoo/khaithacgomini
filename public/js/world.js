@@ -30,6 +30,7 @@ import {
   createStormBeaconModel,
   createFurnitureFactoryModel,
   createLighthouseModel,
+  createDeepContainerPortModel,
   syncBuildingEvolution,
   disposeObject3D
 } from './models.js';
@@ -46,6 +47,7 @@ export const ZONES = {
   harborExport: new THREE.Vector3(8.5, 0.5, 31),
   canneryDock: new THREE.Vector3(-6.5, 0.5, 29),
   yachtBerth: new THREE.Vector3(14.5, 0.5, 29),
+  deepPort: new THREE.Vector3(-20, 0.5, 29),
   runwayStart: new THREE.Vector3(30, 0.14, 13),
   hqPlaza: new THREE.Vector3(15, 0, 7),
   furnitureMill: new THREE.Vector3(16, 0, -24),
@@ -82,6 +84,7 @@ export class WorldManager {
     this.corporateHq = null;
     this.furnitureFactory = null;
     this.lighthouse = null;
+    this.deepContainerPort = null;
     this.weatherGroup = null;
     this.stormBeacon = null;
     this._weatherDummy = new THREE.Object3D();
@@ -159,6 +162,7 @@ export class WorldManager {
     this.addFloorMarker(ZONES.runwayStart, 2.8, '#f59e0b', 'ĐƯỜNG BĂNG SÂN BAY', '✈️ Cất cánh [E]');
     this.addFloorMarker(ZONES.hqPlaza, 2.5, '#a855f7', 'TRỤ SỞ TẬP ĐOÀN', '🏢 Cổ phiếu & Tài chính');
     this.addFloorMarker(ZONES.furnitureMill, 2.5, '#fb7185', 'NHÀ MÁY NỘI THẤT', '🛋️ Chế biến & Bán');
+    this.addFloorMarker(ZONES.deepPort, 2.7, '#0ea5e9', 'CẢNG CONTAINER', '🚢 Siêu cảng Nước Sâu');
   }
 
   addFloorMarker(pos, radius, colorHex, title, sub) {
@@ -325,6 +329,12 @@ export class WorldManager {
     this.worldGroup.add(this.lighthouse);
     this.syncLighthouseTier(gameState.lighthouseTier || 0);
 
+    // Pre-built Deep-Water Container Pier, Mega Ship, Gantry Crane & Green Solar Microgrid (-20, 0, 31)
+    this.deepContainerPort = createDeepContainerPortModel(this.lowSpec);
+    this.deepContainerPort.position.set(-20, 0, 31);
+    this.worldGroup.add(this.deepContainerPort);
+    this.syncDeepPortTier(gameState.deepPortTier || 0, gameState.greenEnergyTier || 0);
+
     // Pre-built Instanced Clouds & Storm Rain (auto-gated OFF on <8GB RAM)
     this.weatherGroup = createCloudsAndStormGroup(this.lowSpec);
     this.worldGroup.add(this.weatherGroup);
@@ -429,6 +439,17 @@ export class WorldManager {
     if (u?.beamLight) u.beamLight.visible = !this.lowSpec && tier >= 1;
   }
 
+  syncDeepPortTier(tier = 0, greenTier = 0) {
+    if (!this.deepContainerPort) return;
+    const u = this.deepContainerPort.userData;
+    this.deepContainerPort.visible = tier > 0 || greenTier > 0;
+    if (u?.tier1Group) u.tier1Group.visible = tier >= 1;
+    if (u?.tier2Group) u.tier2Group.visible = tier >= 2;
+    if (u?.tier3Group) u.tier3Group.visible = tier >= 3;
+    if (u?.greenSolarArray) u.greenSolarArray.visible = greenTier >= 1;
+    if (u?.beaconLight) u.beaconLight.visible = !this.lowSpec && tier >= 1;
+  }
+
   setLowSpec(isLow) {
     this.lowSpec = Boolean(isLow);
     if (this.harborBeaconLight) this.harborBeaconLight.visible = !this.lowSpec;
@@ -449,6 +470,9 @@ export class WorldManager {
     }
     if (this.lighthouse?.userData?.beamLight) {
       this.lighthouse.userData.beamLight.visible = !this.lowSpec && (gameState.lighthouseTier || 0) >= 1;
+    }
+    if (this.deepContainerPort?.userData?.beaconLight) {
+      this.deepContainerPort.userData.beaconLight.visible = !this.lowSpec && (gameState.deepPortTier || 0) >= 1;
     }
     if (this.weatherGroup?.userData?.clouds) {
       this.weatherGroup.userData.clouds.visible = !this.lowSpec;
@@ -738,7 +762,7 @@ export class WorldManager {
       this.airport.userData.radar.rotation.y += dt * 1.4;
     }
 
-    // Furniture Factory showcase turntable & Lighthouse rotating beacon (gated OFF on <8GB RAM lowSpec)
+    // Furniture Factory showcase turntable, Lighthouse rotating beacon & Deep-Port Gantry/Ship (gated OFF on <8GB RAM lowSpec)
     if (!this.lowSpec) {
       if (this.furnitureFactory?.visible && this.furnitureFactory.userData?.tier3Group?.visible && this.furnitureFactory.userData.cncSpinner) {
         this.furnitureFactory.userData.cncSpinner.rotation.y += dt * 0.9;
@@ -748,6 +772,15 @@ export class WorldManager {
         if (this.lighthouse.userData.beamLight) {
           const ang = this.lighthouse.userData.beaconHead.rotation.y;
           this.lighthouse.userData.beamLight.position.set(Math.sin(ang) * 2.4, 12.6, Math.cos(ang) * 2.4);
+        }
+      }
+      if (this.deepContainerPort?.visible && this.deepContainerPort.userData?.tier1Group?.visible) {
+        const dp = this.deepContainerPort.userData;
+        if (dp.containerShip) {
+          dp.containerShip.position.y = 0.1 + Math.sin(elapsed * 1.15) * 0.11;
+        }
+        if (dp.trolley) {
+          dp.trolley.position.z = 3.2 + Math.sin(elapsed * 0.72) * 3.1;
         }
       }
     }
