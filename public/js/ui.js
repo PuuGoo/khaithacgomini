@@ -18,8 +18,14 @@ import {
   MARKET_COMMODITIES,
   MANAGER_CATALOG,
   WHEEL_SEGMENTS,
+  YACHT_TIERS,
+  LOGISTICS_TIERS,
+  BADGE_CODEX,
+  MILESTONE_QUESTS,
   activeEventState,
   marketState,
+  comboState,
+  auctionState,
   getBackpackCapacity,
   getActiveBranch,
   getRevenueMultiplier,
@@ -31,6 +37,16 @@ import {
   getManagerLevel,
   getManagerCost,
   getPrestigeMultiplier,
+  getLogisticsNextTier,
+  getYachtNextTier,
+  getBadgeRevenueBonus,
+  evaluateBadgeUnlocks,
+  getActiveMilestone,
+  claimActiveMilestone,
+  claimYachtYield,
+  getCurrentLimitedCombo,
+  purchaseLimitedCombo,
+  settleAuctionLot,
   canClaimDailyCheckIn,
   claimDailyCheckIn,
   isAchievementReady,
@@ -55,6 +71,8 @@ export class UIManager {
     this.cb = callbacks || {};
     this.activeTab = 'upgrades';
     this.dockCollapsed = false;
+    this.zenHud = false;
+    this.lbFilter = 'global';
     this.wheelSpinning = false;
     this.wheelAngle = 0;
     this.prestigeConfirmOpen = false;
@@ -125,6 +143,8 @@ export class UIManager {
   }
 
   bindEvents() {
+    document.getElementById('btn-zen-hud')?.addEventListener('click', () => this.toggleZenHud());
+
     document.getElementById('btn-audio')?.addEventListener('click', () => {
       const muted = sound.toggleMute();
       document.getElementById('btn-audio').textContent = muted ? '🔇' : '🔊';
@@ -196,6 +216,19 @@ export class UIManager {
     if (this.els.minimapToggle) {
       this.els.minimapToggle.textContent = this.minimapCollapsed ? '▴' : '▾';
     }
+  }
+
+  toggleZenHud() {
+    this.zenHud = !this.zenHud;
+    document.body.classList.toggle('zen-hud', this.zenHud);
+    const btn = document.getElementById('btn-zen-hud');
+    if (btn) {
+      btn.classList.toggle('is-zen-active', this.zenHud);
+      btn.innerHTML = this.zenHud
+        ? '<span>👁️</span><span>Mở HUD</span>'
+        : '<span>👁️</span><span class="hide-sm">Gọn</span>';
+    }
+    this.toast(this.zenHud ? '👁️ Chế độ HUD siêu gọn (Nhấn Z để mở lại)' : 'Đã khôi phục đầy đủ HUD điều hành');
   }
 
   showWelcomeOverlay(offlineData, gfxInfo, onClaimOffline) {
@@ -461,7 +494,9 @@ export class UIManager {
     this.els.badgeSeason.hidden = claimable === 0;
 
     if (this.els.badgeAch) {
-      const readyAch = getReadyAchievementCount();
+      const ms = getActiveMilestone();
+      const msReady = ms && (gameState[ms.statKey] || 0) >= ms.target ? 1 : 0;
+      const readyAch = getReadyAchievementCount() + msReady;
       this.els.badgeAch.textContent = readyAch;
       this.els.badgeAch.hidden = readyAch === 0;
     }
@@ -478,6 +513,23 @@ export class UIManager {
       const rushSpan = this.els.hubBody?.querySelector('[data-live-countdown="rush"]');
       if (rushSpan && rush) {
         rushSpan.textContent = `Còn ${Math.max(0, Math.ceil(rush.timeLeft))}s`;
+      }
+      const aucSpan = this.els.hubBody?.querySelector('[data-live-countdown="auction"]');
+      if (aucSpan) {
+        aucSpan.textContent = auctionState.current
+          ? `Còn ${Math.max(0, Math.ceil(auctionState.timeLeft))}s`
+          : `Phiên mới sau ${Math.max(0, Math.ceil(auctionState.cooldown))}s`;
+      }
+      const comboSpan = this.els.hubBody?.querySelector('[data-live-countdown="combo"]');
+      if (comboSpan) {
+        const sec = Math.max(0, Math.ceil(comboState.timeLeft));
+        const mm = String(Math.floor(sec / 60)).padStart(2, '0');
+        const ss = String(sec % 60).padStart(2, '0');
+        comboSpan.textContent = `${mm}:${ss}`;
+      }
+      const yachtYieldEl = this.els.hubBody?.querySelector('[data-live-yacht="yield"]');
+      if (yachtYieldEl) {
+        yachtYieldEl.textContent = `+$${Math.floor(gameState.yachtAccumCash || 0).toLocaleString()} · +${Math.floor(gameState.yachtAccumGems || 0)} 💎`;
       }
     }
   }
@@ -524,6 +576,170 @@ export class UIManager {
   }
 
   renderUpgradesTab(root) {
+    // 0. 3-Stage Supply-Chain Flow Visualizer (Rừng -> Xưởng -> Cảng)
+    const bagCap = getBackpackCapacity();
+    const forestBottleneck = gameState.logs >= bagCap;
+    const sawBottleneck = gameState.sawmillBuffer <= 0 && (gameState.planks || 0) <= 0;
+    const harborReady = (gameState.planks || 0) >= 4 || (gameState.pallets || 0) >= 1;
+    const logsPerMin = Math.round(((gameState.lumberjacks || 0) * 14 + (gameState.logisticsTier || 0) * 12) * 1);
+    const planksPerMin = Math.round((gameState.sawSpeedTier || 1) * 28);
+    const yachtDef = YACHT_TIERS.find((y) => y.tier === (gameState.yachtTier || 0));
+
+    const flowSec = document.createElement('section');
+    flowSec.innerHTML = `
+      <div class="section-heading">
+        <h3>Sơ Đồ Luồng Chuỗi Cung Ứng</h3>
+        <span>Theo dõi tồn kho, tốc độ luân chuyển và điểm nghẽn thực tế</span>
+      </div>
+      <div class="flow-visualizer">
+        <div class="flow-node ${forestBottleneck ? 'is-bottleneck' : ''}">
+          <div class="flow-node-head">
+            <span class="flow-node-title">🌲 Lâm Trường</span>
+            <span class="flow-node-rate tabular-nums">~${logsPerMin} gỗ/p</span>
+          </div>
+          <div class="flow-node-stat tabular-nums">Balo: ${gameState.logs}/${bagCap} · ${gameState.lumberjacks || 0} Thợ rừng</div>
+          <div class="card-meta">${forestBottleneck ? 'Balo đầy — về Phễu Xưởng hoặc nâng Drone Logistics' : 'Hoạt động ổn định'}</div>
+        </div>
+        <div class="flow-connector" aria-hidden="true">→</div>
+        <div class="flow-node ${sawBottleneck ? 'is-bottleneck' : ''}">
+          <div class="flow-node-head">
+            <span class="flow-node-title">⚙️ Xưởng Cưa &amp; Pallet</span>
+            <span class="flow-node-rate tabular-nums">~${planksPerMin} ván/p</span>
+          </div>
+          <div class="flow-node-stat tabular-nums">Phễu: ${gameState.sawmillBuffer} gỗ · Kho: ${gameState.planks} ván · ${gameState.pallets} pallet</div>
+          <button type="button" id="btn-flow-sell" class="btn-secondary" ${(gameState.planks + gameState.pallets) <= 0 ? 'disabled' : ''}>
+            Bán nhanh tại Xưởng
+          </button>
+        </div>
+        <div class="flow-connector" aria-hidden="true">→</div>
+        <div class="flow-node">
+          <div class="flow-node-head">
+            <span class="flow-node-title">🚢 Cảng &amp; Du Thuyền</span>
+            <span class="flow-node-rate tabular-nums">${gameState.autoForklifts || 0} Xe · ${Math.max(1, gameState.fishingBoats || 0)} Tàu</span>
+          </div>
+          <div class="flow-node-stat tabular-nums">Cá hộp: ${gameState.cannedFish} · Du thuyền: Cấp ${gameState.yachtTier || 0}/3</div>
+          <button type="button" id="btn-flow-export" class="btn-primary" ${!harborReady ? 'disabled' : ''}>
+            Xuất Hợp đồng ngay
+          </button>
+        </div>
+      </div>
+    `;
+    flowSec.querySelector('#btn-flow-sell')?.addEventListener('click', () => {
+      if (this.cb.onQuickSellSawmill) {
+        this.cb.onQuickSellSawmill();
+        this.renderHub();
+      }
+    });
+    flowSec.querySelector('#btn-flow-export')?.addEventListener('click', () => {
+      if (this.cb.onDeliverContract && this.cb.onDeliverContract(true)) {
+        this.renderHub();
+      }
+    });
+    root.appendChild(flowSec);
+
+    // 1. Mạng Lưới Logistics & Tự Động Hóa Toàn Chuỗi + Bến Du Thuyền VIP
+    const nextLogi = getLogisticsNextTier();
+    const curLogiLv = gameState.logisticsTier || 0;
+    const logiSec = document.createElement('section');
+    logiSec.innerHTML = `
+      <div class="section-heading">
+        <h3>Mạng Lưới Logistics Toàn Chuỗi</h3>
+        <span>Tự động gom phôi gỗ về Xưởng &amp; điều phối xuất Hợp đồng Cảng</span>
+      </div>
+      <div class="logistics-banner">
+        <div style="flex:1; min-width:230px;">
+          <div class="card-title">🤖 Logistics Cấp ${curLogiLv}/5 ${curLogiLv > 0 ? `· ${LOGISTICS_TIERS[curLogiLv - 1].name}` : '· Chưa kích hoạt'}</div>
+          <div class="card-desc" style="margin-top:4px;">
+            ${nextLogi ? `Cấp kế (${nextLogi.tier}): ${nextLogi.desc}` : 'Mạng lưới Logistics toàn chuỗi đã đạt công suất tối đa 100%.'}
+          </div>
+        </div>
+        <div style="display:flex; gap:8px; flex-wrap:wrap; min-width:240px;">
+          ${curLogiLv > 0 ? `
+            <button type="button" id="btn-toggle-logi" class="btn-secondary" style="width:auto;">
+              ${gameState.autoLogisticsEnabled ? 'Tự động: Đang BẬT' : 'Tự động: Đang TẮT'}
+            </button>
+          ` : ''}
+          <button type="button" id="btn-up-logi" class="btn-primary tabular-nums" style="flex:1;" ${!nextLogi || gameState.cash < nextLogi.costCash ? 'disabled' : ''}>
+            ${nextLogi ? `Nâng Cấp ${nextLogi.tier} · $${nextLogi.costCash.toLocaleString()}` : 'Đã Tối Đa (5/5)'}
+          </button>
+        </div>
+      </div>
+    `;
+    logiSec.querySelector('#btn-toggle-logi')?.addEventListener('click', () => {
+      gameState.autoLogisticsEnabled = !gameState.autoLogisticsEnabled;
+      saveGameServer();
+      this.toast(gameState.autoLogisticsEnabled ? '🤖 Đã bật Tự động hóa Logistics toàn chuỗi' : '⏸️ Đã tạm dừng Tự động hóa Logistics');
+      this.renderHub();
+    });
+    logiSec.querySelector('#btn-up-logi')?.addEventListener('click', () => {
+      if (!nextLogi || gameState.cash < nextLogi.costCash) return;
+      gameState.cash -= nextLogi.costCash;
+      gameState.logisticsTier = nextLogi.tier;
+      addVipXp(35);
+      sound.playUpgrade();
+      evaluateBadgeUnlocks();
+      this.toast(`🤖 Nâng cấp ${nextLogi.name} (Cấp ${nextLogi.tier})!`);
+      saveGameServer();
+      this.refreshHUD();
+      this.renderHub();
+    });
+    root.appendChild(logiSec);
+
+    // VIP Yacht Berth Card
+    const nextYacht = getYachtNextTier();
+    const curYachtLv = gameState.yachtTier || 0;
+    const yCash = Math.floor(gameState.yachtAccumCash || 0);
+    const yGems = Math.floor(gameState.yachtAccumGems || 0);
+    const yachtSec = document.createElement('section');
+    yachtSec.innerHTML = `
+      <div class="section-heading">
+        <h3>Bến Du Thuyền VIP Cảng Đông</h3>
+        <span>Xuất hiện trực tiếp trên vịnh 3D &amp; sinh lợi nhuận du lịch thụ động</span>
+      </div>
+      <div class="yacht-berth-card">
+        <div style="flex:1; min-width:230px;">
+          <div class="card-title">🛥️ ${yachtDef ? `${yachtDef.name} (Cấp ${curYachtLv}/3)` : 'Chưa mở khóa Bến Du Thuyền'}</div>
+          <div class="card-desc" style="margin-top:4px;">${nextYacht ? nextYacht.desc : 'Siêu du thuyền thượng lưu đang vận hành ở công suất cao nhất.'}</div>
+          <div class="card-meta tabular-nums" style="margin-top:6px; color:#7dd3fc;">
+            Quỹ tích lũy: <span data-live-yacht="yield">+$${yCash.toLocaleString()} · +${yGems} 💎</span>
+          </div>
+        </div>
+        <div style="display:flex; gap:8px; flex-wrap:wrap; min-width:240px;">
+          ${curYachtLv > 0 ? `
+            <button type="button" id="btn-claim-yacht" class="btn-gem" style="width:auto;" ${yCash <= 0 && yGems <= 0 ? 'disabled' : ''}>
+              Thu Hoạch Quỹ
+            </button>
+          ` : ''}
+          <button type="button" id="btn-up-yacht" class="btn-primary tabular-nums" style="flex:1;" ${!nextYacht || gameState.cash < nextYacht.costCash ? 'disabled' : ''}>
+            ${nextYacht ? `Mở Cấp ${nextYacht.tier} · $${nextYacht.costCash.toLocaleString()}` : 'Đã Đạt Cấp 3/3'}
+          </button>
+        </div>
+      </div>
+    `;
+    yachtSec.querySelector('#btn-claim-yacht')?.addEventListener('click', () => {
+      const gained = claimYachtYield();
+      if (!gained) return;
+      sound.playCash();
+      this.triggerCelebration('Thu Hoạch Bến Du Thuyền!', `+$${gained.cash.toLocaleString()}${gained.gems > 0 ? ` · +${gained.gems} 💎` : ''}`);
+      saveGameServer();
+      this.refreshHUD();
+      this.renderHub();
+    });
+    yachtSec.querySelector('#btn-up-yacht')?.addEventListener('click', () => {
+      if (!nextYacht || gameState.cash < nextYacht.costCash) return;
+      gameState.cash -= nextYacht.costCash;
+      gameState.yachtTier = nextYacht.tier;
+      addVipXp(55);
+      sound.playShipHorn();
+      evaluateBadgeUnlocks();
+      if (this.cb.onYachtChange) this.cb.onYachtChange();
+      this.triggerCelebration(`Cập Bến ${nextYacht.name}!`, `Sinh +$${nextYacht.cashPer10s}/10s & cơ hội 💎`);
+      saveGameServer();
+      this.refreshHUD();
+      this.renderHub();
+    });
+    root.appendChild(yachtSec);
+
     const sawTier = getSawmillVisualTier();
     const harborTier = getHarborVisualTier();
     const evoSec = document.createElement('section');
@@ -698,6 +914,62 @@ export class UIManager {
       rushSec.appendChild(waitCard);
     }
     root.appendChild(rushSec);
+
+    // Cargo Freight Auction House
+    const auc = auctionState.current;
+    const aucSec = document.createElement('section');
+    aucSec.innerHTML = `<div class="section-heading"><h3>Sàn Đấu Giá Lô Hàng Cảng Biển</h3><span>Bán lô hàng giá cao hơn thị trường hoặc đấu giá kiện Đá quý</span></div>`;
+    if (auc) {
+      const isSell = auc.kind === 'sell';
+      const stock = isSell ? Math.floor(gameState[auc.itemKey] || 0) : Math.floor(gameState.cash || 0);
+      const canSettle = isSell ? stock >= auc.qty : stock >= auc.currentBid;
+      const aucCard = document.createElement('div');
+      aucCard.className = 'hub-card is-value-highlight';
+      aucCard.innerHTML = `
+        <div class="card-top">
+          <div>
+            <div class="card-title">🔨 ${auc.title}</div>
+            <div class="card-meta tabular-nums">
+              ${isSell
+                ? `Giao lô: ${auc.qty} ${auc.itemLabel} (Trong kho: ${stock}) · ${auctionState.rivalBids} lượt trả giá cạnh tranh`
+                : `Đặt cọc: $${auc.currentBid.toLocaleString()} Cash (Hiện có: $${stock.toLocaleString()})`}
+            </div>
+            <div class="card-meta tabular-nums" style="color:#7dd3fc; margin-top:4px;" data-live-countdown="auction">
+              Còn ${Math.max(0, Math.ceil(auctionState.timeLeft))}s
+            </div>
+          </div>
+          <div class="tabular-nums" style="text-align:right; font-weight:700; color:#34d399;">
+            ${isSell ? `+$${auc.currentBid.toLocaleString()}` : `-$${auc.currentBid.toLocaleString()}`}<br>
+            <span style="color:#38bdf8;">+${auc.rewardGems} 💎 · +${auc.rewardVipXp} VIP</span>
+          </div>
+        </div>
+        <button type="button" class="btn-primary" ${!canSettle ? 'disabled' : ''}>
+          ${canSettle ? (isSell ? 'Chốt Giá Bán Lô Hàng Ngay' : 'Đấu Giá Thắng Kiện Quý Ngay') : (isSell ? 'Kho chưa đủ số lượng lô' : 'Chưa đủ tiền mặt đấu giá')}
+        </button>
+      `;
+      aucCard.querySelector('button').addEventListener('click', () => {
+        const res = settleAuctionLot();
+        if (!res.ok) {
+          this.toast(res.reason);
+          return;
+        }
+        sound.playShipHorn();
+        const detail = res.kind === 'sell'
+          ? `+$${res.cash.toLocaleString()} · +${res.gems} 💎`
+          : `Nhận +${res.gems} 💎 (Chi $${res.spent.toLocaleString()})`;
+        this.triggerCelebration(`Thắng Đấu Giá: ${res.title}`, detail);
+        saveGameServer();
+        this.refreshHUD();
+        this.renderHub();
+      });
+      aucSec.appendChild(aucCard);
+    } else {
+      const waitAuc = document.createElement('div');
+      waitAuc.className = 'hub-card';
+      waitAuc.innerHTML = `<div class="card-meta tabular-nums" data-live-countdown="auction">Phiên đấu giá tiếp theo sẽ mở sau ${Math.max(1, Math.ceil(auctionState.cooldown))}s.</div>`;
+      aucSec.appendChild(waitAuc);
+    }
+    root.appendChild(aucSec);
 
     const ct = gameState.activeContract;
     const ctSection = document.createElement('section');
@@ -1309,9 +1581,126 @@ export class UIManager {
     }
     achSec.appendChild(achGrid);
     root.appendChild(achSec);
+
+    // 3. Tiered Milestone Quest Spotlight
+    const ms = getActiveMilestone();
+    const msSec = document.createElement('section');
+    msSec.innerHTML = `<div class="section-heading"><h3>Nhiệm Vụ Cột Mốc Đế Chế</h3><span>Hoàn thành chuỗi cột mốc lớn để nhận VIP XP &amp; Đá quý vượt bậc</span></div>`;
+    if (ms) {
+      const curMsVal = Math.floor(gameState[ms.statKey] || 0);
+      const msPct = Math.min(100, Math.round((curMsVal / ms.target) * 100));
+      const msReady = curMsVal >= ms.target;
+      const msCard = document.createElement('div');
+      msCard.className = 'hub-card is-value-highlight';
+      msCard.innerHTML = `
+        <div class="card-top">
+          <div>
+            <div class="card-title">🚩 ${ms.title}</div>
+            <div class="card-meta">${ms.desc}</div>
+            <div class="card-meta tabular-nums" style="margin-top:4px;">Tiến độ: ${Math.min(curMsVal, ms.target).toLocaleString()}/${ms.target.toLocaleString()}</div>
+          </div>
+          <div class="tabular-nums" style="text-align:right; color:#34d399; font-weight:700;">
+            +$${ms.rewardCash.toLocaleString()}<br>
+            <span style="color:#38bdf8;">+${ms.rewardGems} 💎 · +${ms.rewardVipXp} VIP</span>
+          </div>
+        </div>
+        <div class="progress-track"><div class="progress-fill" style="width:${msPct}%"></div></div>
+        <button type="button" class="btn-primary" ${!msReady ? 'disabled' : ''}>
+          ${msReady ? 'Nhận Thưởng Cột Mốc' : `Còn ${(ms.target - curMsVal).toLocaleString()} để hoàn thành`}
+        </button>
+      `;
+      msCard.querySelector('button').addEventListener('click', () => {
+        const claimed = claimActiveMilestone();
+        if (!claimed) return;
+        sound.playUpgrade();
+        this.triggerCelebration(`Đạt ${claimed.title}!`, `+$${claimed.rewardCash.toLocaleString()} · +${claimed.rewardGems} 💎`);
+        saveGameServer();
+        this.refreshHUD();
+        this.renderHub();
+      });
+      msSec.appendChild(msCard);
+    } else {
+      const doneMs = document.createElement('div');
+      doneMs.className = 'hub-card is-equipped';
+      doneMs.innerHTML = `<div class="card-title">🎖️ Đã hoàn tất toàn bộ ${MILESTONE_QUESTS.length} Cột Mốc Đế Chế!</div>`;
+      msSec.appendChild(doneMs);
+    }
+    root.appendChild(msSec);
+
+    // 4. Collectible Badge Codex (Permanent Revenue Multiplier)
+    evaluateBadgeUnlocks();
+    const unlockedIds = gameState.unlockedBadges || [];
+    const totalBonusPct = Math.round(getBadgeRevenueBonus() * 100);
+    const codexSec = document.createElement('section');
+    codexSec.innerHTML = `
+      <div class="section-heading">
+        <h3>Sổ Sưu Tập Huy Hiệu (${unlockedIds.length}/${BADGE_CODEX.length})</h3>
+        <span>Tổng cộng dồn doanh thu vĩnh viễn: +${totalBonusPct}%</span>
+      </div>
+    `;
+    const codexGrid = document.createElement('div');
+    codexGrid.className = 'codex-grid';
+    for (const b of BADGE_CODEX) {
+      const isUnlocked = unlockedIds.includes(b.id);
+      const tile = document.createElement('div');
+      tile.className = `badge-tile ${isUnlocked ? 'is-unlocked' : ''}`;
+      tile.innerHTML = `
+        <div style="display:flex; align-items:center; justify-content:space-between; gap:8px;">
+          <span class="card-title">${b.icon} ${b.name}</span>
+          <span class="badge-bonus-val tabular-nums">+${b.bonusPct}%</span>
+        </div>
+        <div class="card-desc">${b.conditionText}</div>
+        <div class="card-meta" style="color:${isUnlocked ? '#34d399' : '#94a3b8'};">
+          ${isUnlocked ? 'Đã sưu tập ✓' : 'Chưa mở khóa'}
+        </div>
+      `;
+      codexGrid.appendChild(tile);
+    }
+    codexSec.appendChild(codexGrid);
+    root.appendChild(codexSec);
   }
 
   renderVipTab(root) {
+    // 0. Flagship Commercial Storefront Hero Banner (Hourly Limited Combo)
+    const combo = getCurrentLimitedCombo();
+    const isPurchased = comboState.purchasedId === combo.id;
+    const secLeft = Math.max(0, Math.ceil(comboState.timeLeft));
+    const mm = String(Math.floor(secLeft / 60)).padStart(2, '0');
+    const ss = String(secLeft % 60).padStart(2, '0');
+    const canBuyCombo = !isPurchased && (combo.costType === 'gems' ? gameState.gems >= combo.cost : gameState.cash >= combo.cost);
+
+    const heroSec = document.createElement('section');
+    heroSec.innerHTML = `
+      <div class="store-hero-banner">
+        <div class="store-hero-copy">
+          <div class="store-hero-kicker">CỬA HÀNG ĐỘC QUYỀN · ${combo.subtitle.toUpperCase()}</div>
+          <div class="store-hero-title">${combo.title}</div>
+          <p class="card-desc">${combo.desc}</p>
+          <div class="card-meta tabular-nums">
+            Hạng mục: ${combo.badge} · Làm mới sau <span data-live-countdown="combo" style="color:#fbbf24; font-weight:700;">${mm}:${ss}</span>
+          </div>
+        </div>
+        <div class="store-hero-cta">
+          <button type="button" id="btn-buy-combo" class="btn-primary tabular-nums" ${!canBuyCombo ? 'disabled' : ''}>
+            ${isPurchased ? 'Đã sở hữu trong phiên này ✓' : combo.costType === 'gems' ? `Mua Combo · ${combo.cost} 💎` : `Mua Combo · $${combo.cost.toLocaleString()}`}
+          </button>
+        </div>
+      </div>
+    `;
+    heroSec.querySelector('#btn-buy-combo')?.addEventListener('click', () => {
+      const res = purchaseLimitedCombo();
+      if (!res.ok) {
+        this.toast(res.reason);
+        return;
+      }
+      sound.playUpgrade();
+      this.triggerCelebration(`Sở Hữu ${res.combo.title}!`, `+${res.combo.rewardGems} 💎 · +${res.combo.rewardVipXp} VIP XP`);
+      saveGameServer();
+      this.refreshHUD();
+      this.renderHub();
+    });
+    root.appendChild(heroSec);
+
     // 1. Empire Prestige / Rebirth Panel
     const prestigeReady = canPrestige();
     const rewardMedals = getPrestigeRewardMedals();
@@ -1449,9 +1838,18 @@ export class UIManager {
     this.els.accountModal.hidden = false;
     const body = this.els.accountBody;
     const gfx = this.cb.getGraphicsInfo ? this.cb.getGraphicsInfo() : null;
+    const netWorth = Math.round(
+      (gameState.cash || 0)
+      + (gameState.gems || 0) * 120
+      + (gameState.yachtTier || 0) * 6500
+      + (gameState.logisticsTier || 0) * 3200
+      + ((gameState.unlockedBranches?.length || 1) - 1) * 12000
+    );
+    const badgeCount = (gameState.unlockedBadges || []).length;
+
     const gfxCardHtml = gfx ? `
       <div class="hub-card">
-        <div class="card-title">🛡️ Tối Ưu GPU & Chống Tràn RAM (&lt;8GB RAM)</div>
+        <div class="card-title">🛡️ Tối Ưu GPU &amp; Chống Tràn RAM (&lt;8GB RAM)</div>
         <div class="card-meta tabular-nums">
           Đang chạy: <b>${gfx.profileLabel}</b> (${gfx.reason}) · ${gfx.fps} FPS · Geo: ${gfx.geometries} · Tex: ${gfx.textures} · Draw: ${gfx.calls}
         </div>
@@ -1468,10 +1866,34 @@ export class UIManager {
     ` : '';
 
     body.innerHTML = `
+      <div class="exec-profile-banner">
+        <div>
+          <div class="card-title">👔 Hồ Sơ Chủ Tịch: ${gameState.username || 'Chủ tịch'}</div>
+          <div class="card-meta">${gameState.empireName || 'TimberPort Empire'} · ${getActiveBranch().name}</div>
+        </div>
+        <div class="exec-stat-grid tabular-nums">
+          <div class="kpi-cell">
+            <span class="kpi-label">Định giá Đế chế</span>
+            <span class="kpi-val is-green">$${netWorth.toLocaleString()}</span>
+          </div>
+          <div class="kpi-cell">
+            <span class="kpi-label">VIP / Chuyển sinh</span>
+            <span class="kpi-val is-amber">VIP ${gameState.vipLevel || 0} · P${gameState.prestigeLevel || 0}</span>
+          </div>
+          <div class="kpi-cell">
+            <span class="kpi-label">Sổ Huy Hiệu</span>
+            <span class="kpi-val is-sky">${badgeCount}/${BADGE_CODEX.length} (+${Math.round(getBadgeRevenueBonus() * 100)}%)</span>
+          </div>
+          <div class="kpi-cell">
+            <span class="kpi-label">Du thuyền / Đấu giá</span>
+            <span class="kpi-val">Cấp ${gameState.yachtTier || 0} · ${gameState.totalAuctionsWon || 0} lô</span>
+          </div>
+        </div>
+      </div>
+
       <div class="hub-card">
-        <div class="card-title">Hồ sơ Đế Chế Hiện Tại</div>
-        <div class="card-meta tabular-nums">Chủ tịch: ${gameState.username} · Đế chế: ${gameState.empireName} · Tiền mặt: $${Math.floor(gameState.cash).toLocaleString()}</div>
-        <div class="form-stack" style="margin-top:10px;">
+        <div class="card-title">Quản Lý Tên Đế Chế &amp; Lưu Đám Mây</div>
+        <div class="form-stack" style="margin-top:8px;">
           <input id="inp-empire-name" class="text-input" type="text" maxlength="32" value="${gameState.empireName}" placeholder="Tên Đế Chế mới">
           <div style="display:flex; gap:8px;">
             <button type="button" id="btn-rename-empire" class="btn-secondary">Đổi tên Đế Chế</button>
@@ -1552,10 +1974,14 @@ export class UIManager {
         if (!Array.isArray(gameState.claimedAchievements)) {
           gameState.claimedAchievements = [];
         }
+        if (!Array.isArray(gameState.unlockedBadges)) {
+          gameState.unlockedBadges = [];
+        }
         if (this.cb.onUpgrade) this.cb.onUpgrade('lumberjacks');
         if (this.cb.onSkinChange) this.cb.onSkinChange();
         if (this.cb.onPetChange) this.cb.onPetChange();
         if (this.cb.onVehicleChange) this.cb.onVehicleChange();
+        if (this.cb.onYachtChange) this.cb.onYachtChange();
       }
       await saveGameServer(true);
       sound.playUpgrade();
@@ -1570,33 +1996,58 @@ export class UIManager {
 
   async openLeaderboardModal() {
     this.els.lbModal.hidden = false;
-    const onlineCount = this.cb.getOnlineCount ? this.cb.getOnlineCount() : 1;
+    const onlinePlayers = this.cb.getOnlinePlayers ? this.cb.getOnlinePlayers() : [];
+    const onlineCount = this.cb.getOnlineCount ? this.cb.getOnlineCount() : Math.max(1, onlinePlayers.length);
     this.els.lbSummary.textContent = `Đang có ${onlineCount} thương gia trực tuyến trong thế giới 3D`;
     this.els.lbBody.innerHTML = `<div class="card-meta">Đang tải dữ liệu bảng xếp hạng...</div>`;
 
-    const list = await fetchLeaderboard();
-    if (!list.length) {
+    const globalList = await fetchLeaderboard();
+    const renderRows = () => {
       this.els.lbBody.innerHTML = `
-        <div class="hub-card">
+        <div class="lb-tabs">
+          <button type="button" class="lb-tab-btn ${this.lbFilter === 'global' ? 'active' : ''}" data-lb-tab="global">Bảng Vàng Toàn Cầu (${globalList.length})</button>
+          <button type="button" class="lb-tab-btn ${this.lbFilter === 'online' ? 'active' : ''}" data-lb-tab="online">Đang Trực Tuyến (${onlineCount})</button>
+        </div>
+      `;
+      this.els.lbBody.querySelectorAll('[data-lb-tab]').forEach((btn) => {
+        btn.addEventListener('click', () => {
+          this.lbFilter = btn.dataset.lbTab;
+          renderRows();
+        });
+      });
+
+      const source = this.lbFilter === 'online' ? onlinePlayers : globalList;
+      if (!source.length) {
+        const empty = document.createElement('div');
+        empty.className = 'hub-card';
+        empty.innerHTML = `
           <div class="card-title">Chưa có thương gia nào lưu bảng vàng</div>
           <p class="card-desc">Hãy mở Tài khoản và lưu tiến trình của bạn để trở thành người dẫn đầu đầu tiên!</p>
-        </div>
-      `;
-      return;
-    }
+        `;
+        this.els.lbBody.appendChild(empty);
+        return;
+      }
 
-    this.els.lbBody.innerHTML = '';
-    list.forEach((entry, idx) => {
-      const row = document.createElement('div');
-      row.className = 'lb-row';
-      row.innerHTML = `
-        <div>
-          <div style="font-weight:700;">#${idx + 1} · ${entry.empireName}</div>
-          <div class="card-meta">Chủ tịch: ${entry.username} · Cấp ${entry.level}</div>
-        </div>
-        <div class="tabular-nums" style="font-weight:700; color:#34d399;">$${Number(entry.money || 0).toLocaleString()}</div>
-      `;
-      this.els.lbBody.appendChild(row);
-    });
+      const meName = (gameState.username || '').toLowerCase();
+      source.forEach((entry, idx) => {
+        const isMe = (entry.username || '').toLowerCase() === meName;
+        const topClass = idx === 0 ? 'is-top-1' : idx === 1 ? 'is-top-2' : idx === 2 ? 'is-top-3' : '';
+        const rankIcon = idx === 0 ? '🥇' : idx === 1 ? '🥈' : idx === 2 ? '🥉' : `#${idx + 1}`;
+        const row = document.createElement('div');
+        row.className = `lb-row ${topClass} ${isMe ? 'is-me' : ''}`;
+        row.innerHTML = `
+          <div>
+            <div style="font-weight:700;">${rankIcon} · ${entry.empireName} ${isMe ? '(Bạn)' : ''}</div>
+            <div class="card-meta tabular-nums">
+              Chủ tịch: ${entry.username} · Cấp ${entry.level} · VIP ${entry.vipLevel || 0} · Chuyển sinh ${entry.prestigeLevel || 0} · Du thuyền ${entry.yachtTier || 0}
+            </div>
+          </div>
+          <div class="tabular-nums" style="font-weight:700; color:#34d399;">$${Number(entry.money || 0).toLocaleString()}</div>
+        `;
+        this.els.lbBody.appendChild(row);
+      });
+    };
+
+    renderRows();
   }
 }

@@ -11,6 +11,7 @@ import {
   VEHICLES,
   UPGRADE_CATALOG,
   MARKET_COMMODITIES,
+  YACHT_TIERS,
   marketState,
   updateMarketPrices,
   calculateOfflineEarnings,
@@ -20,10 +21,12 @@ import {
   getRevenueMultiplier,
   getContractMultiplier,
   getManagerBonus,
+  getPrestigeMultiplier,
   getActiveEvent,
   getUpgradeCost,
   getSawmillVisualTier,
   getHarborVisualTier,
+  evaluateBadgeUnlocks,
   recordRevenue,
   addVipXp,
   addSeasonXp,
@@ -31,6 +34,8 @@ import {
   generateNextContract,
   tickTimedEvents,
   tickVipRushOrder,
+  tickComboTimer,
+  tickAuctionTimer,
   saveGameLocal,
   saveGameServer,
   loadGameLocal
@@ -186,6 +191,10 @@ class TimberPortEngine {
     this.sellTimer = 0;
     this.deliverTimer = 0;
     this.fullBagToastTimer = 0;
+    this.logisticsLogTimer = 0;
+    this.logisticsExportTimer = 0;
+    this.yachtTickTimer = 0;
+    this.badgeCheckTimer = 0;
     this.lastVisualBuffer = -1;
     this.lastVisualPlanks = -1;
     this.lastVisualPallets = -1;
@@ -237,6 +246,8 @@ class TimberPortEngine {
       onDeliverContract: (instant) => this.handleDeliverContract(instant),
       onDeliverVipRush: () => this.handleDeliverVipRush(),
       onPrestige: () => this.handlePrestigeReset(),
+      onQuickSellSawmill: () => this.sellAllAtSawmill(),
+      onYachtChange: () => this.world?.syncYachtTier(gameState.yachtTier || 0),
       onSellCommodity: (key) => this.sellCommodityAtMarket(key),
       onBranchChange: (br) => {
         this.applyBranchAtmosphere(br);
@@ -249,6 +260,7 @@ class TimberPortEngine {
       onPetChange: () => this.rebuildPet(),
       onVehicleChange: () => this.rebuildVehicle(),
       getOnlineCount: () => 1 + this.remotePlayers.size,
+      getOnlinePlayers: () => this.getOnlinePlayersList(),
       getGraphicsInfo: () => this.getGraphicsInfo(),
       onGraphicsChange: (mode) => this.setGraphicsQuality(mode),
       onFlushGpu: () => this.flushGpuCaches()
@@ -647,6 +659,10 @@ class TimberPortEngine {
         this.ui.toggleDock();
         return;
       }
+      if (code === 'KeyZ') {
+        this.ui.toggleZenHud();
+        return;
+      }
       if (code === 'KeyB') {
         const hub = document.getElementById('hub-modal');
         if (hub.hidden) this.ui.openHub('upgrades');
@@ -984,6 +1000,7 @@ class TimberPortEngine {
     this.applyBranchAtmosphere(getActiveBranch());
     this.rebuildWorkforce();
     this.world.syncEvolution(getSawmillVisualTier(), getHarborVisualTier());
+    this.world.syncYachtTier(gameState.yachtTier || 0);
     this.lastVisualBuffer = -1;
     this.lastVisualPlanks = -1;
     this.lastVisualPallets = -1;
@@ -1098,6 +1115,100 @@ class TimberPortEngine {
     const rushEv = tickVipRushOrder(dt);
     if (rushEv === 'spawned') {
       this.ui.toast('⚡ Có Đơn Hàng VIP Khẩn Cấp mới tại Cảng!');
+    }
+
+    const rotatedCombo = tickComboTimer(dt);
+    if (rotatedCombo) {
+      this.ui.toast(`🎁 Cửa hàng VIP có Combo mới: ${rotatedCombo.title}`);
+    }
+    const newAuc = tickAuctionTimer(dt);
+    if (newAuc) {
+      this.ui.toast(`🔨 Phiên Đấu Giá mới mở: ${newAuc.title}`);
+    }
+
+    // VIP Yacht Passive Accumulation
+    if ((gameState.yachtTier || 0) > 0) {
+      this.yachtTickTimer += dt;
+      if (this.yachtTickTimer >= 5.0) {
+        this.yachtTickTimer = 0;
+        const yDef = YACHT_TIERS.find((y) => y.tier === gameState.yachtTier);
+        if (yDef) {
+          const gainCash = Math.round((yDef.cashPer10s / 2) * getPrestigeMultiplier());
+          gameState.yachtAccumCash = (gameState.yachtAccumCash || 0) + gainCash;
+          if (Math.random() < yDef.gemChance * 0.5) {
+            gameState.yachtAccumGems = (gameState.yachtAccumGems || 0) + 1;
+          }
+        }
+      }
+    }
+
+    // Whole-Chain Logistics Network Automation
+    const logiLv = gameState.logisticsTier || 0;
+    if (logiLv > 0 && gameState.autoLogisticsEnabled) {
+      this.logisticsLogTimer += dt;
+      const logInterval = Math.max(1.0, 5.2 - logiLv * 0.82);
+      if (this.logisticsLogTimer >= logInterval) {
+        this.logisticsLogTimer = 0;
+        const batchLogs = logiLv >= 4 ? 2 : 1;
+        gameState.sawmillBuffer += batchLogs;
+        gameState.totalLogsCut += batchLogs;
+        advanceDailyQuest('logsCut', batchLogs);
+        this.syncSawmillVisuals();
+      }
+
+      if (logiLv >= 3) {
+        this.logisticsExportTimer += dt;
+        const exportInterval = logiLv >= 5 ? 1.8 : 2.8;
+        if (this.logisticsExportTimer >= exportInterval) {
+          this.logisticsExportTimer = 0;
+          const ct = gameState.activeContract;
+          let autoMoved = false;
+          if (ct) {
+            if (ct.deliveredPlanks < ct.reqPlanks && gameState.planks > 0) {
+              const amt = Math.min(2, ct.reqPlanks - ct.deliveredPlanks, gameState.planks);
+              gameState.planks -= amt;
+              ct.deliveredPlanks += amt;
+              gameState.totalExported += amt;
+              advanceDailyQuest('goodsExported', amt);
+              autoMoved = true;
+            } else if (ct.deliveredPallets < ct.reqPallets && gameState.pallets > 0) {
+              gameState.pallets -= 1;
+              ct.deliveredPallets += 1;
+              gameState.totalExported += 1;
+              advanceDailyQuest('goodsExported', 1);
+              autoMoved = true;
+            } else if (ct.deliveredCanned < ct.reqCanned && gameState.cannedFish > 0) {
+              gameState.cannedFish -= 1;
+              ct.deliveredCanned += 1;
+              gameState.totalExported += 1;
+              advanceDailyQuest('goodsExported', 1);
+              autoMoved = true;
+            }
+          }
+          if (autoMoved) {
+            this.handleDeliverContract(false);
+          } else if (logiLv >= 4 && gameState.planks >= 6) {
+            // Sell surplus planks automatically when contract doesn't need them
+            gameState.planks -= 2;
+            const earn = Math.round(48 * getRevenueMultiplier());
+            gameState.cash += earn;
+            recordRevenue('sawmill', earn);
+            this.syncSawmillVisuals();
+          }
+        }
+      }
+    }
+
+    this.badgeCheckTimer += dt;
+    if (this.badgeCheckTimer >= 3.0) {
+      this.badgeCheckTimer = 0;
+      const newBadges = evaluateBadgeUnlocks();
+      if (newBadges.length) {
+        for (const b of newBadges) {
+          this.ui.triggerCelebration(`Mở Khóa Huy Hiệu: ${b.name}!`, `Thưởng vĩnh viễn +${b.bonusPct}% Doanh thu`);
+        }
+        saveGameServer();
+      }
     }
   }
 
@@ -1656,9 +1767,36 @@ class TimberPortEngine {
     this.scene.add(mesh);
     this.remotePlayers.set(p.id, {
       mesh,
+      username: p.nickname || 'Thương gia',
+      empireName: p.empireName || 'TimberPort',
+      level: p.level || 1,
       targetPos: new THREE.Vector3(p.x || 0, p.y || 0, p.z || 0),
       targetYaw: p.rotY || 0
     });
+  }
+
+  getOnlinePlayersList() {
+    const list = [{
+      username: gameState.username || 'Chủ tịch',
+      empireName: gameState.empireName || 'TimberPort Empire',
+      level: gameState.level || 1,
+      vipLevel: gameState.vipLevel || 0,
+      prestigeLevel: gameState.prestigeLevel || 0,
+      yachtTier: gameState.yachtTier || 0,
+      money: Math.floor(gameState.cash || 0)
+    }];
+    for (const rp of this.remotePlayers.values()) {
+      list.push({
+        username: rp.username,
+        empireName: rp.empireName,
+        level: rp.level,
+        vipLevel: 0,
+        prestigeLevel: 0,
+        yachtTier: 0,
+        money: 0
+      });
+    }
+    return list;
   }
 
   updateRemotePlayers(dt) {

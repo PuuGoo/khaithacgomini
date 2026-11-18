@@ -20,6 +20,8 @@ import {
   createLogMesh,
   createPlankMesh,
   createCargoFreighterModel,
+  createVipYachtModel,
+  createGantryCraneModel,
   syncBuildingEvolution,
   disposeObject3D
 } from './models.js';
@@ -55,6 +57,8 @@ export class WorldManager {
     this.sawmill = null;
     this.harbor = null;
     this.cargoFreighter = null;
+    this.vipYacht = null;
+    this.gantryCrane = null;
     this.harborBeaconLight = null;
     this.questRing = null;
     this.currentQuestTarget = ZONES.hopper;
@@ -243,6 +247,26 @@ export class WorldManager {
     this.harborBeaconLight.position.set(8.5, 6.2, 34);
     this.harborBeaconLight.visible = !this.lowSpec;
     this.worldGroup.add(this.harborBeaconLight);
+
+    // Pre-built VIP Yacht docked at East Bay Berth (zero runtime allocation)
+    this.vipYacht = createVipYachtModel(this.lowSpec);
+    this.vipYacht.position.set(22, 0.05, 31.5);
+    this.vipYacht.rotation.y = Math.PI * 0.14;
+    this.worldGroup.add(this.vipYacht);
+    this.syncYachtTier(gameState.yachtTier || 0);
+
+    // Pre-built Harbor Gantry Container Crane
+    this.gantryCrane = createGantryCraneModel(this.lowSpec);
+    this.gantryCrane.position.set(-1.5, 0.72, 29.5);
+    this.worldGroup.add(this.gantryCrane);
+  }
+
+  syncYachtTier(tier = 0) {
+    if (!this.vipYacht) return;
+    this.vipYacht.visible = tier > 0;
+    if (tier > 0) {
+      this.vipYacht.scale.setScalar(0.86 + tier * 0.11);
+    }
   }
 
   setLowSpec(isLow) {
@@ -250,6 +274,12 @@ export class WorldManager {
     if (this.harborBeaconLight) this.harborBeaconLight.visible = !this.lowSpec;
     if (this.cargoFreighter?.userData?.mastBeacon) {
       this.cargoFreighter.userData.mastBeacon.visible = !this.lowSpec;
+    }
+    if (this.vipYacht?.userData?.deckLight) {
+      this.vipYacht.userData.deckLight.visible = !this.lowSpec;
+    }
+    if (this.gantryCrane?.userData?.beacon) {
+      this.gantryCrane.userData.beacon.visible = !this.lowSpec;
     }
   }
 
@@ -518,6 +548,15 @@ export class WorldManager {
       const dx = Math.cos(phase) * 58 * 0.11;
       this.cargoFreighter.position.set(fx, 0.05 + Math.sin(elapsed * 1.2) * 0.12, fz);
       this.cargoFreighter.rotation.y = dx >= 0 ? 0 : Math.PI;
+    }
+
+    if (this.vipYacht && this.vipYacht.visible) {
+      this.vipYacht.position.y = 0.05 + Math.sin(elapsed * 1.55) * 0.11;
+      this.vipYacht.rotation.z = Math.sin(elapsed * 1.1) * 0.025;
+    }
+
+    if (this.gantryCrane && !this.lowSpec && this.gantryCrane.userData.trolley) {
+      this.gantryCrane.userData.trolley.position.z = 3.5 + Math.sin(elapsed * 0.65) * 3.8;
     }
 
     for (const tree of this.trees) {

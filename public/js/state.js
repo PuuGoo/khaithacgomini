@@ -204,6 +204,100 @@ export const activeEventState = {
   index: 0
 };
 
+export const YACHT_TIERS = [
+  { tier: 1, name: 'Bến Du Thuyền Hạng Sang', costCash: 4500, cashPer10s: 120, gemChance: 0.25, desc: 'Cập bến du thuyền trắng mũi nhọn, thu phí du lịch vịnh & cơ hội rơi 💎.' },
+  { tier: 2, name: 'Du Thuyền Đô Đốc Hoàng Gia', costCash: 16000, cashPer10s: 340, gemChance: 0.45, desc: 'Mở rộng boong tiệc VIP, tăng mạnh doanh thu thụ động & tỷ lệ rơi 💎.' },
+  { tier: 3, name: 'Siêu Du Thuyền Đế Chế', costCash: 52000, cashPer10s: 920, gemChance: 0.75, desc: 'Biểu tượng thượng lưu tối thượng với quỹ du lịch cao cấp & 💎 ổn định.' }
+];
+
+export const LOGISTICS_TIERS = [
+  { tier: 1, name: 'Drone Gom Phôi Gỗ', costCash: 1600, desc: 'Tự động thu 1 khúc gỗ trực tiếp vào Phễu Xưởng mỗi 4.5 giây.' },
+  { tier: 2, name: 'Băng Tải Thông Minh', costCash: 4800, desc: 'Tăng tốc gom gỗ mỗi 3.0s & tự động đóng đai Pallet khi đủ phôi.' },
+  { tier: 3, name: 'Điều Phối Xuất Cảng Tự Động', costCash: 13500, desc: 'Tự động giao hàng tồn vào Hợp đồng Cảng đang mở mà không cần chạy tay.' },
+  { tier: 4, name: 'Mạng Lưới Hậu Cần Toàn Chuỗi', costCash: 34000, desc: 'Gom gỗ nhanh gấp đôi & tự động bán hàng dư vượt hợp đồng tại Cảng.' },
+  { tier: 5, name: 'Trung Tâm Logistics Siêu Tự Động', costCash: 85000, desc: 'Chuỗi cung ứng khép kín 100% với tốc độ tối đa cả Rừng - Xưởng - Cảng.' }
+];
+
+export const LIMITED_COMBOS = [
+  {
+    id: 'combo_sawmill_pro',
+    title: 'Combo Tăng Tốc Xưởng Gỗ',
+    subtitle: 'Ưu đãi giờ vàng · Tiết kiệm 35%',
+    badge: 'Ưu đãi 35%',
+    costType: 'gems',
+    cost: 45,
+    rewardCash: 3800,
+    rewardGems: 20,
+    rewardVipXp: 150,
+    boostSec: 60,
+    desc: 'Nhận ngay +$3,800 Cash, +20 💎, +150 VIP XP & 60s Rìu Vàng x2.'
+  },
+  {
+    id: 'combo_harbor_admiral',
+    title: 'Gói Đô Đốc Thương Cảng',
+    subtitle: 'Phiên giới hạn · Giá trị cao',
+    badge: 'Bán chạy',
+    costType: 'cash',
+    cost: 6500,
+    rewardCash: 0,
+    rewardGems: 95,
+    rewardVipXp: 240,
+    boostSec: 90,
+    desc: 'Quy đổi $6,500 Cash lấy +95 💎, +240 VIP XP & 90s Tăng Tốc.'
+  },
+  {
+    id: 'combo_imperial_vault',
+    title: 'Rương Tài Phiệt Hoàng Kim',
+    subtitle: 'Siêu gói thương mại giới hạn',
+    badge: 'Tiết kiệm 45%',
+    costType: 'gems',
+    cost: 85,
+    rewardCash: 14500,
+    rewardGems: 40,
+    rewardVipXp: 420,
+    boostSec: 120,
+    desc: 'Cộng thẳng +$14,500 Cash, +40 💎, +420 VIP XP & 120s Rìu Vàng x2.'
+  }
+];
+
+export const comboState = {
+  index: 0,
+  timeLeft: 1800,
+  purchasedId: null
+};
+
+export const AUCTION_TEMPLATES = [
+  { id: 'auc_planks', kind: 'sell', title: 'Đấu Giá Lô Ván Sấy Bắc Âu', itemKey: 'planks', itemLabel: 'Ván gỗ', qty: 14, baseMult: 1.55, rewardGems: 12, rewardVipXp: 40 },
+  { id: 'auc_pallets', kind: 'sell', title: 'Phiên Đấu Giá Kiện Pallet Xuất Cảng', itemKey: 'pallets', itemLabel: 'Pallet', qty: 4, baseMult: 1.75, rewardGems: 18, rewardVipXp: 55 },
+  { id: 'auc_canned', kind: 'sell', title: 'Đấu Giá Lô Cá Hộp Thượng Hạng', itemKey: 'cannedFish', itemLabel: 'Cá hộp', qty: 5, baseMult: 1.85, rewardGems: 22, rewardVipXp: 65 },
+  { id: 'auc_crate', kind: 'buy_gems', title: 'Kiện Đá Quý & VIP Vô Chủ Tại Cảng', bidCost: 2200, rewardGems: 42, rewardVipXp: 110 }
+];
+
+export const auctionState = {
+  current: null,
+  index: 0,
+  timeLeft: 75,
+  cooldown: 0,
+  rivalBids: 0
+};
+
+export const BADGE_CODEX = [
+  { id: 'bdg_first_branch', name: 'Nhà Khai Phá Vịnh', icon: '🗺️', bonusPct: 4, conditionText: 'Mở từ 2 Chi nhánh cảng trở lên', check: () => (gameState.unlockedBranches?.length || 1) >= 2 },
+  { id: 'bdg_yacht_owner', name: 'Chủ Bến Du Thuyền', icon: '🛥️', bonusPct: 5, conditionText: 'Mở khóa Bến Du Thuyền VIP', check: () => (gameState.yachtTier || 0) >= 1 },
+  { id: 'bdg_logistics_pro', name: 'Kiến Trúc Sư Logistics', icon: '🤖', bonusPct: 6, conditionText: 'Đạt Mạng lưới Logistics cấp 3', check: () => (gameState.logisticsTier || 0) >= 3 },
+  { id: 'bdg_auction_shark', name: 'Bậc Thầy Đấu Giá', icon: '🔨', bonusPct: 5, conditionText: 'Thắng 2 phiên Đấu giá Lô hàng', check: () => (gameState.totalAuctionsWon || 0) >= 2 },
+  { id: 'bdg_vip_gold', name: 'Quý Tộc Thương Cảng', icon: '👑', bonusPct: 8, conditionText: 'Đạt cấp VIP 3 trở lên', check: () => (gameState.vipLevel || 0) >= 3 },
+  { id: 'bdg_prestige_star', name: 'Huyền Thoại Chuyển Sinh', icon: '🏅', bonusPct: 10, conditionText: 'Thực hiện Chuyển Sinh ít nhất 1 lần', check: () => (gameState.prestigeLevel || 0) >= 1 }
+];
+
+export const MILESTONE_QUESTS = [
+  { id: 'ms_1', title: 'Cột Mốc I: Xưởng Gỗ Khởi Sắc', desc: 'Xẻ tổng cộng 40 thanh ván gỗ', statKey: 'totalPlanksSawn', target: 40, rewardCash: 1200, rewardGems: 20, rewardVipXp: 50 },
+  { id: 'ms_2', title: 'Cột Mốc II: Đóng Tàu Vươn Khơi', desc: 'Hoàn thành 2 Hợp đồng Xuất khẩu', statKey: 'contractsCompleted', target: 2, rewardCash: 3200, rewardGems: 35, rewardVipXp: 80 },
+  { id: 'ms_3', title: 'Cột Mốc III: Bến Cảng Tấp Nập', desc: 'Xuất khẩu tổng cộng 65 đơn vị hàng', statKey: 'totalExported', target: 65, rewardCash: 6800, rewardGems: 55, rewardVipXp: 120 },
+  { id: 'ms_4', title: 'Cột Mốc IV: Đế Chế Triệu Đô', desc: 'Đốn tổng cộng 220 khúc gỗ toàn hệ thống', statKey: 'totalLogsCut', target: 220, rewardCash: 15000, rewardGems: 90, rewardVipXp: 200 },
+  { id: 'ms_5', title: 'Cột Mốc V: Bá Chủ Hải Cảng', desc: 'Hoàn thành 8 Hợp đồng Xuất khẩu', statKey: 'contractsCompleted', target: 8, rewardCash: 38000, rewardGems: 160, rewardVipXp: 350 }
+];
+
 // Rolling 60s Cash Telemetry (Zero GC ring of timestamped entries)
 const cashFlowSamples = [];
 
@@ -220,10 +314,15 @@ export function getCashPerMinute() {
       i++;
     }
   }
+  const yachtDef = YACHT_TIERS.find((y) => y.tier === (gameState.yachtTier || 0));
+  const yachtPerMin = yachtDef ? yachtDef.cashPer10s * 6 * getPrestigeMultiplier() : 0;
+  const logisticsPerMin = (gameState.logisticsTier || 0) * 140 * getRevenueMultiplier();
   const passiveEstimate = Math.round(
     ((gameState.autoForklifts || 0) * 180 + Math.max(0, gameState.fishingBoats || 0) * 95)
     * getRevenueMultiplier()
     * (1 + getManagerBonus('contractBonus'))
+    + yachtPerMin
+    + logisticsPerMin
   );
   return Math.max(total, passiveEstimate);
 }
@@ -314,6 +413,16 @@ export function createDefaultState() {
     vipRushOrder: null,
     vipRushCooldown: 12,
 
+    // Phase 3: Logistics Network, VIP Yacht Berth, Auctions, Badge Codex & Milestones
+    logisticsTier: 0,
+    autoLogisticsEnabled: true,
+    yachtTier: 0,
+    yachtAccumCash: 0,
+    yachtAccumGems: 0,
+    unlockedBadges: [],
+    milestoneIndex: 0,
+    totalAuctionsWon: 0,
+
     // Cosmetics & Fleet
     equippedSkin: 'classic',
     unlockedSkins: ['classic'],
@@ -378,18 +487,28 @@ export function getActiveEvent() {
   return activeEventState.current;
 }
 
+export function getBadgeRevenueBonus() {
+  const unlocked = gameState.unlockedBadges || [];
+  let pct = 0;
+  for (const b of BADGE_CODEX) {
+    if (unlocked.includes(b.id)) pct += b.bonusPct;
+  }
+  return pct / 100;
+}
+
 export function getRevenueMultiplier() {
   const branchMult = getActiveBranch().multiplier;
   const plankMult = 1 + ((gameState.plankValueTier || 1) - 1) * 0.35;
   const vipMult = getVipMultiplier();
   const mgrMult = 1 + getManagerBonus('sawValue');
   const prestigeMult = getPrestigeMultiplier();
+  const badgeMult = 1 + getBadgeRevenueBonus();
   const ev = activeEventState.current;
   const eventMult = ev && ev.multTarget === 'sawmill' ? 1 + ev.multBonus : 1.0;
   let skinMult = 1.0;
   if (gameState.equippedSkin === 'captain') skinMult = 1.15;
   if (gameState.equippedSkin === 'gold_tycoon') skinMult = 1.25;
-  return branchMult * plankMult * vipMult * skinMult * mgrMult * prestigeMult * eventMult;
+  return branchMult * plankMult * vipMult * skinMult * mgrMult * prestigeMult * badgeMult * eventMult;
 }
 
 export function getContractMultiplier() {
@@ -605,14 +724,189 @@ export function performPrestige() {
   gameState.fishingBoats = 0;
 
   gameState.managers = { mgr_forest: 0, mgr_sawmill: 0, mgr_harbor: 0, mgr_coldchain: 0 };
+  gameState.logisticsTier = 0;
+  gameState.yachtTier = 0;
+  gameState.yachtAccumCash = 0;
+  gameState.yachtAccumGems = 0;
   gameState.activeBranchId = 'pine_bay';
   gameState.unlockedBranches = ['pine_bay'];
   gameState.contractsCompleted = 0;
   gameState.padProgress = {};
   gameState.vipRushOrder = null;
   gameState.vipRushCooldown = 15;
+  evaluateBadgeUnlocks();
   generateNextContract();
   return medals;
+}
+
+export function getLogisticsNextTier() {
+  const cur = gameState.logisticsTier || 0;
+  return LOGISTICS_TIERS.find((t) => t.tier === cur + 1) || null;
+}
+
+export function getYachtNextTier() {
+  const cur = gameState.yachtTier || 0;
+  return YACHT_TIERS.find((y) => y.tier === cur + 1) || null;
+}
+
+export function evaluateBadgeUnlocks() {
+  if (!Array.isArray(gameState.unlockedBadges)) gameState.unlockedBadges = [];
+  const newlyUnlocked = [];
+  for (const b of BADGE_CODEX) {
+    if (!gameState.unlockedBadges.includes(b.id) && b.check()) {
+      gameState.unlockedBadges.push(b.id);
+      newlyUnlocked.push(b);
+    }
+  }
+  return newlyUnlocked;
+}
+
+export function getActiveMilestone() {
+  const idx = gameState.milestoneIndex || 0;
+  return MILESTONE_QUESTS[idx] || null;
+}
+
+export function claimActiveMilestone() {
+  const ms = getActiveMilestone();
+  if (!ms) return null;
+  if ((gameState[ms.statKey] || 0) < ms.target) return null;
+  gameState.cash += ms.rewardCash;
+  gameState.gems += ms.rewardGems;
+  recordRevenue('offline', ms.rewardCash);
+  addVipXp(ms.rewardVipXp);
+  addSeasonXp(50);
+  gameState.milestoneIndex = (gameState.milestoneIndex || 0) + 1;
+  return ms;
+}
+
+export function claimYachtYield() {
+  const cash = Math.floor(gameState.yachtAccumCash || 0);
+  const gems = Math.floor(gameState.yachtAccumGems || 0);
+  if (cash <= 0 && gems <= 0) return null;
+  gameState.cash += cash;
+  gameState.gems += gems;
+  gameState.yachtAccumCash = 0;
+  gameState.yachtAccumGems = 0;
+  if (cash > 0) recordRevenue('fishery', cash);
+  addVipXp(15);
+  return { cash, gems };
+}
+
+export function getCurrentLimitedCombo() {
+  return LIMITED_COMBOS[comboState.index % LIMITED_COMBOS.length];
+}
+
+export function tickComboTimer(dt) {
+  comboState.timeLeft -= dt;
+  if (comboState.timeLeft <= 0) {
+    comboState.index = (comboState.index + 1) % LIMITED_COMBOS.length;
+    comboState.timeLeft = 1800;
+    comboState.purchasedId = null;
+    return getCurrentLimitedCombo();
+  }
+  return null;
+}
+
+export function purchaseLimitedCombo() {
+  const combo = getCurrentLimitedCombo();
+  if (!combo || comboState.purchasedId === combo.id) return { ok: false, reason: 'Gói ưu đãi phiên này đã được mua!' };
+  if (combo.costType === 'gems') {
+    if (gameState.gems < combo.cost) return { ok: false, reason: 'Chưa đủ Đá quý!' };
+    gameState.gems -= combo.cost;
+  } else {
+    if (gameState.cash < combo.cost) return { ok: false, reason: 'Chưa đủ tiền mặt!' };
+    gameState.cash -= combo.cost;
+  }
+  if (combo.rewardCash > 0) {
+    gameState.cash += combo.rewardCash;
+    recordRevenue('offline', combo.rewardCash);
+  }
+  if (combo.rewardGems > 0) gameState.gems += combo.rewardGems;
+  if (combo.rewardVipXp > 0) addVipXp(combo.rewardVipXp);
+  if (combo.boostSec > 0) gameState.boostTimer = Math.max(gameState.boostTimer || 0, combo.boostSec);
+  comboState.purchasedId = combo.id;
+  return { ok: true, combo };
+}
+
+function buildAuctionInstance(idx) {
+  const tpl = AUCTION_TEMPLATES[idx % AUCTION_TEMPLATES.length];
+  if (tpl.kind === 'sell') {
+    const baseUnit = tpl.itemKey === 'planks' ? 24 : tpl.itemKey === 'pallets' ? 115 : 75;
+    const baseOffer = Math.round(tpl.qty * baseUnit * tpl.baseMult * getRevenueMultiplier());
+    return {
+      ...tpl,
+      uid: 'auc_' + Date.now(),
+      currentBid: baseOffer,
+      stepCash: Math.max(80, Math.round(baseOffer * 0.12))
+    };
+  }
+  const scaledCost = Math.round(tpl.bidCost * Math.max(1, getActiveBranch().multiplier * 0.75));
+  return {
+    ...tpl,
+    uid: 'auc_' + Date.now(),
+    currentBid: scaledCost,
+    stepCash: Math.max(150, Math.round(scaledCost * 0.15))
+  };
+}
+
+auctionState.current = buildAuctionInstance(0);
+
+export function tickAuctionTimer(dt) {
+  if (auctionState.current) {
+    auctionState.timeLeft -= dt;
+    if (auctionState.current.kind === 'sell' && auctionState.rivalBids < 3 && auctionState.timeLeft < 55 - auctionState.rivalBids * 16) {
+      auctionState.rivalBids += 1;
+      auctionState.current.currentBid += auctionState.current.stepCash;
+    }
+    if (auctionState.timeLeft <= 0) {
+      auctionState.current = null;
+      auctionState.cooldown = 18;
+      auctionState.rivalBids = 0;
+    }
+  } else {
+    auctionState.cooldown -= dt;
+    if (auctionState.cooldown <= 0) {
+      auctionState.index = (auctionState.index + 1) % AUCTION_TEMPLATES.length;
+      auctionState.current = buildAuctionInstance(auctionState.index);
+      auctionState.timeLeft = 75;
+      auctionState.rivalBids = 0;
+      return auctionState.current;
+    }
+  }
+  return null;
+}
+
+export function settleAuctionLot() {
+  const auc = auctionState.current;
+  if (!auc) return { ok: false, reason: 'Chưa có phiên đấu giá mở.' };
+  if (auc.kind === 'sell') {
+    const stock = Math.floor(gameState[auc.itemKey] || 0);
+    if (stock < auc.qty) return { ok: false, reason: `Cần đủ ${auc.qty} ${auc.itemLabel} trong kho.` };
+    gameState[auc.itemKey] -= auc.qty;
+    gameState.cash += auc.currentBid;
+    gameState.gems += auc.rewardGems;
+    gameState.totalExported += auc.qty;
+    gameState.totalAuctionsWon = (gameState.totalAuctionsWon || 0) + 1;
+    recordRevenue('market', auc.currentBid);
+    addVipXp(auc.rewardVipXp);
+    addSeasonXp(35);
+    const out = { ok: true, kind: 'sell', cash: auc.currentBid, gems: auc.rewardGems, title: auc.title };
+    auctionState.current = null;
+    auctionState.cooldown = 18;
+    evaluateBadgeUnlocks();
+    return out;
+  }
+  if (gameState.cash < auc.currentBid) return { ok: false, reason: 'Chưa đủ tiền mặt đặt mua lô hàng.' };
+  gameState.cash -= auc.currentBid;
+  gameState.gems += auc.rewardGems;
+  gameState.totalAuctionsWon = (gameState.totalAuctionsWon || 0) + 1;
+  addVipXp(auc.rewardVipXp);
+  addSeasonXp(40);
+  const out = { ok: true, kind: 'buy_gems', spent: auc.currentBid, gems: auc.rewardGems, title: auc.title };
+  auctionState.current = null;
+  auctionState.cooldown = 18;
+  evaluateBadgeUnlocks();
+  return out;
 }
 
 export function generateNextContract() {
@@ -667,6 +961,10 @@ export async function saveGameServer(immediate = false) {
           level: gameState.level,
           money: Math.floor(gameState.cash),
           totalLogsCut: gameState.totalLogsCut,
+          vipLevel: gameState.vipLevel || 0,
+          prestigeLevel: gameState.prestigeLevel || 0,
+          yachtTier: gameState.yachtTier || 0,
+          unlockedBadgesCount: (gameState.unlockedBadges || []).length,
           timberportState: gameState
         })
       });
@@ -694,6 +992,16 @@ export function loadGameLocal() {
       if (!gameState.managers) {
         gameState.managers = { mgr_forest: 0, mgr_sawmill: 0, mgr_harbor: 0, mgr_coldchain: 0 };
       }
+      if (!Array.isArray(gameState.unlockedBadges)) {
+        gameState.unlockedBadges = [];
+      }
+      if (typeof gameState.logisticsTier !== 'number') gameState.logisticsTier = 0;
+      if (typeof gameState.autoLogisticsEnabled !== 'boolean') gameState.autoLogisticsEnabled = true;
+      if (typeof gameState.yachtTier !== 'number') gameState.yachtTier = 0;
+      if (typeof gameState.yachtAccumCash !== 'number') gameState.yachtAccumCash = 0;
+      if (typeof gameState.yachtAccumGems !== 'number') gameState.yachtAccumGems = 0;
+      if (typeof gameState.milestoneIndex !== 'number') gameState.milestoneIndex = 0;
+      if (typeof gameState.totalAuctionsWon !== 'number') gameState.totalAuctionsWon = 0;
       return prevUpdatedAt;
     }
   } catch (e) {}

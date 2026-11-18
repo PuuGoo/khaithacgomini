@@ -488,18 +488,41 @@ app.get('/api/empires/leaderboard', async (req, res) => {
     const list = [];
     const savesCol = await getCollection();
     if (savesCol) {
-      const docs = await savesCol.find({}, { projection: { playerId: 1, username: 1, empireName: 1, level: 1, money: 1, totalLogsCut: 1, updatedAt: 1 } })
-        .sort({ level: -1, money: -1 })
+      const docs = await savesCol.find(
+        {},
+        {
+          projection: {
+            playerId: 1,
+            username: 1,
+            empireName: 1,
+            level: 1,
+            money: 1,
+            totalLogsCut: 1,
+            vipLevel: 1,
+            prestigeLevel: 1,
+            yachtTier: 1,
+            unlockedBadgesCount: 1,
+            timberportState: 1,
+            updatedAt: 1
+          }
+        }
+      )
+        .sort({ prestigeLevel: -1, level: -1, money: -1 })
         .limit(30)
         .toArray();
 
       for (const d of docs) {
+        const ts = d.timberportState || {};
         list.push({
           username: d.username || d.playerId,
           empireName: d.empireName || `Đế Chế ${d.playerId}`,
-          level: d.level || 1,
-          money: Math.round(d.money || 0),
-          totalLogsCut: d.totalLogsCut || 0,
+          level: d.level || ts.level || 1,
+          money: Math.round(d.money || ts.cash || 0),
+          totalLogsCut: d.totalLogsCut || ts.totalLogsCut || 0,
+          vipLevel: d.vipLevel ?? ts.vipLevel ?? 0,
+          prestigeLevel: d.prestigeLevel ?? ts.prestigeLevel ?? 0,
+          yachtTier: d.yachtTier ?? ts.yachtTier ?? 0,
+          unlockedBadgesCount: d.unlockedBadgesCount ?? (Array.isArray(ts.unlockedBadges) ? ts.unlockedBadges.length : 0),
           updatedAt: d.updatedAt || ''
         });
       }

@@ -930,3 +930,88 @@ export function createCargoFreighterModel(lowSpec = false) {
   return g;
 }
 
+export function createVipYachtModel(lowSpec = false) {
+  const g = new THREE.Group();
+  const hullMat = new THREE.MeshStandardMaterial({ color: 0xf8fafc, roughness: 0.25, metalness: 0.15 });
+  const teakMat = new THREE.MeshStandardMaterial({ color: 0xb45309, roughness: 0.65 });
+  const glassMat = new THREE.MeshStandardMaterial({ color: 0x0284c7, roughness: 0.12, metalness: 0.55 });
+  const goldMat = new THREE.MeshStandardMaterial({ color: 0xf59e0b, roughness: 0.28, metalness: 0.8 });
+
+  const hull = new THREE.Mesh(new THREE.BoxGeometry(9.6, 1.35, 3.1), hullMat);
+  hull.position.y = 0.55;
+  hull.castShadow = !lowSpec;
+
+  const bow = new THREE.Mesh(new THREE.ConeGeometry(1.55, 3.2, 4), hullMat);
+  bow.rotation.z = -Math.PI / 2;
+  bow.rotation.x = Math.PI / 4;
+  bow.scale.set(0.65, 1, 1.15);
+  bow.position.set(6.1, 0.6, 0);
+
+  const deck = new THREE.Mesh(new THREE.BoxGeometry(8.8, 0.14, 2.7), teakMat);
+  deck.position.set(-0.2, 1.26, 0);
+
+  const cabin = new THREE.Mesh(new THREE.BoxGeometry(4.6, 1.15, 2.2), hullMat);
+  cabin.position.set(-0.4, 1.88, 0);
+  cabin.castShadow = !lowSpec;
+
+  const visor = new THREE.Mesh(new THREE.BoxGeometry(4.75, 0.55, 2.28), glassMat);
+  visor.position.set(-0.32, 1.92, 0);
+
+  const upperDeck = new THREE.Mesh(new THREE.BoxGeometry(3.2, 0.72, 1.75), hullMat);
+  upperDeck.position.set(-0.7, 2.8, 0);
+
+  const goldStripe = new THREE.Mesh(new THREE.BoxGeometry(9.5, 0.14, 3.16), goldMat);
+  goldStripe.position.set(0, 0.95, 0);
+
+  const deckLight = new THREE.PointLight(0xfde68a, 1.5, 14, 1.8);
+  deckLight.position.set(-0.6, 3.4, 0);
+  deckLight.visible = !lowSpec;
+
+  g.add(hull, bow, deck, cabin, visor, upperDeck, goldStripe, deckLight);
+  g.userData = { deckLight };
+  return g;
+}
+
+export function createGantryCraneModel(lowSpec = false) {
+  const g = new THREE.Group();
+  const steelMat = new THREE.MeshStandardMaterial({ color: 0xea580c, roughness: 0.42, metalness: 0.52 });
+  const darkMat = new THREE.MeshStandardMaterial({ color: 0x1e293b, roughness: 0.45, metalness: 0.65 });
+  const contMat = new THREE.MeshStandardMaterial({ color: 0x0ea5e9, roughness: 0.48 });
+
+  const legGeo = markShared(new THREE.BoxGeometry(0.45, 9.2, 0.45));
+  [[-3.2, -2.0], [3.2, -2.0], [-3.2, 2.0], [3.2, 2.0]].forEach(([lx, lz]) => {
+    const leg = new THREE.Mesh(legGeo, steelMat);
+    leg.position.set(lx, 4.6, lz);
+    leg.castShadow = !lowSpec;
+    g.add(leg);
+  });
+
+  const girder = new THREE.Mesh(new THREE.BoxGeometry(7.2, 0.75, 15.0), steelMat);
+  girder.position.set(0, 9.3, 3.2);
+  girder.castShadow = !lowSpec;
+
+  const trolley = new THREE.Group();
+  trolley.position.set(0, 8.6, 3.5);
+  const carriage = new THREE.Mesh(new THREE.BoxGeometry(2.4, 0.55, 2.2), darkMat);
+  const cableL = new THREE.Mesh(new THREE.BoxGeometry(0.08, 3.2, 0.08), darkMat);
+  cableL.position.set(-0.9, -1.7, 0);
+  const cableR = new THREE.Mesh(new THREE.BoxGeometry(0.08, 3.2, 0.08), darkMat);
+  cableR.position.set(0.9, -1.7, 0);
+  const container = new THREE.Mesh(new THREE.BoxGeometry(2.8, 1.35, 1.8), contMat);
+  container.position.set(0, -3.6, 0);
+  container.castShadow = !lowSpec;
+  trolley.add(carriage, cableL, cableR, container);
+
+  const beacon = new THREE.Mesh(
+    new THREE.SphereGeometry(0.3, 8, 8),
+    new THREE.MeshStandardMaterial({ color: 0xfef08a, emissive: 0xf59e0b, emissiveIntensity: 1.0 })
+  );
+  beacon.position.set(0, 10.0, 9.8);
+  beacon.visible = !lowSpec;
+
+  g.add(girder, trolley, beacon);
+  g.userData = { trolley, beacon };
+  return g;
+}
+
+
