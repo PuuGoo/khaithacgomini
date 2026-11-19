@@ -19,10 +19,14 @@ import {
   DEEP_PORT_TIERS,
   GREEN_ENERGY_TIERS,
   INSURANCE_TIERS,
+  RAILWAY_TIERS,
+  HELI_TIERS,
+  WEATHER_PRESETS,
   fleetMissionState,
   marketState,
   stormState,
   shiftSession,
+  metropolisState,
   updateMarketPrices,
   updateStockPrices,
   updateCarbonMarket,
@@ -44,11 +48,15 @@ import {
   getSawmillVisualTier,
   getHarborVisualTier,
   getPlaneData,
+  getHeliData,
   getFranchiseRoyaltyPer10s,
   getRealEstateIncomePer10s,
   craftFurnitureBatch,
   quickBatchSawAndPallet,
   quickBatchFurniture,
+  triggerTrainExpressBoost,
+  autoTryDispatchContainerVoyage,
+  fetchMetropolisState,
   tickTradeExpo,
   tickContainerVoyage,
   tickFuturesContracts,
@@ -86,6 +94,7 @@ import {
   createWorkerModel,
   createDrivableYachtModel,
   createAirplaneModel,
+  createHelicopterModel,
   applyLiveryToModel,
   disposeObject3D
 } from './models.js';
@@ -199,12 +208,20 @@ class TimberPortEngine {
     this._fogGoldenColor = new THREE.Color();
     this._stormSkyColor = new THREE.Color('#334155');
     this._stormFogColor = new THREE.Color('#475569');
+    this._nightSkyColor = new THREE.Color('#070d19');
+    this._nightFogColor = new THREE.Color('#0b1528');
+    this._sunsetSkyColor = new THREE.Color('#d97706');
+    this._sunsetFogColor = new THREE.Color('#9a3412');
+    this._dawnSkyColor = new THREE.Color('#38bdf8');
+    this._dawnFogColor = new THREE.Color('#7dd3fc');
 
     this.initThree();
 
     this.world = new WorldManager(this.scene, { lowSpec: this.activeProfile === 'low' });
     this.applyBranchAtmosphere(getActiveBranch());
     this.world.syncEvolution(getSawmillVisualTier(), getHarborVisualTier());
+    this.world.syncRailwayTier(gameState.railwayTier || 0);
+    this.world.syncHeliTier(gameState.heliTier || 0);
 
     // Pre-allocated math vectors (Zero GC inside render loop)
     this._vecForward = new THREE.Vector3();
@@ -221,10 +238,12 @@ class TimberPortEngine {
     this.playerPos = new THREE.Vector3(0, 0, 2);
     this.playerYaw = 0;
     this.inVehicle = false;
-    this.controlMode = 'foot'; // 'foot' | 'land' | 'yacht' | 'plane'
+    this.controlMode = 'foot'; // 'foot' | 'land' | 'yacht' | 'plane' | 'heli'
     this.vehicleSpeed = 0;
     this.planePitch = 0;
     this.planeBank = 0;
+    this.heliPitch = 0;
+    this.heliBank = 0;
     this.btnClimbUp = false;
     this.btnClimbDown = false;
     this.wakeTimer = 0;
@@ -234,6 +253,7 @@ class TimberPortEngine {
     this.furnitureCraftTimer = 0;
     this.empirePhase6Timer = 0;
     this.phase7TickTimer = 0;
+    this.phase8TickTimer = 0;
     this.revSampleTimer = 0;
     this.stockAccum = 0;
     this.chopCooldown = 0;
@@ -254,10 +274,14 @@ class TimberPortEngine {
     this.lastVisualPallets = -1;
     this.walkPhase = 0;
 
-    // Camera Orbit state
+    // Camera Orbit & Choreography state
     this.camYaw = 0.42;
     this.camPitch = 0.62;
     this.camDist = 17.5;
+    this.cameraMode = 'follow'; // 'follow' | 'tactical' | 'orbit' | 'train'
+    this.orbitAngle = 0;
+    this.screenShake = 0;
+    this.lastAppliedNightFactor = -1;
 
     // Spawn Player, Pet, Parked Vehicle, AI Fleet, Drivable Yacht & Plane
     this.playerModel = createPlayerModel(getSkinData(), gameState.vipLevel);
@@ -281,6 +305,7 @@ class TimberPortEngine {
 
     this.drivableYacht = null;
     this.drivablePlane = null;
+    this.drivableHeli = null;
     this.aiSeaYachts = [];
     this.aiAirPlanes = [];
     this.rebuildAirSeaFleet();
@@ -336,6 +361,20 @@ class TimberPortEngine {
       onGreenEnergyChange: () => {
         this.world?.syncDeepPortTier(gameState.deepPortTier || 0, gameState.greenEnergyTier || 0);
       },
+      onRailwayChange: () => {
+        this.world?.syncRailwayTier(gameState.railwayTier || 0);
+      },
+      onHeliChange: () => {
+        this.world?.syncHeliTier(gameState.heliTier || 0);
+        this.rebuildAirSeaFleet();
+      },
+      onTrainExpress: () => this.triggerTrainBoost(),
+      onCycleWeather: () => this.cycleWeatherPreset(),
+      onCycleCamera: () => this.cycleCameraMode(),
+      getCameraMode: () => this.cameraMode,
+      onContributeLandmark: (wood, cash) => this.contributeLandmark(wood, cash),
+      onListMarketItem: (resource, amount, price) => this.listMarketItem(resource, amount, price),
+      onBuyMarketItem: (listingId) => this.buyMarketItem(listingId),
       onQuickSawPallet: () => {
         const res = quickBatchSawAndPallet();
         if (!res.ok) {
@@ -369,9 +408,14 @@ class TimberPortEngine {
       onAutoFleetChange: () => this.rebuildAirSeaFleet(),
       onBoardYacht: () => this.boardYacht(),
       onBoardPlane: () => this.boardPlane(),
+      onBoardHeli: () => this.boardHeli(),
       onBoardStormVehicle: () => {
-        if (stormState.kind === 'air') this.boardPlane();
-        else this.boardYacht();
+        if (stormState.kind === 'air') {
+          if ((gameState.heliTier || 0) >= 1) this.boardHeli();
+          else this.boardPlane();
+        } else {
+          this.boardYacht();
+        }
       },
       onDisembark: () => this.disembarkFleet(),
       onPlaneClimb: (active) => { this.btnClimbUp = Boolean(active); },
@@ -397,6 +441,7 @@ class TimberPortEngine {
     this.bindInputs();
     this.bindLifecycle();
     this.connectMultiplayer();
+    fetchMetropolisState();
     this.syncSawmillVisuals();
     this.ui.refreshHUD();
     this.ui.showWelcomeOverlay(offlineData, this.getGraphicsInfo(), (data) => this.applyOfflineEarnings(data));
@@ -640,6 +685,7 @@ class TimberPortEngine {
     disposeObject3D(this.parkedVehicle);
     disposeObject3D(this.drivableYacht);
     disposeObject3D(this.drivablePlane);
+    disposeObject3D(this.drivableHeli);
     this.aiWorkers.forEach((w) => disposeObject3D(w.mesh));
     this.aiForklifts.forEach((f) => disposeObject3D(f.mesh));
     this.fishingBoats.forEach((b) => disposeObject3D(b.mesh));
@@ -801,6 +847,25 @@ class TimberPortEngine {
       this.scene.add(this.drivablePlane);
     }
 
+    // Drivable VIP Executive Helicopter parked on Helipad (or active in flight)
+    if (this.drivableHeli) {
+      this.scene.remove(this.drivableHeli);
+      disposeObject3D(this.drivableHeli);
+      this.drivableHeli = null;
+    }
+    if ((gameState.heliTier || 0) >= 1) {
+      const hLiv = getLiveryData(gameState.heliLivery || 'carbon_gold');
+      this.drivableHeli = createHelicopterModel(gameState.heliTier || 1, low, hLiv);
+      if (this.controlMode === 'heli') {
+        this.drivableHeli.position.copy(this.playerPos);
+        this.drivableHeli.rotation.y = this.playerYaw;
+      } else {
+        this.drivableHeli.position.set(19.5, 0.25, 15.5);
+        this.drivableHeli.rotation.set(0, -Math.PI * 0.25, 0);
+      }
+      this.scene.add(this.drivableHeli);
+    }
+
     // Automated Passive Sea Fleet (0-3 yachts patrolling bay)
     const targetSeaAi = Math.min(3, gameState.autoSeaFleet || 0);
     while (this.aiSeaYachts.length < targetSeaAi) {
@@ -853,12 +918,14 @@ class TimberPortEngine {
   applyFleetLiveries() {
     const yLiv = getLiveryData(gameState.yachtLivery || 'pearl_sky');
     const pLiv = getLiveryData(gameState.planeLivery || 'pearl_sky');
+    const hLiv = getLiveryData(gameState.heliLivery || 'carbon_gold');
     if (this.drivableYacht) applyLiveryToModel(this.drivableYacht, yLiv, false);
     if (this.world?.vipYacht) applyLiveryToModel(this.world.vipYacht, yLiv, false);
     for (const y of this.aiSeaYachts) applyLiveryToModel(y.mesh, yLiv, false);
 
     if (this.drivablePlane) applyLiveryToModel(this.drivablePlane, pLiv, true);
     for (const p of this.aiAirPlanes) applyLiveryToModel(p.mesh, pLiv, true);
+    if (this.drivableHeli) applyLiveryToModel(this.drivableHeli, hLiv, true);
   }
 
   handleUpgradeEffect(id) {
@@ -914,12 +981,21 @@ class TimberPortEngine {
         this.ui.activateBoost();
         return;
       }
-      if (code === 'KeyE' || (code === 'Space' && this.controlMode !== 'plane')) {
+      if (code === 'KeyV') {
+        this.cycleCameraMode();
+        return;
+      }
+      if (code === 'KeyT') {
+        this.triggerTrainBoost();
+        return;
+      }
+      const isAircraft = this.controlMode === 'plane' || this.controlMode === 'heli';
+      if (code === 'KeyE' || (code === 'Space' && !isAircraft)) {
         if (!this.ui.isAnyModalOpen()) {
           e.preventDefault();
           this.handleContextAction(code === 'Space');
         }
-      } else if (code === 'Space' && this.controlMode === 'plane' && !this.ui.isAnyModalOpen()) {
+      } else if (code === 'Space' && isAircraft && !this.ui.isAnyModalOpen()) {
         e.preventDefault();
       }
     });
@@ -1011,7 +1087,7 @@ class TimberPortEngine {
   }
 
   // -------------------------------------------------------------------------
-  // 4. Contextual Interactions (Land Vehicles, Yachts, Airplanes, Harbor)
+  // 4. Contextual Interactions (Land Vehicles, Yachts, Airplanes, Helicopter, Train, Harbor)
   // -------------------------------------------------------------------------
   getContextPromptState() {
     if (this.controlMode === 'yacht') {
@@ -1020,6 +1096,9 @@ class TimberPortEngine {
     if (this.controlMode === 'plane') {
       return { action: 'disembark', key: 'E', label: 'Hạ cánh về Đường băng' };
     }
+    if (this.controlMode === 'heli') {
+      return { action: 'disembark', key: 'E', label: 'Đáp Trực Thăng về Sân H' };
+    }
 
     const distToHarbor = this.playerPos.distanceTo(ZONES.harborExport);
     const distToSawOut = this.playerPos.distanceTo(ZONES.sawOutput);
@@ -1027,6 +1106,8 @@ class TimberPortEngine {
     const distToVeh = this.playerPos.distanceTo(this.vehiclePos);
     const distToYachtBerth = this.playerPos.distanceTo(ZONES.yachtBerth);
     const distToRunway = this.playerPos.distanceTo(ZONES.runwayStart);
+    const distToHelipad = ZONES.helipad ? this.playerPos.distanceTo(ZONES.helipad) : 999;
+    const distToRailDepot = ZONES.railDepot ? this.playerPos.distanceTo(ZONES.railDepot) : 999;
 
     if (distToHarbor < 4.5 && (gameState.planks > 0 || gameState.pallets > 0 || gameState.cannedFish > 0)) {
       return { action: 'export', key: 'SPACE', label: 'Xuất khẩu Hợp đồng Cảng' };
@@ -1037,8 +1118,14 @@ class TimberPortEngine {
     if (distToSawOut < 4.2 && (gameState.planks > 0 || gameState.pallets > 0)) {
       return { action: 'sell_saw', key: 'SPACE', label: 'Bán nhanh Ván & Pallet' };
     }
+    if (distToRailDepot < 4.2 && (gameState.railwayTier || 0) >= 1) {
+      return { action: 'train_express', key: 'SPACE', label: 'Kéo Còi & Tăng Tốc Tàu Hỏa' };
+    }
     if (this.inVehicle) {
       return { action: 'vehicle', key: 'E', label: 'Xuống xe' };
+    }
+    if (distToHelipad < 4.2 && (gameState.heliTier || 0) >= 1) {
+      return { action: 'board_heli', key: 'E', label: 'Lên Lái Trực Thăng VIP' };
     }
     if (distToYachtBerth < 3.6 && (gameState.yachtTier || 0) >= 1) {
       return { action: 'board_yacht', key: 'E', label: 'Lái Du thuyền VIP' };
@@ -1062,6 +1149,8 @@ class TimberPortEngine {
     if (prompt.action === 'disembark') this.disembarkFleet();
     else if (prompt.action === 'board_yacht') this.boardYacht();
     else if (prompt.action === 'board_plane') this.boardPlane();
+    else if (prompt.action === 'board_heli') this.boardHeli();
+    else if (prompt.action === 'train_express') this.triggerTrainBoost();
     else if (prompt.action === 'vehicle') this.toggleVehicle();
     else if (prompt.action === 'export') this.handleDeliverContract(true);
     else if (prompt.action === 'sell_saw') this.sellAllAtSawmill();
@@ -1076,7 +1165,7 @@ class TimberPortEngine {
     }
     if (this.controlMode === 'yacht') return;
     if (this.inVehicle) this.toggleVehicle();
-    if (this.controlMode === 'plane') this.disembarkFleet();
+    if (this.controlMode === 'plane' || this.controlMode === 'heli') this.disembarkFleet();
 
     this.controlMode = 'yacht';
     this.vehicleSpeed = 0;
@@ -1104,7 +1193,7 @@ class TimberPortEngine {
     }
     if (this.controlMode === 'plane') return;
     if (this.inVehicle) this.toggleVehicle();
-    if (this.controlMode === 'yacht') this.disembarkFleet();
+    if (this.controlMode === 'yacht' || this.controlMode === 'heli') this.disembarkFleet();
 
     this.controlMode = 'plane';
     this.vehicleSpeed = 0;
@@ -1123,6 +1212,98 @@ class TimberPortEngine {
     if (!fleetMissionState.air) spawnFleetMission('air');
     sound.playTakeoff();
     this.ui.toast('✈️ Đã lên buồng lái! W/Joystick tăng ga · Space / ▲ Lên để bay!');
+  }
+
+  boardHeli() {
+    if ((gameState.heliTier || 0) <= 0) {
+      this.ui.openHub('locker');
+      this.ui.toast('🚁 Hãy mở khóa Bãi Đáp & Trực Thăng VIP Cấp 1 trong Showroom Hạm đội!');
+      return;
+    }
+    if (this.controlMode === 'heli') return;
+    if (this.inVehicle) this.toggleVehicle();
+    if (this.controlMode === 'yacht' || this.controlMode === 'plane') this.disembarkFleet();
+
+    this.controlMode = 'heli';
+    this.cameraMode = 'follow';
+    this.vehicleSpeed = 0;
+    this.heliPitch = 0;
+    this.heliBank = 0;
+    this.playerPos.set(19.5, 2.2, 15.5);
+    this.playerYaw = -Math.PI * 0.25;
+    this.playerModel.visible = false;
+    if (this.petModel) this.petModel.visible = false;
+    if (this.drivableHeli) {
+      this.drivableHeli.visible = true;
+      this.drivableHeli.position.copy(this.playerPos);
+      this.drivableHeli.rotation.set(0, this.playerYaw, 0);
+    }
+    if (!fleetMissionState.air) spawnFleetMission('air');
+    sound.playHeliRotor();
+    this.triggerScreenShake(0.18);
+    this.ui.toast('🚁 Cất cánh Trực Thăng VIP! Space/▲ bay cao · WASD/Joystick bay lượn 360°!');
+  }
+
+  triggerTrainBoost() {
+    if ((gameState.railwayTier || 0) <= 0) {
+      this.ui.openHub('upgrades');
+      this.ui.toast('🚂 Hãy xây dựng Tuyến Đường Sắt Công Nghiệp Cấp 1 trong mục Công trình!');
+      return false;
+    }
+    const res = triggerTrainExpressBoost();
+    if (!res.ok) {
+      this.ui.toast(res.reason);
+      return false;
+    }
+    sound.playTrainHorn();
+    sound.playTrainChug();
+    this.triggerScreenShake(0.22);
+    if (ZONES.railDepot) {
+      this.world.spawnParticles(ZONES.railDepot, 0xf59e0b, 6);
+      this.spawnWorldText(ZONES.railDepot, `🚂 +$${res.instantCash.toLocaleString()} Tốc Hành!`, 'cash');
+    }
+    saveGameServer();
+    this.ui.refreshHUD();
+    this.ui.toast(`🚂 Tàu Hỏa Tốc Hành! Nhận ngay +$${res.instantCash.toLocaleString()} & Tăng tốc 25s!`);
+    return true;
+  }
+
+  cycleWeatherPreset() {
+    const order = ['auto', 'dawn', 'sunny', 'sunset', 'night', 'storm'];
+    const cur = gameState.weatherMode || 'auto';
+    const next = order[(order.indexOf(cur) + 1) % order.length];
+    gameState.weatherMode = next;
+    const preset = WEATHER_PRESETS[next] || WEATHER_PRESETS.auto;
+    if (typeof preset.hour === 'number') {
+      gameState.worldClockHours = preset.hour;
+    }
+    sound.playCameraShutter();
+    saveGameLocal();
+    this.ui.refreshHUD();
+    this.ui.toast(`${preset.icon} Chế độ Thời tiết & Ánh sáng: ${preset.label}`);
+  }
+
+  cycleCameraMode() {
+    const modes = ['follow', 'tactical', 'orbit', 'train'];
+    const labels = {
+      follow: '🎥 Góc máy: Theo chân Chủ tịch',
+      tactical: '🦅 Góc máy: Toàn cảnh Chiến thuật (RTS)',
+      orbit: '🎬 Góc máy: Điện ảnh Quay chậm 360°',
+      train: '🚂 Góc máy: Hành trình Tàu Hỏa Cảng Biển'
+    };
+    let nextIdx = (modes.indexOf(this.cameraMode) + 1) % modes.length;
+    if (modes[nextIdx] === 'train' && (gameState.railwayTier || 0) <= 0) {
+      nextIdx = (nextIdx + 1) % modes.length;
+    }
+    this.cameraMode = modes[nextIdx];
+    sound.playCameraShutter();
+    this.ui.refreshHUD();
+    this.ui.toast(labels[this.cameraMode]);
+  }
+
+  triggerScreenShake(intensity = 0.2) {
+    if (this.activeProfile === 'low') return;
+    this.screenShake = Math.min(0.45, Math.max(this.screenShake, intensity));
   }
 
   disembarkFleet() {
@@ -1154,6 +1335,21 @@ class TimberPortEngine {
       if (this.petModel) this.petModel.visible = true;
       sound.playChop(1.1);
       this.ui.toast('🛬 Đã hạ cánh an toàn về Đường Băng');
+    } else if (this.controlMode === 'heli') {
+      this.controlMode = 'foot';
+      this.vehicleSpeed = 0;
+      this.heliPitch = 0;
+      this.heliBank = 0;
+      if (this.drivableHeli) {
+        this.drivableHeli.position.set(19.5, 0.25, 15.5);
+        this.drivableHeli.rotation.set(0, -Math.PI * 0.25, 0);
+      }
+      this.playerPos.set(16.8, 0, 15.5);
+      this.playerYaw = -Math.PI * 0.5;
+      this.playerModel.visible = true;
+      if (this.petModel) this.petModel.visible = true;
+      sound.playHeliRotor();
+      this.ui.toast('🚁 Đã đáp Chuyên cơ Trực thăng về Sân đáp H');
     }
     this.ui.updateVehicleHud({ mode: 'foot' });
   }
@@ -1398,6 +1594,8 @@ class TimberPortEngine {
     this.world.syncFurnitureMillTier(gameState.furnitureMillTier || 0);
     this.world.syncLighthouseTier(gameState.lighthouseTier || 0);
     this.world.syncDeepPortTier(gameState.deepPortTier || 0, gameState.greenEnergyTier || 0);
+    this.world.syncRailwayTier(gameState.railwayTier || 0);
+    this.world.syncHeliTier(gameState.heliTier || 0);
     this.rebuildAirSeaFleet();
     this.lastVisualBuffer = -1;
     this.lastVisualPlanks = -1;
@@ -1455,24 +1653,7 @@ class TimberPortEngine {
     this.updateCamera(dt);
 
     this.world.update(dt, this.elapsed, gameState.sawmillBuffer > 0);
-
-    // Subtle Golden-Hour Daylight Cycle & Storm Weather Tint (Zero GC allocations)
-    if (this.scene.background instanceof THREE.Color && this.scene.fog) {
-      if (stormState.active) {
-        this.scene.background.lerpColors(this._daySkyBase, this._stormSkyColor, 0.72);
-        this.scene.fog.color.lerpColors(this._dayFogBase, this._stormFogColor, 0.74);
-        this.sunLight.intensity = 1.45;
-      } else if (this.activeProfile !== 'low') {
-        const goldenBlend = (0.5 - 0.5 * Math.cos(this.elapsed * 0.045)) * 0.45;
-        this.scene.background.lerpColors(this._daySkyBase, this._skyGoldenColor, goldenBlend);
-        this.scene.fog.color.lerpColors(this._dayFogBase, this._fogGoldenColor, goldenBlend);
-        this.sunLight.intensity = 2.25 - goldenBlend * 0.25;
-      } else {
-        this.scene.background.copy(this._daySkyBase);
-        this.scene.fog.color.copy(this._dayFogBase);
-        this.sunLight.intensity = 2.0;
-      }
-    }
+    this.updateDayNightAndWeather(dt);
 
     this.hudSyncAccum += dt;
     if (this.hudSyncAccum >= 0.14) {
@@ -1746,6 +1927,42 @@ class TimberPortEngine {
       }
     }
 
+    // Phase 8: Industrial Railway & VIP Helicopter 5s Passive Yields + Train Boost & Auto-Container Dispatch
+    if ((gameState.trainBoostTimer || 0) > 0) {
+      gameState.trainBoostTimer = Math.max(0, gameState.trainBoostTimer - dt);
+    }
+    this.phase8TickTimer += dt;
+    if (this.phase8TickTimer >= 5.0) {
+      this.phase8TickTimer = 0;
+      const rwLv = gameState.railwayTier || 0;
+      if (rwLv > 0) {
+        const rwDef = RAILWAY_TIERS.find((r) => r.tier === rwLv);
+        if (rwDef) {
+          const boostMult = (gameState.trainBoostTimer || 0) > 0 ? 1.5 : 1.0;
+          const rwCash = Math.round((rwDef.cashPer10s / 2) * getPrestigeMultiplier() * boostMult);
+          gameState.railwayAccumCash = (gameState.railwayAccumCash || 0) + rwCash;
+        }
+      }
+      const hLv = gameState.heliTier || 0;
+      if (hLv > 0) {
+        const hDef = HELI_TIERS.find((h) => h.tier === hLv);
+        if (hDef) {
+          const hEngMult = getEngineYieldMult(gameState.heliEngineTier || 1);
+          const hCash = Math.round((hDef.cashPer10s / 2) * getPrestigeMultiplier() * hEngMult);
+          gameState.heliAccumCash = (gameState.heliAccumCash || 0) + hCash;
+          if (Math.random() < hDef.gemChance * 0.5) {
+            gameState.heliAccumGems = (gameState.heliAccumGems || 0) + 1;
+          }
+        }
+      }
+
+      // Automated Deep-Water Container Port Dispatch
+      const autoVoyage = autoTryDispatchContainerVoyage();
+      if (autoVoyage && autoVoyage.ok && autoVoyage.route) {
+        this.ui.toast(`🚢 Cảng Tự Động đã xuất bến tàu: ${autoVoyage.route.name}!`);
+      }
+    }
+
     const doneVoyage = tickContainerVoyage(dt);
     if (doneVoyage) {
       sound.playShipHorn();
@@ -1839,6 +2056,20 @@ class TimberPortEngine {
         missionText: am ? `${am.targetLabel} (${dist}m)` : 'Bay tự do toàn cảnh 3D'
       };
     }
+    if (this.controlMode === 'heli') {
+      const hDef = getHeliData();
+      const am = fleetMissionState.air;
+      const dist = am
+        ? Math.round(Math.hypot(am.targetX - this.playerPos.x, am.targetY - this.playerPos.y, am.targetZ - this.playerPos.z))
+        : 0;
+      return {
+        mode: 'heli',
+        title: `🚁 ${hDef.name}`,
+        speedDisplay: `${Math.round(this.vehicleSpeed * 11)} km/h`,
+        altDisplay: `${Math.max(0, this.playerPos.y - 0.25).toFixed(1)} m`,
+        missionText: am ? `${am.targetLabel} (${dist}m)` : 'Tuần tra & Chuyên cơ VIP 360°'
+      };
+    }
     return { mode: this.controlMode };
   }
 
@@ -1859,6 +2090,11 @@ class TimberPortEngine {
     }
     if (this.controlMode === 'plane') {
       this.updatePlaneFlight(dt, ix, iy);
+      this.sendNetPose(dt, true, false);
+      return;
+    }
+    if (this.controlMode === 'heli') {
+      this.updateHeliFlight(dt, ix, iy);
       this.sendNetPose(dt, true, false);
       return;
     }
@@ -2185,10 +2421,114 @@ class TimberPortEngine {
     }
   }
 
+  updateHeliFlight(dt, ix, iy) {
+    const heli = getHeliData();
+    const hEng = gameState.heliEngineTier || 1;
+    const maxSpeed = heli.speed * getEngineSpeedMult(hEng) * (gameState.boostTimer > 0 ? 1.25 : 1.0);
+
+    const climbInput = (this.keys.has('Space') || this.btnClimbUp ? 1 : 0)
+      - (this.keys.has('ShiftLeft') || this.keys.has('ShiftRight') || this.btnClimbDown ? 1 : 0);
+
+    const len = Math.hypot(ix, iy);
+    const moving = len > 0.08;
+    let turnDiff = 0;
+
+    if (moving) {
+      const nx = ix / Math.max(1, len);
+      const ny = iy / Math.max(1, len);
+      this._vecForward.set(-Math.sin(this.camYaw), 0, -Math.cos(this.camYaw));
+      this._vecRight.set(Math.cos(this.camYaw), 0, -Math.sin(this.camYaw));
+      this._moveDir.set(0, 0, 0)
+        .addScaledVector(this._vecForward, -ny)
+        .addScaledVector(this._vecRight, nx)
+        .normalize();
+
+      const targetYaw = Math.atan2(this._moveDir.x, this._moveDir.z);
+      turnDiff = targetYaw - this.playerYaw;
+      while (turnDiff > Math.PI) turnDiff -= Math.PI * 2;
+      while (turnDiff < -Math.PI) turnDiff += Math.PI * 2;
+      this.playerYaw += turnDiff * Math.min(1, dt * 5.2);
+      this.vehicleSpeed = THREE.MathUtils.lerp(this.vehicleSpeed, maxSpeed, Math.min(1, dt * 4.2));
+    } else {
+      // Helicopter can hover stationary in place
+      this.vehicleSpeed = THREE.MathUtils.lerp(this.vehicleSpeed, 0, Math.min(1, dt * 3.8));
+    }
+
+    this._vecForward.set(Math.sin(this.playerYaw), 0, Math.cos(this.playerYaw));
+    this.playerPos.addScaledVector(this._vecForward, this.vehicleSpeed * dt);
+    this.playerPos.y = THREE.MathUtils.clamp(
+      this.playerPos.y + climbInput * 11.5 * getEngineSpeedMult(hEng) * dt,
+      0.35,
+      AIR_BOUNDS.maxY
+    );
+    this.playerPos.x = THREE.MathUtils.clamp(this.playerPos.x, AIR_BOUNDS.minX, AIR_BOUNDS.maxX);
+    this.playerPos.z = THREE.MathUtils.clamp(this.playerPos.z, AIR_BOUNDS.minZ, AIR_BOUNDS.maxZ);
+
+    const speedRatio = this.vehicleSpeed / Math.max(1, maxSpeed);
+    const targetPitch = moving ? 0.22 * speedRatio : 0;
+    const targetBank = THREE.MathUtils.clamp(-turnDiff * 0.65 * speedRatio, -0.42, 0.42);
+    this.heliPitch = THREE.MathUtils.lerp(this.heliPitch, targetPitch, Math.min(1, dt * 7));
+    this.heliBank = THREE.MathUtils.lerp(this.heliBank, targetBank, Math.min(1, dt * 7));
+
+    if (this.drivableHeli) {
+      const hoverBob = Math.sin(this.elapsed * 4.5) * 0.08;
+      this.drivableHeli.position.set(this.playerPos.x, this.playerPos.y + hoverBob, this.playerPos.z);
+      this.drivableHeli.rotation.set(this.heliPitch, this.playerYaw, this.heliBank, 'YXZ');
+      if (this.drivableHeli.userData?.mainRotor) {
+        this.drivableHeli.userData.mainRotor.rotation.y += dt * 32;
+      }
+      if (this.drivableHeli.userData?.tailRotor) {
+        this.drivableHeli.userData.tailRotor.rotation.x += dt * 38;
+      }
+    }
+
+    // Complete 3D Sky Air Delivery Ring with VIP Helicopter
+    const am = fleetMissionState.air;
+    if (am) {
+      const dist3d = Math.hypot(
+        this.playerPos.x - am.targetX,
+        this.playerPos.y - am.targetY,
+        this.playerPos.z - am.targetZ
+      );
+      if (dist3d < 9.2) {
+        const bonusCash = Math.round(am.rewardCash * (getEngineYieldMult(hEng) - 1 + 0.15));
+        const done = completeFleetMission('air');
+        if (done) {
+          if (bonusCash > 0) {
+            gameState.cash += bonusCash;
+            recordRevenue('contracts', bonusCash);
+          }
+          sound.playHeliRotor();
+          this.world.spawnParticles(this.playerPos, 0xfacc15, 6);
+          this.ui.triggerCelebration('Trực Thăng VIP Giao Hàng Thành Công!', `+$${(done.rewardCash + bonusCash).toLocaleString()} · +${done.rewardGems} 💎`);
+          saveGameServer();
+        }
+      }
+    }
+
+    // Complete Aerial Storm Rescue Beacon with VIP Helicopter
+    if (stormState.active && stormState.kind === 'air') {
+      const stormDist = Math.hypot(
+        this.playerPos.x - stormState.targetX,
+        this.playerPos.y - stormState.targetY,
+        this.playerPos.z - stormState.targetZ
+      );
+      if (stormDist < 10.5) {
+        const res = completeStormRescue();
+        if (res) {
+          sound.playHeliRotor();
+          this.world.spawnParticles(this.playerPos, 0xf43f5e, 6);
+          this.ui.triggerCelebration('Trực Thăng Cứu Trợ Bão Thành Công!', `+$${res.rewardCash.toLocaleString()} · +${res.rewardGems} 💎`);
+          saveGameServer();
+        }
+      }
+    }
+  }
+
   updateChoppingAndHopper(dt) {
     this.chopCooldown = Math.max(0, this.chopCooldown - dt);
     this.unloadTimer = Math.max(0, this.unloadTimer - dt);
-    if (this.controlMode === 'yacht' || this.controlMode === 'plane') return;
+    if (this.controlMode === 'yacht' || this.controlMode === 'plane' || this.controlMode === 'heli') return;
 
     const cap = this.inVehicle
       ? (VEHICLES.find((v) => v.id === (gameState.equippedVehicle || 'forklift'))?.capacity || 14)
@@ -2233,6 +2573,7 @@ class TimberPortEngine {
             nearest.regrowTimer = 7.5;
             nearest.mesh.scale.setScalar(0.08);
             sound.playTreeFall();
+            this.triggerScreenShake(0.14);
 
             const gained = Math.min(cap - gameState.logs, nearest.logYield);
             gameState.logs += gained;
@@ -2314,7 +2655,7 @@ class TimberPortEngine {
       }
     }
 
-    const onLand = this.controlMode !== 'yacht' && this.controlMode !== 'plane';
+    const onLand = this.controlMode !== 'yacht' && this.controlMode !== 'plane' && this.controlMode !== 'heli';
 
     if (onLand && this.playerPos.distanceTo(ZONES.sawOutput) < 3.4) {
       this.sellTimer += dt;
@@ -2400,7 +2741,7 @@ class TimberPortEngine {
   }
 
   updateArcadePads(dt) {
-    if (this.controlMode === 'yacht' || this.controlMode === 'plane') return;
+    if (this.controlMode === 'yacht' || this.controlMode === 'plane' || this.controlMode === 'heli') return;
     for (const pad of this.world.arcadePads) {
       if (this.playerPos.distanceTo(pad.pos) > 1.85) continue;
       const item = UPGRADE_CATALOG.find((u) => u.id === pad.id);
@@ -2565,36 +2906,157 @@ class TimberPortEngine {
     }
   }
 
+  updateDayNightAndWeather(dt) {
+    const mode = gameState.weatherMode || 'auto';
+    if (mode === 'auto') {
+      // Full 24h cycle every 6 minutes (360 seconds => 24/360 = 0.06667 hr/s)
+      gameState.worldClockHours = ((gameState.worldClockHours || 10.5) + dt * 0.06667) % 24;
+    } else {
+      const preset = WEATHER_PRESETS[mode];
+      if (preset && typeof preset.hour === 'number') {
+        gameState.worldClockHours = preset.hour;
+      }
+    }
+
+    const hr = gameState.worldClockHours || 10.5;
+    const isStorm = stormState.active || mode === 'storm';
+
+    // Compute smooth nightFactor (0 = midday, 1 = deep night 21:00..04:30)
+    let nightFactor = 0;
+    if (hr >= 20.5 || hr < 4.8) {
+      nightFactor = 1.0;
+    } else if (hr >= 17.5 && hr < 20.5) {
+      nightFactor = (hr - 17.5) / 3.0;
+    } else if (hr >= 4.8 && hr < 7.2) {
+      nightFactor = 1.0 - (hr - 4.8) / 2.4;
+    }
+    if (isStorm) nightFactor = Math.max(nightFactor, 0.55);
+
+    if (Math.abs(nightFactor - this.lastAppliedNightFactor) > 0.04) {
+      this.lastAppliedNightFactor = nightFactor;
+      this.world.applyNightMode(nightFactor);
+    }
+
+    // Keep spinning helipad beacon & docked helicopter rotor idle spin
+    if (this.world.helipad?.userData?.beacon) {
+      this.world.helipad.userData.beacon.rotation.y += dt * 4.5;
+    }
+    if (this.controlMode !== 'heli' && this.drivableHeli?.userData?.mainRotor) {
+      this.drivableHeli.userData.mainRotor.rotation.y += dt * 1.4;
+    }
+
+    if (!(this.scene.background instanceof THREE.Color) || !this.scene.fog) return;
+
+    // Sun & Moon orbital trajectory across the sky
+    const sunAngle = ((hr - 6.0) / 24.0) * Math.PI * 2;
+    const sunElev = Math.sin(sunAngle);
+    this.sunLight.position.set(
+      Math.cos(sunAngle) * 38,
+      Math.max(10, Math.abs(sunElev) * 44 + 8),
+      18 + Math.sin(sunAngle * 0.5) * 12
+    );
+
+    if (isStorm) {
+      this.scene.background.lerpColors(this._daySkyBase, this._stormSkyColor, 0.78);
+      this.scene.fog.color.lerpColors(this._dayFogBase, this._stormFogColor, 0.8);
+      this.sunLight.intensity = 1.3;
+      this.hemiLight.intensity = 0.65;
+      return;
+    }
+
+    if (hr >= 5.0 && hr < 7.8) {
+      // Dawn / Binh Minh
+      const t = 1 - Math.abs(hr - 6.4) / 1.4;
+      this.scene.background.lerpColors(this._daySkyBase, this._dawnSkyColor, THREE.MathUtils.clamp(t, 0, 1) * 0.7);
+      this.scene.fog.color.lerpColors(this._dayFogBase, this._dawnFogColor, THREE.MathUtils.clamp(t, 0, 1) * 0.65);
+      this.sunLight.intensity = 1.6 + (1 - nightFactor) * 0.55;
+      this.hemiLight.intensity = 0.75;
+    } else if (hr >= 16.5 && hr < 19.8) {
+      // Sunset / Hoang Hon
+      const t = 1 - Math.abs(hr - 18.15) / 1.65;
+      this.scene.background.lerpColors(this._daySkyBase, this._sunsetSkyColor, THREE.MathUtils.clamp(t, 0, 1) * 0.78);
+      this.scene.fog.color.lerpColors(this._dayFogBase, this._sunsetFogColor, THREE.MathUtils.clamp(t, 0, 1) * 0.72);
+      this.sunLight.intensity = 1.35 + (1 - nightFactor) * 0.7;
+      this.hemiLight.intensity = 0.7;
+    } else if (nightFactor > 0.15) {
+      // Starry Night / Dem Sao
+      this.scene.background.lerpColors(this._daySkyBase, this._nightSkyColor, nightFactor * 0.92);
+      this.scene.fog.color.lerpColors(this._dayFogBase, this._nightFogColor, nightFactor * 0.9);
+      this.sunLight.intensity = THREE.MathUtils.lerp(2.15, 0.68, nightFactor);
+      this.hemiLight.intensity = THREE.MathUtils.lerp(0.82, 0.48, nightFactor);
+    } else {
+      // Bright Golden Day
+      const goldenBlend = this.activeProfile !== 'low'
+        ? (0.5 - 0.5 * Math.cos(this.elapsed * 0.045)) * 0.35
+        : 0;
+      this.scene.background.lerpColors(this._daySkyBase, this._skyGoldenColor, goldenBlend);
+      this.scene.fog.color.lerpColors(this._dayFogBase, this._fogGoldenColor, goldenBlend);
+      this.sunLight.intensity = this.activeProfile === 'low' ? 2.0 : 2.25 - goldenBlend * 0.2;
+      this.hemiLight.intensity = this.activeProfile === 'low' ? 1.05 : 0.78;
+    }
+  }
+
   updateCamera(dt) {
-    const activeDist = this.controlMode === 'plane'
-      ? Math.max(this.camDist, 24.5)
+    const isAir = this.controlMode === 'plane' || this.controlMode === 'heli';
+    const activeDist = isAir
+      ? Math.max(this.camDist, 23.5)
       : this.controlMode === 'yacht'
         ? Math.max(this.camDist, 21.5)
         : this.camDist;
 
-    const targetFov = this.controlMode === 'plane'
-      ? 48 + Math.min(8, (this.vehicleSpeed / 48) * 8)
+    const targetFov = isAir
+      ? 48 + Math.min(8, (this.vehicleSpeed / 46) * 8)
       : this.controlMode === 'yacht'
         ? 51
-        : 48;
+        : this.cameraMode === 'tactical'
+          ? 44
+          : 48;
 
     if (Math.abs(this.camera.fov - targetFov) > 0.08) {
       this.camera.fov = THREE.MathUtils.lerp(this.camera.fov, targetFov, Math.min(1, dt * 5));
       this.camera.updateProjectionMatrix();
     }
 
-    const camHeight = Math.sin(this.camPitch) * activeDist;
-    const camHoriz = Math.cos(this.camPitch) * activeDist;
+    if (this.cameraMode === 'tactical' && this.controlMode === 'foot') {
+      // High-altitude RTS overview of Sawmill, Railway, Helipad & Harbor
+      this._camDesired.set(this.playerPos.x + 12, 34, this.playerPos.z + 24);
+      this._camLook.set(this.playerPos.x, 0.8, this.playerPos.z + 2);
+    } else if (this.cameraMode === 'orbit' && this.controlMode === 'foot') {
+      // Smooth 360-degree cinematic showcase around the Empire center
+      this.orbitAngle += dt * 0.28;
+      const rad = 28;
+      this._camDesired.set(
+        Math.sin(this.orbitAngle) * rad,
+        16.5,
+        8 + Math.cos(this.orbitAngle) * rad
+      );
+      this._camLook.set(0, 2.2, 8);
+    } else if (this.cameraMode === 'train' && (gameState.railwayTier || 0) >= 1 && this.world.railwaySystem?.userData?.trainGroup) {
+      // Follow the animated 3D Industrial Freight Train along the West Coastal Line
+      const tz = this.world.railwaySystem.userData.trainGroup.position.z;
+      this._camDesired.set(-10.5, 9.5, tz + 11.5);
+      this._camLook.set(-19.5, 2.2, tz);
+    } else {
+      // Standard smooth follow camera
+      const camHeight = Math.sin(this.camPitch) * activeDist;
+      const camHoriz = Math.cos(this.camPitch) * activeDist;
+      this._camDesired.set(
+        this.playerPos.x + Math.sin(this.camYaw) * camHoriz,
+        this.playerPos.y + camHeight + 1.4,
+        this.playerPos.z + Math.cos(this.camYaw) * camHoriz
+      );
+      this._camLook.set(this.playerPos.x, this.playerPos.y + 1.4, this.playerPos.z);
+    }
 
-    this._camDesired.set(
-      this.playerPos.x + Math.sin(this.camYaw) * camHoriz,
-      this.playerPos.y + camHeight + 1.4,
-      this.playerPos.z + Math.cos(this.camYaw) * camHoriz
-    );
+    if (this.screenShake > 0.001) {
+      const s = this.screenShake;
+      this._camDesired.x += Math.sin(this.elapsed * 58) * s;
+      this._camDesired.y += Math.cos(this.elapsed * 64) * s * 0.8;
+      this.screenShake = Math.max(0, this.screenShake - dt * 1.4);
+    }
 
     const alpha = 1 - Math.exp(-8.5 * dt);
     this.camera.position.lerp(this._camDesired, alpha);
-    this._camLook.set(this.playerPos.x, this.playerPos.y + 1.4, this.playerPos.z);
     this.camera.lookAt(this._camLook);
   }
 
@@ -2676,17 +3138,151 @@ class TimberPortEngine {
               rp.targetPos.set(msg.x || 0, msg.y || 0, msg.z || 0);
               rp.targetYaw = msg.rotY || 0;
             }
-          } else if (msg.type === 'player_leave') {
-            const rp = this.remotePlayers.get(msg.id);
-            if (rp) {
-              this.scene.remove(rp.mesh);
-              disposeObject3D(rp.mesh);
-              this.remotePlayers.delete(msg.id);
+            } else if (msg.type === 'player_leave') {
+              const rp = this.remotePlayers.get(msg.id);
+              if (rp) {
+                this.scene.remove(rp.mesh);
+                disposeObject3D(rp.mesh);
+                this.remotePlayers.delete(msg.id);
+              }
+            } else if (msg.type === 'city_state_sync' && msg.city) {
+              Object.assign(metropolisState, msg.city);
+              if (!this.ui.els.hubModal.hidden && this.ui.activeTab === 'boardroom') {
+                this.ui.renderHub();
+              }
+            } else if (msg.type === 'city_announcement' && msg.message) {
+              if (msg.city) Object.assign(metropolisState, msg.city);
+              this.ui.toast(`🏙️ ${msg.message}`);
+              if (!this.ui.els.hubModal.hidden && this.ui.activeTab === 'boardroom') {
+                this.ui.renderHub();
+              }
+            } else if (msg.type === 'market_update' && Array.isArray(msg.listings)) {
+              metropolisState.marketListings = msg.listings;
+              if (!this.ui.els.hubModal.hidden && this.ui.activeTab === 'boardroom') {
+                this.ui.renderHub();
+              }
+            } else if (msg.type === 'market_item_bought' && msg.listing) {
+              const l = msg.listing;
+              if (l.seller === (gameState.username || 'Chủ tịch')) {
+                const gain = Number(l.price) || 0;
+                gameState.cash += gain;
+                recordRevenue('market', gain);
+                sound.playCash();
+                this.ui.toast(`🤝 ${l.buyer} đã mua lô hàng của bạn trên Chợ Liên Server (+$${gain.toLocaleString()})!`);
+                saveGameServer();
+                this.ui.refreshHUD();
+              }
             }
-          }
-        } catch (e) {}
-      });
-    } catch (e) {}
+          } catch (e) {}
+        });
+      } catch (e) {}
+    }
+
+  contributeLandmark(woodAmount = 50, moneyAmount = 5000) {
+    const w = Math.max(0, Math.floor(woodAmount));
+    const m = Math.max(0, Math.floor(moneyAmount));
+    if (gameState.planks < w || gameState.cash < m) {
+      this.ui.toast(`⚠️ Cần tối thiểu ${w} Ván xẻ & $${m.toLocaleString()} để đóng góp Kỳ Quan Server!`);
+      return false;
+    }
+    gameState.planks -= w;
+    gameState.cash -= m;
+    recordPnlExpense('upgradeSpend', m);
+    logTransaction('landmark', `Đóng góp Kỳ Quan Đô Thị (${w} Ván + $${m.toLocaleString()})`, -m, 3);
+    gameState.gems += 3;
+    addVipXp(30);
+    addSeasonXp(25);
+    sound.playUpgrade();
+
+    if (this.ws && this.ws.readyState === WebSocket.OPEN) {
+      this.ws.send(JSON.stringify({
+        type: 'contribute_landmark',
+        woodAmount: w,
+        moneyAmount: m
+      }));
+    } else {
+      metropolisState.totalWoodContributed = (metropolisState.totalWoodContributed || 0) + w;
+      metropolisState.totalMoneyContributed = (metropolisState.totalMoneyContributed || 0) + m;
+    }
+
+    this.syncSawmillVisuals();
+    saveGameServer();
+    this.ui.refreshHUD();
+    this.ui.renderHub();
+    this.ui.toast(`🏙️ Đã đóng góp ${w} Ván & $${m.toLocaleString()} xây Kỳ Quan (+3 💎)!`);
+    return true;
+  }
+
+  listMarketItem(resource = 'planks', amount = 25, price = 1500) {
+    const qty = Math.max(1, Math.floor(Number(amount) || 10));
+    const ask = Math.max(100, Math.floor(Number(price) || 1000));
+    const stock = Math.floor(gameState[resource] || 0);
+    if (stock < qty) {
+      this.ui.toast('⚠️ Kho không đủ số lượng hàng để treo bán Liên Server!');
+      return false;
+    }
+    gameState[resource] -= qty;
+    sound.playCash();
+    if (this.ws && this.ws.readyState === WebSocket.OPEN) {
+      this.ws.send(JSON.stringify({
+        type: 'market_list_item',
+        resource,
+        amount: qty,
+        price: ask
+      }));
+    } else {
+      metropolisState.marketListings = [
+        {
+          id: 'item_' + Date.now(),
+          seller: gameState.username || 'Chủ tịch',
+          empireName: gameState.empireName || 'TimberPort Empire',
+          resource,
+          amount: qty,
+          price: ask,
+          createdAt: Date.now()
+        },
+        ...(metropolisState.marketListings || [])
+      ].slice(0, 20);
+    }
+    this.syncSawmillVisuals();
+    saveGameServer();
+    this.ui.refreshHUD();
+    this.ui.renderHub();
+    this.ui.toast(`📦 Đã niêm yết lô hàng lên Sàn Giao Dịch Liên Server!`);
+    return true;
+  }
+
+  buyMarketItem(listingId) {
+    const item = (metropolisState.marketListings || []).find((x) => x.id === listingId);
+    if (!item) {
+      this.ui.toast('⚠️ Lô hàng này đã được mua hoặc hết hạn!');
+      return false;
+    }
+    if (gameState.cash < item.price) {
+      this.ui.toast('⚠️ Không đủ tiền mặt để mua lô hàng này!');
+      return false;
+    }
+    gameState.cash -= item.price;
+    const key = item.resource in gameState ? item.resource : 'planks';
+    gameState[key] = (gameState[key] || 0) + (Number(item.amount) || 0);
+    recordPnlExpense('upgradeSpend', item.price);
+    logTransaction('market', `Thu mua ${item.amount} ${item.resource} từ ${item.seller}`, -item.price, 0);
+    sound.playCash();
+
+    if (this.ws && this.ws.readyState === WebSocket.OPEN) {
+      this.ws.send(JSON.stringify({
+        type: 'market_buy_item',
+        listingId
+      }));
+    } else {
+      metropolisState.marketListings = (metropolisState.marketListings || []).filter((x) => x.id !== listingId);
+    }
+    this.syncSawmillVisuals();
+    saveGameServer();
+    this.ui.refreshHUD();
+    this.ui.renderHub();
+    this.ui.toast(`🤝 Đã mua +${item.amount} ${item.resource} từ ${item.seller}!`);
+    return true;
   }
 
   upsertRemotePlayer(p) {

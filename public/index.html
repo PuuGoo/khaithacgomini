@@ -10,7 +10,7 @@
   <link rel="preconnect" href="https://fonts.googleapis.com">
   <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
   <link href="https://fonts.googleapis.com/css2?family=JetBrains+Mono:wght@500;600;700&family=Outfit:wght@600;700&family=Plus+Jakarta+Sans:wght@400;500;600;700&display=swap" rel="stylesheet">
-  <link rel="stylesheet" href="/css/style.css?v=2.7.0">
+  <link rel="stylesheet" href="/css/style.css?v=2.8.0">
   <link rel="icon" href="data:image/svg+xml,<svg xmlns=%22http://www.w3.org/2000/svg%22 viewBox=%220 0 100 100%22><text y=%22.9em%22 font-size=%2290%22>🪵</text></svg>">
   <script type="importmap">
   {
@@ -82,6 +82,14 @@
 
     <!-- Zone 3: Primary System Actions -->
     <div class="top-zone-actions">
+      <button type="button" id="btn-weather-cycle" class="top-btn tabular-nums" title="Chu kỳ Ngày-Đêm 24h &amp; Thời tiết 3D (Bấm để đổi Nắng/Hoàng hôn/Đêm/Bão)">
+        <span id="hud-weather-icon">☀️</span>
+        <span id="hud-clock-time" class="hide-xs">10:30</span>
+      </button>
+      <button type="button" id="btn-camera-mode" class="top-btn" title="Đổi góc máy Điện ảnh / Chiến thuật / Tàu hỏa (Phím V)">
+        <span>🎥</span>
+        <span id="hud-camera-label" class="hide-sm">Theo chân</span>
+      </button>
       <button type="button" id="btn-zen-hud" class="top-btn" title="Thu gọn HUD ngắm cảnh 3D (Phím Z)">
         <span>👁️</span>
         <span class="hide-sm">Gọn</span>
@@ -160,8 +168,14 @@
     <button type="button" id="btn-quick-export" class="fleet-quick-btn is-supply" title="Giao nhanh hàng vào Hợp đồng Cảng">
       <span>📦</span><span>Xuất HĐ</span>
     </button>
+    <button type="button" id="btn-quick-train" class="fleet-quick-btn is-rail" title="Kéo còi &amp; Tăng tốc Tàu Hỏa Công Nghiệp (Phím T)">
+      <span>🚂</span><span>Tàu hỏa</span>
+    </button>
     <button type="button" id="btn-quick-yacht" class="fleet-quick-btn" title="Lái Du thuyền ra khơi ngay">
       <span>🚤</span><span>Du thuyền</span>
+    </button>
+    <button type="button" id="btn-quick-heli" class="fleet-quick-btn is-heli" title="Lên Lái Trực Thăng VIP ngay">
+      <span>🚁</span><span>Trực thăng</span>
     </button>
     <button type="button" id="btn-quick-plane" class="fleet-quick-btn is-air" title="Lên Máy bay cất cánh ngay">
       <span>✈️</span><span>Máy bay</span>
@@ -202,11 +216,11 @@
       <div class="minimap-legend">
         <span>🌲 Rừng</span>
         <span class="meta-sep" aria-hidden="true">·</span>
+        <span>🚂 Tàu</span>
+        <span class="meta-sep" aria-hidden="true">·</span>
         <span>🚢 Cảng</span>
         <span class="meta-sep" aria-hidden="true">·</span>
-        <span>🛫 Bay</span>
-        <span class="meta-sep" aria-hidden="true">·</span>
-        <span>🏝️ Đảo</span>
+        <span>🚁 Bay</span>
       </div>
     </div>
   </aside>
@@ -404,6 +418,6 @@
   <div id="toast-container" class="toast-container" aria-live="polite"></div>
 
   <!-- Application Entry Point (Modern ES Modules) -->
-  <script type="module" src="/js/engine.js?v=2.7.0"></script>
+  <script type="module" src="/js/engine.js?v=2.8.0"></script>
 </body>
 </html>

@@ -39,6 +39,9 @@ import {
   STOCK_TICKERS,
   PLANES,
   LOGISTICS_TIERS,
+  RAILWAY_TIERS,
+  HELI_TIERS,
+  WEATHER_PRESETS,
   BADGE_CODEX,
   MILESTONE_QUESTS,
   activeEventState,
@@ -52,6 +55,7 @@ import {
   comboState,
   auctionState,
   fleetMissionState,
+  metropolisState,
   getBackpackCapacity,
   getActiveBranch,
   getRevenueMultiplier,
@@ -66,6 +70,15 @@ import {
   hasPatent,
   getGreenCostReductionPct,
   getLogisticsNextTier,
+  getRailwayNextTier,
+  upgradeRailway,
+  claimRailwayYield,
+  triggerTrainExpressBoost,
+  getHeliNextTier,
+  getHeliData,
+  getHeliEngineCost,
+  upgradeHeli,
+  claimHeliYield,
   getYachtNextTier,
   getAirportNextTier,
   getIslandNextTier,
@@ -202,8 +215,15 @@ export class UIManager {
       btnQuickSaw: document.getElementById('btn-quick-saw'),
       btnQuickFurn: document.getElementById('btn-quick-furn'),
       btnQuickExport: document.getElementById('btn-quick-export'),
+      btnQuickTrain: document.getElementById('btn-quick-train'),
       btnQuickYacht: document.getElementById('btn-quick-yacht'),
+      btnQuickHeli: document.getElementById('btn-quick-heli'),
       btnQuickPlane: document.getElementById('btn-quick-plane'),
+      btnWeatherCycle: document.getElementById('btn-weather-cycle'),
+      hudWeatherIcon: document.getElementById('hud-weather-icon'),
+      hudClockTime: document.getElementById('hud-clock-time'),
+      btnCameraMode: document.getElementById('btn-camera-mode'),
+      hudCameraLabel: document.getElementById('hud-camera-label'),
       vehicleHud: document.getElementById('vehicle-hud'),
       vhudTitle: document.getElementById('vhud-title'),
       vhudSpeed: document.getElementById('vhud-speed'),
@@ -372,6 +392,12 @@ export class UIManager {
       if (this.cb.onContextAction) this.cb.onContextAction();
     });
 
+    this.els.btnWeatherCycle?.addEventListener('click', () => {
+      this.cb.onCycleWeather?.();
+    });
+    this.els.btnCameraMode?.addEventListener('click', () => {
+      this.cb.onCycleCamera?.();
+    });
     this.els.btnQuickSaw?.addEventListener('click', () => {
       this.cb.onQuickSawPallet?.();
     });
@@ -381,8 +407,14 @@ export class UIManager {
     this.els.btnQuickExport?.addEventListener('click', () => {
       this.cb.onDeliverContract?.(true);
     });
+    this.els.btnQuickTrain?.addEventListener('click', () => {
+      this.cb.onTrainExpress?.();
+    });
     this.els.btnQuickYacht?.addEventListener('click', () => {
       if (this.cb.onBoardYacht) this.cb.onBoardYacht();
+    });
+    this.els.btnQuickHeli?.addEventListener('click', () => {
+      if (this.cb.onBoardHeli) this.cb.onBoardHeli();
     });
     this.els.btnQuickPlane?.addEventListener('click', () => {
       if (this.cb.onBoardPlane) this.cb.onBoardPlane();
@@ -575,6 +607,25 @@ export class UIManager {
       ctx.fillRect(toMapX(-25), toMapY(26.5), 11, 7);
     }
 
+    // Industrial Coastal Railway Line (x = -19.5, z = -13..25.5)
+    if ((gameState.railwayTier || 0) > 0) {
+      ctx.strokeStyle = '#f97316';
+      ctx.lineWidth = 2;
+      ctx.beginPath();
+      ctx.moveTo(toMapX(-19.5), toMapY(-13));
+      ctx.lineTo(toMapX(-19.5), toMapY(25.5));
+      ctx.stroke();
+    }
+
+    // VIP Helipad H (19.5, 15.5)
+    if ((gameState.heliTier || 0) > 0) {
+      ctx.strokeStyle = '#c084fc';
+      ctx.lineWidth = 1.6;
+      ctx.beginPath();
+      ctx.arc(toMapX(19.5), toMapY(15.5), 3.6, 0, Math.PI * 2);
+      ctx.stroke();
+    }
+
     // Sawmill building & Harbor Pier
     ctx.fillStyle = '#d97706';
     ctx.fillRect(toMapX(-6), toMapY(-19), 15, 11);
@@ -664,6 +715,12 @@ export class UIManager {
         ctx.lineTo(-6.5, 1.5);
         ctx.lineTo(-1.8, -1.5);
         ctx.closePath();
+        ctx.fill();
+        ctx.stroke();
+      } else if (mode === 'heli') {
+        ctx.fillStyle = '#c084fc';
+        ctx.beginPath();
+        ctx.arc(0, 0, 4.5, 0, Math.PI * 2);
         ctx.fill();
         ctx.stroke();
       } else if (mode === 'yacht') {
@@ -774,7 +831,8 @@ export class UIManager {
   updateVehicleHud(telemetry) {
     const mode = telemetry?.mode || 'foot';
     this.currentControlMode = mode;
-    const isPilot = mode === 'yacht' || mode === 'plane';
+    const isPilot = mode === 'yacht' || mode === 'plane' || mode === 'heli';
+    const isAir = mode === 'plane' || mode === 'heli';
 
     if (this.els.fleetQuickStrip) {
       this.els.fleetQuickStrip.hidden = isPilot;
@@ -787,13 +845,13 @@ export class UIManager {
     }
 
     this.els.vehicleHud.hidden = false;
-    this.els.vehicleHud.classList.toggle('is-air', mode === 'plane');
+    this.els.vehicleHud.classList.toggle('is-air', isAir);
     if (this.els.vhudTitle) this.els.vhudTitle.textContent = telemetry.title || '';
     if (this.els.vhudSpeed) this.els.vhudSpeed.textContent = telemetry.speedDisplay || '0';
     if (this.els.vhudAlt) this.els.vhudAlt.textContent = telemetry.altDisplay || '0.0 m';
     if (this.els.vhudMission) this.els.vhudMission.textContent = telemetry.missionText || 'Tự do khám phá';
-    if (this.els.btnPlaneUp) this.els.btnPlaneUp.hidden = mode !== 'plane';
-    if (this.els.btnPlaneDown) this.els.btnPlaneDown.hidden = mode !== 'plane';
+    if (this.els.btnPlaneUp) this.els.btnPlaneUp.hidden = !isAir;
+    if (this.els.btnPlaneDown) this.els.btnPlaneDown.hidden = !isAir;
   }
 
   refreshHUD() {
@@ -801,6 +859,31 @@ export class UIManager {
     this.els.hudBranch.textContent = branch.name;
     this.els.hudLevel.textContent = `Cấp ${gameState.level}`;
     this.els.hudUsername.textContent = gameState.username || 'Chủ tịch';
+
+    // 24h Clock & Weather Top Bar Indicator
+    if (this.els.hudClockTime || this.els.hudWeatherIcon) {
+      const hr = gameState.worldClockHours ?? 10.5;
+      const hh = String(Math.floor(hr) % 24).padStart(2, '0');
+      const mm = String(Math.floor((hr % 1) * 60)).padStart(2, '0');
+      const wMode = gameState.weatherMode || 'auto';
+      const preset = WEATHER_PRESETS[wMode] || WEATHER_PRESETS.auto;
+      let icon = preset.icon;
+      if (wMode === 'auto') {
+        if (stormState.active) icon = '⛈️';
+        else if (hr >= 19.5 || hr < 5.0) icon = '🌙';
+        else if (hr >= 16.5 && hr < 19.5) icon = '🌇';
+        else if (hr >= 5.0 && hr < 7.5) icon = '🌅';
+        else icon = '☀️';
+      }
+      if (this.els.hudWeatherIcon) this.els.hudWeatherIcon.textContent = icon;
+      if (this.els.hudClockTime) this.els.hudClockTime.textContent = `${hh}:${mm}`;
+    }
+
+    if (this.els.hudCameraLabel && this.cb.getCameraMode) {
+      const cm = this.cb.getCameraMode();
+      const camNames = { follow: 'Theo chân', tactical: 'Chiến thuật', orbit: 'Điện ảnh', train: 'Tàu hỏa' };
+      this.els.hudCameraLabel.textContent = camNames[cm] || 'Theo chân';
+    }
 
     this.els.valCash.textContent = `$${Math.floor(gameState.cash).toLocaleString()}`;
     if (this.els.valCpm) {
@@ -881,9 +964,13 @@ export class UIManager {
     }
 
     // Quick-Board Fleet Strip lock visual cue & 1-Tap Collect All button
+    const hasTrain = (gameState.railwayTier || 0) >= 1;
     const hasYacht = (gameState.yachtTier || 0) >= 1;
+    const hasHeli = (gameState.heliTier || 0) >= 1;
     const hasPlane = (gameState.airportTier || 0) >= 1 && (gameState.unlockedPlanes?.length || 0) > 0;
+    this.els.btnQuickTrain?.classList.toggle('is-locked', !hasTrain);
     this.els.btnQuickYacht?.classList.toggle('is-locked', !hasYacht);
+    this.els.btnQuickHeli?.classList.toggle('is-locked', !hasHeli);
     this.els.btnQuickPlane?.classList.toggle('is-locked', !hasPlane);
 
     const pendingCash = getTotalPendingYields();
@@ -972,6 +1059,20 @@ export class UIManager {
       const contYieldEl = this.els.hubBody?.querySelector('[data-live-container="yield"]');
       if (contYieldEl) {
         contYieldEl.textContent = `+$${Math.floor(gameState.containerAccumCash || 0).toLocaleString()}`;
+      }
+      const railYieldEl = this.els.hubBody?.querySelector('[data-live-railway="yield"]');
+      if (railYieldEl) {
+        railYieldEl.textContent = `+$${Math.floor(gameState.railwayAccumCash || 0).toLocaleString()}`;
+      }
+      const trainBoostEl = this.els.hubBody?.querySelector('[data-live-countdown="train-boost"]');
+      if (trainBoostEl) {
+        trainBoostEl.textContent = (gameState.trainBoostTimer || 0) > 0
+          ? `⚡ Đang tăng tốc (${Math.ceil(gameState.trainBoostTimer)}s)`
+          : 'Sẵn sàng Kéo Còi Tăng Tốc';
+      }
+      const heliYieldEl = this.els.hubBody?.querySelector('[data-live-heli="yield"]');
+      if (heliYieldEl) {
+        heliYieldEl.textContent = `+$${Math.floor(gameState.heliAccumCash || 0).toLocaleString()} · +${Math.floor(gameState.heliAccumGems || 0)} 💎`;
       }
       const contCdEl = this.els.hubBody?.querySelector('[data-live-countdown="container"]');
       if (contCdEl && gameState.activeContainerVoyage) {
@@ -1315,6 +1416,67 @@ export class UIManager {
     });
     root.appendChild(logiSec);
 
+    // 1A-Rail. Industrial Railway & Freight Train Logistics (Phase 8 AAA)
+    const railLv = gameState.railwayTier || 0;
+    const railDef = RAILWAY_TIERS.find((r) => r.tier === railLv) || null;
+    const nextRail = getRailwayNextTier();
+    const railCash = Math.floor(gameState.railwayAccumCash || 0);
+    const railSec = document.createElement('section');
+    railSec.innerHTML = `
+      <div class="section-heading">
+        <h3>Tuyến Đường Sắt Công Nghiệp &amp; Tàu Hỏa Logistics 3D</h3>
+        <span class="tabular-nums">Chạy dọc hành lang Tây kết nối Xưởng Cưa → Cảng Nước Sâu · <span data-live-countdown="train-boost">${(gameState.trainBoostTimer || 0) > 0 ? `⚡ Đang tăng tốc (${Math.ceil(gameState.trainBoostTimer)}s)` : 'Sẵn sàng Kéo Còi Tăng Tốc'}</span></span>
+      </div>
+      <div class="railway-banner">
+        <div style="flex:1.2; min-width:240px;">
+          <div class="card-title">🚂 ${railDef ? `${railDef.name} (Cấp ${railLv}/3)` : 'Chưa xây Tuyến Đường Sắt Công Nghiệp'}</div>
+          <div class="card-desc" style="margin-top:4px;">${nextRail ? nextRail.desc : 'Tàu Hỏa Siêu Tốc Đế Chế đang vận chuyển Gỗ & Container liên tục ở công suất tối đa (+25% Hợp đồng Cảng).'}</div>
+          <div class="card-meta tabular-nums" style="margin-top:6px; color:#fdba74;">
+            Cước vận tải tích lũy: <span data-live-railway="yield">+$${railCash.toLocaleString()}</span>
+            ${railDef ? ` · Cộng hưởng Hợp đồng Cảng: +${Math.round(railDef.contractBonus * 100)}%` : ''}
+          </div>
+        </div>
+        <div style="display:flex; gap:8px; flex-wrap:wrap; min-width:260px;">
+          ${railLv > 0 ? `
+            <button type="button" id="btn-train-express" class="btn-secondary" style="width:auto;" ${(gameState.trainBoostTimer || 0) > 0 ? 'disabled' : ''}>
+              🚂 Kéo Còi Tốc Hành
+            </button>
+            <button type="button" id="btn-claim-rail" class="btn-gem" style="width:auto;" ${railCash <= 0 ? 'disabled' : ''}>
+              Thu Cước Tàu
+            </button>
+          ` : ''}
+          <button type="button" id="btn-up-rail" class="btn-primary tabular-nums" style="flex:1;" ${!nextRail || gameState.cash < nextRail.costCash ? 'disabled' : ''}>
+            ${nextRail ? `Xây Cấp ${nextRail.tier} · $${nextRail.costCash.toLocaleString()}` : 'Đã Đạt Cấp 3/3 ✓'}
+          </button>
+        </div>
+      </div>
+    `;
+    railSec.querySelector('#btn-train-express')?.addEventListener('click', () => {
+      if (this.cb.onTrainExpress && this.cb.onTrainExpress()) {
+        this.renderHub();
+      }
+    });
+    railSec.querySelector('#btn-claim-rail')?.addEventListener('click', () => {
+      const gained = claimRailwayYield();
+      if (!gained) return;
+      sound.playCash();
+      this.triggerCelebration('Thu Cước Đường Sắt Công Nghiệp!', `+$${gained.cash.toLocaleString()}`);
+      saveGameServer();
+      this.refreshHUD();
+      this.renderHub();
+    });
+    railSec.querySelector('#btn-up-rail')?.addEventListener('click', () => {
+      const res = upgradeRailway();
+      if (!res.ok) return this.toast(res.reason);
+      sound.playTrainHorn();
+      this.cb.onRailwayChange?.();
+      this.triggerCelebration(`Khánh Thành ${res.tierDef.name}!`, `Sinh +$${res.tierDef.cashPer10s}/10s & +${Math.round(res.tierDef.contractBonus * 100)}% Hợp đồng Cảng`, true);
+      saveGameServer();
+      this.refreshHUD();
+      this.renderHub();
+    });
+    root.appendChild(railSec);
+
     // 1B. Deep-Water Container Port & Mega Container Voyages
     const deepLv = gameState.deepPortTier || 0;
     const deepDef = DEEP_PORT_TIERS.find((d) => d.tier === deepLv) || null;
@@ -1337,8 +1499,11 @@ export class UIManager {
             ${activeVoyage ? ` · Đang chạy: <b>${activeVoyage.name}</b> (<span data-live-countdown="container">Còn ${Math.max(0, Math.ceil(activeVoyage.timeLeft))}s</span>)` : ''}
           </div>
         </div>
-        <div style="display:flex; gap:8px; flex-wrap:wrap; min-width:240px;">
+        <div style="display:flex; gap:8px; flex-wrap:wrap; min-width:260px;">
           ${deepLv > 0 ? `
+            <button type="button" id="btn-toggle-auto-container" class="btn-secondary" style="width:auto;">
+              ${gameState.autoDispatchContainer ? '🚢 Tự xuất bến: BẬT' : '🚢 Tự xuất bến: TẮT'}
+            </button>
             <button type="button" id="btn-claim-deep" class="btn-gem" style="width:auto;" ${deepCash <= 0 ? 'disabled' : ''}>Thu Phí Bốc Dỡ</button>
           ` : ''}
           <button type="button" id="btn-up-deep" class="btn-primary tabular-nums" style="flex:1;" ${!nextDeep || gameState.cash < nextDeep.costCash ? 'disabled' : ''}>
@@ -1347,6 +1512,12 @@ export class UIManager {
         </div>
       </div>
     `;
+    deepSec.querySelector('#btn-toggle-auto-container')?.addEventListener('click', () => {
+      gameState.autoDispatchContainer = !gameState.autoDispatchContainer;
+      saveGameServer();
+      this.toast(gameState.autoDispatchContainer ? '🚢 Đã BẬT Tự động xuất bến Tàu Container khi đủ hàng!' : '⏸️ Đã TẮT Tự động xuất bến Tàu Container');
+      this.renderHub();
+    });
     deepSec.querySelector('#btn-claim-deep')?.addEventListener('click', () => {
       const gained = claimContainerYield();
       if (!gained) return;
@@ -2224,6 +2395,8 @@ export class UIManager {
     const fCash = Math.floor(gameState.franchiseAccumCash || 0);
     const reCash = Math.floor(gameState.realEstateAccumCash || 0);
     const dcCash = Math.floor(gameState.containerAccumCash || 0);
+    const rwCash = Math.floor(gameState.railwayAccumCash || 0);
+    const hlCash = Math.floor(gameState.heliAccumCash || 0);
 
     // 1. 1-Tap Collect All Empire Yields Bar (always accessible at top of Finance)
     const collectSec = document.createElement('section');
@@ -2232,7 +2405,7 @@ export class UIManager {
         <div style="flex:1; min-width:220px;">
           <div class="card-title">💰 Quỹ Lợi Nhuận Chờ Thu Hoạch</div>
           <div class="card-meta tabular-nums">
-            Du thuyền: $${yCash.toLocaleString()} · Resort: $${rCash.toLocaleString()} · Cổ tức: <span data-live-hq="dividend">+$${divCash.toLocaleString()}</span> · Đại lý: <span data-live-franchise="yield">+$${fCash.toLocaleString()}</span> · BĐS: <span data-live-realestate="yield">+$${reCash.toLocaleString()}</span> · Cảng Sâu: <span data-live-container="yield">+$${dcCash.toLocaleString()}</span>
+            Tàu hỏa: <span data-live-railway="yield">+$${rwCash.toLocaleString()}</span> · Trực thăng: <span data-live-heli="yield">+$${hlCash.toLocaleString()}</span> · Du thuyền: $${yCash.toLocaleString()} · Resort: $${rCash.toLocaleString()} · Cổ tức: <span data-live-hq="dividend">+$${divCash.toLocaleString()}</span> · Đại lý: <span data-live-franchise="yield">+$${fCash.toLocaleString()}</span> · BĐS: <span data-live-realestate="yield">+$${reCash.toLocaleString()}</span> · Cảng Sâu: <span data-live-container="yield">+$${dcCash.toLocaleString()}</span>
           </div>
         </div>
         <button type="button" id="btn-finance-collect-all" class="btn-primary tabular-nums" style="width:auto;" ${pendingTotal <= 0 ? 'disabled' : ''}>
@@ -2365,6 +2538,18 @@ export class UIManager {
             sound.playUpgrade();
             this.cb.onGreenEnergyChange?.();
             this.toast(`🌿 Đã triển khai ${res.tierDef.name}!`);
+          } else if (actId === 'railway') {
+            const res = upgradeRailway();
+            if (!res.ok) return this.toast(res.reason);
+            sound.playTrainHorn();
+            this.cb.onRailwayChange?.();
+            this.toast(`🚂 Đã nâng ${res.tierDef.name}!`);
+          } else if (actId === 'heli') {
+            const res = upgradeHeli();
+            if (!res.ok) return this.toast(res.reason);
+            sound.playHeliRotor();
+            this.cb.onHeliChange?.();
+            this.toast(`🚁 Đã nâng ${res.tierDef.name}!`);
           } else if (actId === 'yacht') {
             const ny = getYachtNextTier();
             if (!ny || gameState.cash < ny.costCash) return;
@@ -2975,8 +3160,145 @@ export class UIManager {
   renderBoardroomTab(root) {
     root.appendChild(this.makeSubtabBar('boardroom', [
       { id: 'global', label: '🌐 Mạng Lưới Toàn Cầu' },
+      { id: 'metropolis', label: '🏙️ Đô Thị Chung & Chợ Liên Server' },
       { id: 'dossier', label: '🏅 Hồ Sơ Đế Chế & Chứng Nhận' }
     ]));
+
+    if (this.subTabs.boardroom === 'metropolis') {
+      const m = metropolisState;
+      const woodPct = Math.min(100, Math.round(((m.totalWoodContributed || 0) / Math.max(1, m.goalWood || 5000)) * 100));
+      const cashPct = Math.min(100, Math.round(((m.totalMoneyContributed || 0) / Math.max(1, m.goalMoney || 1000000)) * 100));
+      const totalPct = Math.round((woodPct + cashPct) * 0.5);
+      const listings = Array.isArray(m.marketListings) ? m.marketListings : [];
+      const topList = Array.isArray(m.topContributors) ? m.topContributors : [];
+
+      const metroSec = document.createElement('section');
+      metroSec.innerHTML = `
+        <div class="section-heading">
+          <h3>Siêu Đô Thị Chung Liên Server (Co-op Server Landmark)</h3>
+          <span class="tabular-nums">Cấp Kỳ Quan Server: Lv.${m.landmarkLevel || 1} · Tiến độ tổng: ${totalPct}%</span>
+        </div>
+        <div class="metropolis-hero-card">
+          <div class="card-top">
+            <div>
+              <div class="card-title">🏛️ ${m.landmarkName || 'Tháp Thương Mại Thế Giới'} (Cấp ${m.landmarkLevel || 1})</div>
+              <div class="card-meta tabular-nums" style="margin-top:4px; color:#7dd3fc;">
+                Gỗ đóng góp: ${(m.totalWoodContributed || 0).toLocaleString()} / ${(m.goalWood || 5000).toLocaleString()} Ván (${woodPct}%) · Quỹ đóng góp: $${(m.totalMoneyContributed || 0).toLocaleString()} / $${(m.goalMoney || 1000000).toLocaleString()} (${cashPct}%)
+              </div>
+              <p class="card-desc" style="margin-top:6px;">
+                Toàn bộ người chơi trên Server cùng góp Ván xẻ và Tiền mặt để nâng cấp Kỳ Quan Đô Thị. Mỗi lần góp nhận ngay <b>+3 💎 &amp; +30 VIP XP</b>!
+              </p>
+            </div>
+          </div>
+          <div class="progress-track"><div class="progress-fill" style="width:${totalPct}%"></div></div>
+          <div style="display:flex; gap:8px; flex-wrap:wrap; align-items:center; justify-content:space-between;">
+            <div class="card-meta tabular-nums">
+              ${topList.length > 0 ? `🏆 Top Cống Hiến: ${topList.slice(0, 3).map((c, idx) => `#${idx + 1} ${c.name} ($${(c.score || 0).toLocaleString()})`).join(' · ')}` : 'Hãy là Chủ tịch đầu tiên khắc tên lên Kỳ Quan Server!'}
+            </div>
+            <div style="display:flex; gap:8px; flex-wrap:wrap;">
+              <button type="button" id="btn-coop-small" class="btn-secondary tabular-nums" style="width:auto;" ${gameState.planks < 50 || gameState.cash < 5000 ? 'disabled' : ''}>
+                Góp 50 Ván + $5,000 (+3 💎)
+              </button>
+              <button type="button" id="btn-coop-large" class="btn-primary tabular-nums" style="width:auto;" ${gameState.planks < 200 || gameState.cash < 25000 ? 'disabled' : ''}>
+                Góp 200 Ván + $25,000 (+3 💎)
+              </button>
+            </div>
+          </div>
+        </div>
+      `;
+      metroSec.querySelector('#btn-coop-small')?.addEventListener('click', () => {
+        this.cb.onContributeLandmark?.(50, 5000);
+      });
+      metroSec.querySelector('#btn-coop-large')?.addEventListener('click', () => {
+        this.cb.onContributeLandmark?.(200, 25000);
+      });
+      root.appendChild(metroSec);
+
+      // Cross-Server P2P Commodity Exchange
+      const p2pSec = document.createElement('section');
+      const resNames = {
+        planks: '📦 Ván gỗ xẻ',
+        pallets: '🏗️ Kiện Pallet',
+        cannedFish: '🥫 Cá hộp xuất khẩu',
+        furniture: '🛋️ Nội thất cao cấp'
+      };
+      p2pSec.innerHTML = `
+        <div class="section-heading">
+          <h3>Sàn Giao Dịch Hàng Hóa P2P Liên Server</h3>
+          <span class="tabular-nums">Đang niêm yết: ${listings.length} lô hàng trực tuyến</span>
+        </div>
+        <div class="p2p-market-form">
+          <div class="p2p-field">
+            <label for="p2p-res-select">Mặt hàng niêm yết</label>
+            <select id="p2p-res-select" class="p2p-select">
+              <option value="planks">📦 Ván gỗ xẻ (Kho: ${gameState.planks})</option>
+              <option value="pallets">🏗️ Kiện Pallet (Kho: ${gameState.pallets})</option>
+              <option value="cannedFish">🥫 Cá hộp (Kho: ${gameState.cannedFish})</option>
+              <option value="furniture">🛋️ Nội thất (Kho: ${gameState.furniture || 0})</option>
+            </select>
+          </div>
+          <div class="p2p-field">
+            <label for="p2p-qty-input">Số lượng lô</label>
+            <input type="number" id="p2p-qty-input" class="p2p-input tabular-nums" min="1" max="500" value="20">
+          </div>
+          <div class="p2p-field">
+            <label for="p2p-price-input">Giá chào bán ($)</label>
+            <input type="number" id="p2p-price-input" class="p2p-input tabular-nums" min="100" max="500000" step="100" value="1800">
+          </div>
+          <button type="button" id="btn-p2p-list" class="btn-primary" style="width:auto; min-height:36px;">
+            📦 Đăng Bán Lô Hàng
+          </button>
+        </div>
+      `;
+      p2pSec.querySelector('#btn-p2p-list')?.addEventListener('click', () => {
+        const res = p2pSec.querySelector('#p2p-res-select')?.value || 'planks';
+        const qty = Number(p2pSec.querySelector('#p2p-qty-input')?.value || 20);
+        const price = Number(p2pSec.querySelector('#p2p-price-input')?.value || 1800);
+        this.cb.onListMarketItem?.(res, qty, price);
+      });
+
+      const listGrid = document.createElement('div');
+      listGrid.className = 'card-grid';
+      listGrid.style.marginTop = '12px';
+
+      if (listings.length === 0) {
+        const empty = document.createElement('div');
+        empty.className = 'hub-card';
+        empty.innerHTML = `<div class="card-meta">Chưa có lô hàng nào đang treo trên Sàn P2P Liên Server. Hãy đăng bán lô hàng đầu tiên của bạn ở khung trên!</div>`;
+        listGrid.appendChild(empty);
+      } else {
+        for (const item of listings) {
+          const isMine = item.seller === (gameState.username || 'Chủ tịch');
+          const label = resNames[item.resource] || item.resource;
+          const unitPrice = Math.round((Number(item.price) || 0) / Math.max(1, Number(item.amount) || 1));
+          const card = document.createElement('div');
+          card.className = `hub-card ${isMine ? 'is-equipped' : 'is-value-highlight'}`;
+          card.innerHTML = `
+            <div>
+              <div class="card-title">${label} · x${Number(item.amount).toLocaleString()}</div>
+              <div class="card-meta tabular-nums" style="color:#34d399;">
+                Giá trọn lô: $${Number(item.price).toLocaleString()} (~$${unitPrice.toLocaleString()}/đv)
+              </div>
+              <div class="card-meta" style="margin-top:4px;">
+                Người bán: <b>${item.seller}</b> · ${item.empireName || 'TimberPort'}
+              </div>
+            </div>
+            <button type="button" class="${isMine ? 'btn-secondary' : 'btn-primary'} tabular-nums" ${isMine || gameState.cash < item.price ? 'disabled' : ''}>
+              ${isMine ? 'Lô hàng của bạn' : `Thu Mua Ngay · $${Number(item.price).toLocaleString()}`}
+            </button>
+          `;
+          if (!isMine) {
+            card.querySelector('button').addEventListener('click', () => {
+              this.cb.onBuyMarketItem?.(item.id);
+            });
+          }
+          listGrid.appendChild(card);
+        }
+      }
+      p2pSec.appendChild(listGrid);
+      root.appendChild(p2pSec);
+      return;
+    }
 
     if (this.subTabs.boardroom === 'dossier') {
       const rating = getCorporateCreditRating();
@@ -3498,10 +3820,12 @@ export class UIManager {
   renderLockerTab(root) {
     const yachtLv = gameState.yachtTier || 0;
     const airportLv = gameState.airportTier || 0;
+    const heliLv = gameState.heliTier || 0;
     const islandLv = gameState.islandStationTier || 0;
     const resortLv = gameState.islandResortTier || 0;
     const hasPlane = airportLv >= 1 && (gameState.unlockedPlanes?.length || 0) > 0;
     const activePlane = getPlaneData();
+    const activeHeli = getHeliData();
     const activeYacht = YACHT_TIERS.find((y) => y.tier === yachtLv) || null;
     const yLivery = getLiveryData(gameState.yachtLivery || 'pearl_sky');
     const pLivery = getLiveryData(gameState.planeLivery || 'pearl_sky');
@@ -3513,19 +3837,22 @@ export class UIManager {
       <div class="showroom-hero">
         <div class="showroom-hero-copy">
           <div class="store-hero-kicker">SHOWROOM HẠM ĐỘI THƯƠNG MẠI · BIỂN &amp; HÀNG KHÔNG</div>
-          <div class="store-hero-title">Tổ Hợp Du Thuyền, Khu Nghỉ Dưỡng &amp; Sân Bay</div>
+          <div class="store-hero-title">Tổ Hợp Du Thuyền, Trực Thăng VIP &amp; Sân Bay</div>
           <div class="card-meta tabular-nums">
-            Du thuyền Cấp ${yachtLv}/3 · Sân bay Cấp ${airportLv}/3 · Đảo Cấp ${islandLv}/3 · Resort Cấp ${resortLv}/3
+            Du thuyền Cấp ${yachtLv}/3 · Trực thăng Cấp ${heliLv}/3 · Sân bay Cấp ${airportLv}/3 · Resort Cấp ${resortLv}/3
           </div>
           <div class="card-meta tabular-nums" style="color:#6ee7b7;">
             Kho báu: ${gameState.treasuresCollected || 0} · Đơn Biển: ${gameState.seaDeliveries || 0} · Đơn Không: ${gameState.airDeliveries || 0} · Cứu bão: ${gameState.personalBests?.totalStormRescues || 0}
           </div>
           <div class="showroom-cta-row">
             <button type="button" id="btn-showroom-launch-yacht" class="${yachtLv > 0 ? 'btn-primary' : 'btn-secondary'}">
-              ${yachtLv > 0 ? '🚤 Ra Khơi Lái Du Thuyền' : '🔒 Mở Bến Du Thuyền trước'}
+              ${yachtLv > 0 ? '🚤 Lái Du Thuyền' : '🔒 Mở Bến Du Thuyền'}
+            </button>
+            <button type="button" id="btn-showroom-launch-heli" class="${heliLv > 0 ? 'btn-primary' : 'btn-secondary'}">
+              ${heliLv > 0 ? `🚁 Bay ${activeHeli.name}` : '🔒 Mở Sân Trực Thăng'}
             </button>
             <button type="button" id="btn-showroom-launch-plane" class="${hasPlane ? 'btn-gem' : 'btn-secondary'}">
-              ${hasPlane ? `✈️ Cất Cánh (${activePlane.name})` : '🔒 Cần Đường Băng &amp; Máy Bay'}
+              ${hasPlane ? `✈️ Cất Cánh (${activePlane.name})` : '🔒 Cần Đường Băng'}
             </button>
           </div>
         </div>
@@ -3543,7 +3870,7 @@ export class UIManager {
             <path d="M126 33 L86 33" stroke="#94a3b8" stroke-width="2" stroke-dasharray="4 4"/>
           </svg>
           <div class="fleet-spec-line tabular-nums">
-            ${activeYacht ? `🚤 ${activeYacht.name} (Động cơ Cấp ${gameState.yachtEngineTier || 1})` : '🚤 Chưa có Du thuyền'} · ${hasPlane ? `✈️ ${activePlane.name} (Động cơ Cấp ${gameState.planeEngineTier || 1})` : '✈️ Chưa có Máy bay'}
+            ${activeYacht ? `🚤 ${activeYacht.name}` : '🚤 Chưa có Du thuyền'} · ${heliLv > 0 ? `🚁 ${activeHeli.name}` : '🚁 Chưa có Trực thăng'} · ${hasPlane ? `✈️ ${activePlane.name}` : '✈️ Chưa có Máy bay'}
           </div>
         </div>
       </div>
@@ -3555,6 +3882,14 @@ export class UIManager {
       }
       this.els.hubModal.hidden = true;
       this.cb.onBoardYacht?.();
+    });
+    heroSec.querySelector('#btn-showroom-launch-heli')?.addEventListener('click', () => {
+      if (heliLv <= 0) {
+        this.toast('Hãy mở khóa Bãi Đáp & Trực Thăng VIP Cấp 1 ngay bên dưới!');
+        return;
+      }
+      this.els.hubModal.hidden = true;
+      this.cb.onBoardHeli?.();
     });
     heroSec.querySelector('#btn-showroom-launch-plane')?.addEventListener('click', () => {
       if (!hasPlane) {
@@ -3574,12 +3909,38 @@ export class UIManager {
 
     const nextYacht = getYachtNextTier();
     const nextAirport = getAirportNextTier();
+    const nextHeli = getHeliNextTier();
     const nextIsland = getIslandNextTier();
     const nextResort = getResortNextTier();
     const rCash = Math.floor(gameState.resortAccumCash || 0);
     const rGems = Math.floor(gameState.resortAccumGems || 0);
+    const hCash = Math.floor(gameState.heliAccumCash || 0);
+    const hGems = Math.floor(gameState.heliAccumGems || 0);
 
     const infraCards = [
+      {
+        title: `🚁 Bãi Đáp & Chuyên Cơ Trực Thăng VIP (Cấp ${heliLv}/3)`,
+        meta: heliLv > 0
+          ? `${activeHeli.name} · Quỹ: <span data-live-heli="yield">+$${hCash.toLocaleString()} · +${hGems} 💎</span>`
+          : 'Mở Sân đáp H cạnh Trụ sở để tự lái Trực thăng 360° & chuyên chở VIP',
+        desc: nextHeli ? nextHeli.desc : 'Siêu Trực Thăng Hoàng Gia đang vận hành ở công suất cao nhất.',
+        next: nextHeli,
+        disabledReason: null,
+        hasClaim: heliLv > 0 && (hCash > 0 || hGems > 0),
+        onClaim: () => {
+          const gained = claimHeliYield();
+          if (!gained) return;
+          sound.playCash();
+          this.triggerCelebration('Thu Quỹ Chuyên Cơ Trực Thăng!', `+$${gained.cash.toLocaleString()}${gained.gems > 0 ? ` · +${gained.gems} 💎` : ''}`);
+        },
+        onUpgrade: () => {
+          const res = upgradeHeli();
+          if (!res.ok) return this.toast(res.reason);
+          sound.playHeliRotor();
+          this.cb.onHeliChange?.();
+          this.triggerCelebration(`Khánh Thành ${res.tierDef.name}!`, 'Nhấn nút 🚁 Trực thăng để bay tuần tra 360°!', true);
+        }
+      },
       {
         title: `🛥️ Bến Du Thuyền VIP (Cấp ${yachtLv}/3)`,
         meta: activeYacht ? `${activeYacht.name} · +$${activeYacht.cashPer10s}/10s` : 'Chưa mở khóa — mở để tự lái ra khơi săn kho báu',
@@ -3691,15 +4052,17 @@ export class UIManager {
     infraSec.appendChild(infraGrid);
     root.appendChild(infraSec);
 
-    // 2B. Engine Upgrades for Yacht & Airplane (Tier 1-5)
+    // 2B. Engine Upgrades for Yacht, Helicopter & Airplane (Tier 1-5)
     const engSec = document.createElement('section');
-    engSec.innerHTML = `<div class="section-heading"><h3>Nâng Cấp Động Cơ Du Thuyền &amp; Máy Bay</h3><span>Tăng tốc độ tối đa (+14%/cấp) và thưởng đơn hàng Biển/Không (+16%/cấp)</span></div>`;
+    engSec.innerHTML = `<div class="section-heading"><h3>Nâng Cấp Động Cơ Du Thuyền, Trực Thăng &amp; Máy Bay</h3><span>Tăng tốc độ tối đa (+14%/cấp) và thưởng đơn hàng Biển/Không (+16%/cấp)</span></div>`;
     const engGrid = document.createElement('div');
     engGrid.className = 'card-grid';
 
     const yEng = gameState.yachtEngineTier || 1;
+    const hEng = gameState.heliEngineTier || 1;
     const pEng = gameState.planeEngineTier || 1;
     const yEngCost = getYachtEngineCost(yEng);
+    const hEngCost = getHeliEngineCost(hEng);
     const pEngCost = getPlaneEngineCost(pEng);
     const engCards = [
       {
@@ -3714,6 +4077,20 @@ export class UIManager {
           addVipXp(35);
           sound.playUpgrade();
           this.toast(`⚙️ Động cơ Du thuyền lên Cấp ${gameState.yachtEngineTier}!`);
+        }
+      },
+      {
+        title: `🚁 Động Cơ Tuabin Kép Trực Thăng (Cấp ${hEng}/${ENGINE_MAX_TIER})`,
+        meta: `Tốc độ & Bốc cao x${getEngineSpeedMult(hEng).toFixed(2)} · Quỹ & Thưởng bay x${getEngineYieldMult(hEng).toFixed(2)}`,
+        desc: 'Tăng lực nâng cánh quạt chính giúp Trực thăng VIP bay vọt nhanh và tăng quỹ chuyên cơ.',
+        cost: hEngCost,
+        onUp: () => {
+          if (hEngCost === null || gameState.cash < hEngCost) return;
+          gameState.cash -= hEngCost;
+          gameState.heliEngineTier = hEng + 1;
+          addVipXp(40);
+          sound.playHeliRotor();
+          this.toast(`🚁 Động cơ Trực thăng VIP lên Cấp ${gameState.heliEngineTier}!`);
         }
       },
       {
@@ -3755,9 +4132,9 @@ export class UIManager {
     engSec.appendChild(engGrid);
     root.appendChild(engSec);
 
-    // 2C. Paint Liveries for Yachts & Airplanes
+    // 2C. Paint Liveries for Yachts, Helicopters & Airplanes
     const livSec = document.createElement('section');
-    const targetKey = this.liveryTarget === 'plane' ? 'planeLivery' : 'yachtLivery';
+    const targetKey = this.liveryTarget === 'plane' ? 'planeLivery' : this.liveryTarget === 'heli' ? 'heliLivery' : 'yachtLivery';
     const equippedLivery = gameState[targetKey] || 'pearl_sky';
     livSec.innerHTML = `
       <div class="section-heading">
@@ -3766,6 +4143,7 @@ export class UIManager {
       </div>
       <div class="livery-target-bar">
         <button type="button" class="livery-target-btn ${this.liveryTarget === 'yacht' ? 'active' : ''}" data-liv-target="yacht">🚤 Sơn Du Thuyền</button>
+        <button type="button" class="livery-target-btn ${this.liveryTarget === 'heli' ? 'active' : ''}" data-liv-target="heli">🚁 Sơn Trực Thăng</button>
         <button type="button" class="livery-target-btn ${this.liveryTarget === 'plane' ? 'active' : ''}" data-liv-target="plane">✈️ Sơn Máy Bay</button>
       </div>
     `;

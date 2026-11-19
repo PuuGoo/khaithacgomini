@@ -2839,3 +2839,107 @@ body.zen-hud #btn-notifications {
     grid-template-columns: repeat(2, minmax(0, 1fr));
   }
 }
+
+/* =========================================================================
+   Phase 8: Industrial Railway, VIP Helicopter, 24h Weather/Camera & Metropolis
+   ========================================================================= */
+
+.fleet-quick-strip {
+  max-width: 440px;
+}
+
+.fleet-quick-btn.is-rail {
+  border-color: rgba(249, 115, 22, 0.55);
+  color: #ffedd5;
+}
+.fleet-quick-btn.is-rail:hover {
+  border-color: #fb923c;
+  background: #281911;
+}
+
+.fleet-quick-btn.is-heli {
+  border-color: rgba(168, 85, 247, 0.55);
+  color: #f3e8ff;
+}
+.fleet-quick-btn.is-heli:hover {
+  border-color: #c084fc;
+  background: #231532;
+}
+
+.railway-banner {
+  background: #1c1613;
+  border: 1px solid rgba(249, 115, 22, 0.5);
+  border-radius: var(--radius-md);
+  padding: 15px 16px;
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  justify-content: space-between;
+  gap: 12px;
+}
+
+.helipad-banner {
+  background: #19152c;
+  border: 1px solid rgba(168, 85, 247, 0.52);
+  border-radius: var(--radius-md);
+  padding: 15px 16px;
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  justify-content: space-between;
+  gap: 12px;
+}
+
+.metropolis-hero-card {
+  background: #101c30;
+  border: 1px solid rgba(56, 189, 248, 0.5);
+  border-radius: var(--radius-md);
+  padding: 16px 18px;
+  display: flex;
+  flex-direction: column;
+  gap: 12px;
+}
+
+.p2p-market-form {
+  background: #121a2b;
+  border: 1px solid rgba(255, 255, 255, 0.1);
+  border-radius: var(--radius-md);
+  padding: 14px;
+  display: flex;
+  flex-wrap: wrap;
+  align-items: flex-end;
+  gap: 10px;
+}
+
+.p2p-field {
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+  flex: 1;
+  min-width: 120px;
+}
+
+.p2p-field label {
+  font-size: 11.5px;
+  font-weight: 600;
+  color: var(--text-secondary);
+}
+
+.p2p-input,
+.p2p-select {
+  min-height: 36px;
+  padding: 0 10px;
+  border-radius: var(--radius-sm);
+  border: 1px solid rgba(255, 255, 255, 0.14);
+  background: #0b1120;
+  color: var(--text-primary);
+  font-family: var(--font-mono);
+  font-size: 12.5px;
+  outline: none;
+}
+
+.p2p-input:focus,
+.p2p-select:focus {
+  border-color: var(--accent-sky);
+}
+

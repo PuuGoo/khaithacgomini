@@ -487,6 +487,96 @@ export const RD_TECH_CATALOG = [
   { id: 'pat_green_grid', name: 'Bằng Sáng Chế Điện Xanh ESG', category: 'Năng lượng', icon: '🌿', costType: 'gems', cost: 95, bonusText: '+35% Tín chỉ Carbon & +12% Danh tiếng', desc: 'Tăng +35% tốc độ sinh Tín chỉ Carbon và nâng điểm tín nhiệm thương hiệu Đế chế.' }
 ];
 
+// ---------------------------------------------------------------------------
+// Phase 8: Industrial Railway, VIP Executive Helicopter, 24h Weather & Metropolis
+// ---------------------------------------------------------------------------
+export const RAILWAY_TIERS = [
+  {
+    tier: 1,
+    name: 'Tuyến Đường Sắt Nội Khu',
+    costCash: 6800,
+    cashPer10s: 360,
+    synergyBonus: 0.10,
+    speedMult: 1.0,
+    desc: 'Lắp đặt đường ray thép & Đầu máy Diesel kéo toa gỗ tự động giữa Xưởng Cưa và Cảng Biển (+10% thưởng xuất cảng).'
+  },
+  {
+    tier: 2,
+    name: 'Đoàn Tàu Logistics Liên Hợp',
+    costCash: 22500,
+    cashPer10s: 920,
+    synergyBonus: 0.18,
+    speedMult: 1.32,
+    desc: 'Nối thêm toa phẳng chở Kiện Pallet & Nội thất, tăng tốc độ vận hành +32% và cộng +18% thưởng xuất cảng.'
+  },
+  {
+    tier: 3,
+    name: 'Siêu Tuyến Đường Sắt Cảng Nước Sâu',
+    costCash: 64000,
+    cashPer10s: 2350,
+    synergyBonus: 0.25,
+    speedMult: 1.65,
+    desc: 'Kết nối trực tiếp Cần cẩu Gantry Cảng Nước Sâu (+25% thưởng Tàu Container & Hợp đồng cảng).'
+  }
+];
+
+export const HELI_TIERS = [
+  {
+    tier: 1,
+    name: 'Trực Thăng Tuabin Hạng Nhẹ',
+    costCash: 7900,
+    cashPer10s: 340,
+    gemChance: 0.24,
+    speed: 25,
+    climbRate: 13,
+    cargoBonus: 1.25,
+    desc: 'Xây Bãi Đáp Trực Thăng VIP (Chữ H phát sáng) cạnh Quảng trường Trụ sở. Cho phép tự lái cất cánh thẳng đứng!'
+  },
+  {
+    tier: 2,
+    name: 'Chuyên Cơ Trực Thăng Điều Hành',
+    costCash: 25000,
+    cashPer10s: 860,
+    gemChance: 0.36,
+    speed: 31,
+    climbRate: 16,
+    cargoBonus: 1.5,
+    desc: 'Động cơ Twin-Turbine siêu tốc bay tuần tra Trụ sở – Resort Đảo, sinh +$860/10s & cơ hội nhận Đá quý VIP.'
+  },
+  {
+    tier: 3,
+    name: 'Siêu Trực Thăng Hoàng Gia Twin-Rotor',
+    costCash: 68000,
+    cashPer10s: 2150,
+    gemChance: 0.52,
+    speed: 37,
+    climbRate: 20,
+    cargoBonus: 1.85,
+    desc: 'Đỉnh cao hàng không VIP mạ vàng: cất cánh mọi thời tiết bão biển, thưởng x1.85 đơn hàng không & cứu hộ.'
+  }
+];
+
+export const WEATHER_PRESETS = [
+  { id: 'auto', label: 'Tự động 24h', icon: '🕒', fixedHour: null },
+  { id: 'dawn', label: 'Bình Minh', icon: '🌅', fixedHour: 6.25 },
+  { id: 'sunny', label: 'Nắng Vàng', icon: '☀️', fixedHour: 11.5 },
+  { id: 'sunset', label: 'Hoàng Hôn', icon: '🌇', fixedHour: 17.85 },
+  { id: 'night', label: 'Đêm Sao', icon: '🌙', fixedHour: 22.5 },
+  { id: 'storm', label: 'Mưa Bão', icon: '⛈️', fixedHour: 15.2 }
+];
+
+export const metropolisState = {
+  landmarkStage: 1,
+  landmarkName: 'Tháp Hải Đăng Pha Lê Toàn Cầu',
+  currentWood: 0,
+  targetWood: 50000,
+  currentMoney: 0,
+  targetMoney: 250000000,
+  topContributors: {},
+  marketListings: [],
+  lastAnnouncement: ''
+};
+
 // Rolling 60s Cash Telemetry (Zero GC ring of timestamped entries)
 const cashFlowSamples = [];
 
@@ -511,6 +601,10 @@ export function getCashPerMinute() {
   const hqDivPerMin = hqDef ? Math.round((hqDef.dividend45s * (60 / 45)) * getPrestigeMultiplier()) : 0;
   const deepDef = DEEP_PORT_TIERS.find((d) => d.tier === (gameState.deepPortTier || 0));
   const deepPerMin = deepDef ? deepDef.royalty10s * 6 * getPrestigeMultiplier() : 0;
+  const railDef = RAILWAY_TIERS.find((r) => r.tier === (gameState.railwayTier || 0));
+  const railPerMin = railDef ? railDef.cashPer10s * 6 * getPrestigeMultiplier() : 0;
+  const heliDef = HELI_TIERS.find((h) => h.tier === (gameState.heliTier || 0));
+  const heliPerMin = heliDef ? heliDef.cashPer10s * 6 * getPrestigeMultiplier() : 0;
   const greenDef = GREEN_ENERGY_TIERS.find((g) => g.tier === (gameState.greenEnergyTier || 0));
   const carbonPerMin = greenDef
     ? Math.round(greenDef.creditsPer10s * (hasPatent('pat_green_grid') ? 1.35 : 1) * 6 * (carbonMarketState.price || 44))
@@ -527,6 +621,8 @@ export function getCashPerMinute() {
     + resortPerMin
     + hqDivPerMin
     + deepPerMin
+    + railPerMin
+    + heliPerMin
     + carbonPerMin
     + franchisePerMin
     + realEstatePerMin
@@ -737,6 +833,21 @@ export function createDefaultState() {
       greenSaved: 0
     },
 
+    // Phase 8: Industrial Railway, VIP Helicopter, Automated Container Dispatch & 24h World Clock
+    railwayTier: 0,
+    railwayAccumCash: 0,
+    trainTripsCompleted: 0,
+    trainBoostTimer: 0,
+    heliTier: 0,
+    heliAccumCash: 0,
+    heliAccumGems: 0,
+    heliDeliveries: 0,
+    heliLivery: 'pearl_sky',
+    heliEngineTier: 1,
+    autoDispatchContainer: true,
+    worldTimeHours: 10.5,
+    weatherMode: 'auto',
+
     // Cosmetics & Fleet
     equippedSkin: 'classic',
     unlockedSkins: ['classic'],
@@ -884,7 +995,9 @@ export function getContractMultiplier() {
   const expoMult = expo && expo.target === 'contracts' ? 1 + expo.bonusPct / 100 : 1.0;
   const lhMult = 1 + getLighthouseContractBonus();
   const hedgeMult = hasPatent('pat_fin_hedge') ? 1.18 : 1.0;
-  return getRevenueMultiplier() * (1 + getManagerBonus('contractBonus')) * eventMult * expoMult * lhMult * hedgeMult;
+  const railDef = RAILWAY_TIERS.find((r) => r.tier === (gameState.railwayTier || 0));
+  const railSynergy = 1 + (railDef ? railDef.synergyBonus : 0);
+  return getRevenueMultiplier() * (1 + getManagerBonus('contractBonus')) * eventMult * expoMult * lhMult * hedgeMult * railSynergy;
 }
 
 export function getUpgradeCost(item) {
@@ -1181,6 +1294,13 @@ export function performPrestige() {
   gameState.activeFutures = [];
   gameState.greenEnergyTier = 0;
   gameState.carbonCredits = 0;
+  gameState.railwayTier = 0;
+  gameState.railwayAccumCash = 0;
+  gameState.trainBoostTimer = 0;
+  gameState.heliTier = 0;
+  gameState.heliAccumCash = 0;
+  gameState.heliAccumGems = 0;
+  gameState.heliEngineTier = 1;
   gameState.stockPortfolio = {
     TMBR: { shares: 0, avgPrice: 0 },
     PORT: { shares: 0, avgPrice: 0 },
@@ -1704,7 +1824,9 @@ export function getTotalPendingYields() {
     + Math.floor(gameState.pendingDividendCash || 0)
     + Math.floor(gameState.franchiseAccumCash || 0)
     + Math.floor(gameState.realEstateAccumCash || 0)
-    + Math.floor(gameState.containerAccumCash || 0);
+    + Math.floor(gameState.containerAccumCash || 0)
+    + Math.floor(gameState.railwayAccumCash || 0)
+    + Math.floor(gameState.heliAccumCash || 0);
 }
 
 export function collectAllEmpireYields() {
@@ -1737,16 +1859,25 @@ export function collectAllEmpireYields() {
   if (dc) {
     cash += dc.cash;
   }
+  const rl = claimRailwayYield();
+  if (rl) {
+    cash += rl.cash;
+  }
+  const hl = claimHeliYield();
+  if (hl) {
+    cash += hl.cash;
+    gems += hl.gems;
+  }
   if (cash <= 0 && gems <= 0) return null;
   return { cash, gems };
 }
 
 export function spawnStormChallenge(forceKind = null) {
-  const hasPlane = (gameState.airportTier || 0) >= 1 && (gameState.unlockedPlanes?.length || 0) > 0;
+  const hasAir = ((gameState.airportTier || 0) >= 1 && (gameState.unlockedPlanes?.length || 0) > 0) || (gameState.heliTier || 0) >= 1;
   const hasYacht = (gameState.yachtTier || 0) >= 1;
-  if (!hasPlane && !hasYacht) return null;
+  if (!hasAir && !hasYacht) return null;
 
-  const kind = forceKind || (hasPlane && (!hasYacht || Math.random() > 0.48) ? 'air' : 'sea');
+  const kind = forceKind || (hasAir && (!hasYacht || Math.random() > 0.48) ? 'air' : 'sea');
   const branchMult = getActiveBranch().multiplier * getPrestigeMultiplier();
 
   if (kind === 'air') {
@@ -1960,6 +2091,24 @@ export function hydrateLoadedState() {
   if (!gameState.pnlLedger || typeof gameState.pnlLedger !== 'object') {
     gameState.pnlLedger = { grossRevenue: 0, loanRepaid: 0, upgradeSpend: 0, insuranceSaved: 0, greenSaved: 0 };
   }
+
+  // Phase 8 safe hydration
+  if (typeof gameState.railwayTier !== 'number') gameState.railwayTier = 0;
+  if (typeof gameState.railwayAccumCash !== 'number') gameState.railwayAccumCash = 0;
+  if (typeof gameState.trainTripsCompleted !== 'number') gameState.trainTripsCompleted = 0;
+  if (typeof gameState.trainBoostTimer !== 'number') gameState.trainBoostTimer = 0;
+  if (typeof gameState.heliTier !== 'number') gameState.heliTier = 0;
+  if (typeof gameState.heliAccumCash !== 'number') gameState.heliAccumCash = 0;
+  if (typeof gameState.heliAccumGems !== 'number') gameState.heliAccumGems = 0;
+  if (typeof gameState.heliDeliveries !== 'number') gameState.heliDeliveries = 0;
+  if (typeof gameState.heliLivery !== 'string') gameState.heliLivery = 'pearl_sky';
+  if (typeof gameState.heliEngineTier !== 'number') gameState.heliEngineTier = 1;
+  if (typeof gameState.autoDispatchContainer !== 'boolean') gameState.autoDispatchContainer = true;
+  if (typeof gameState.worldTimeHours !== 'number' || Number.isNaN(gameState.worldTimeHours)) gameState.worldTimeHours = 10.5;
+  if (typeof gameState.weatherMode !== 'string') gameState.weatherMode = 'auto';
+  ['railway', 'heli'].forEach((k) => {
+    if (typeof gameState.revenueStats[k] !== 'number') gameState.revenueStats[k] = 0;
+  });
 }
 
 // ---------------------------------------------------------------------------
@@ -2019,9 +2168,10 @@ export function getEmpireNetWorth() {
     + (gameState.unlockedFranchises?.length || 0) * 8500
     + (gameState.unlockedPlanes?.length || 0) * 4200
     + (gameState.logisticsTier || 0) * 3200
-    + (gameState.unlockedBranches?.length || 1 - 1) * 0
     + ((gameState.unlockedBranches?.length || 1) - 1) * 12000
     + (gameState.deepPortTier || 0) * 10500
+    + (gameState.railwayTier || 0) * 9500
+    + (gameState.heliTier || 0) * 11000
     + (gameState.greenEnergyTier || 0) * 7200
     + (gameState.insuranceTier || 0) * 5400
     + (gameState.unlockedPatents?.length || 0) * 6500
@@ -2580,9 +2730,9 @@ export function getCorporateCreditRating() {
 export function getPnlStatement() {
   const stats = gameState.revenueStats || {};
   const ledger = gameState.pnlLedger || { grossRevenue: 0, loanRepaid: 0, upgradeSpend: 0, insuranceSaved: 0, greenSaved: 0 };
-  const opRevenue = (stats.sawmill || 0) + (stats.furniture || 0) + (stats.contracts || 0) + (stats.container || 0) + (stats.fishery || 0);
+  const opRevenue = (stats.sawmill || 0) + (stats.furniture || 0) + (stats.contracts || 0) + (stats.container || 0) + (stats.fishery || 0) + (stats.railway || 0);
   const marketRevenue = (stats.market || 0) + (stats.futures || 0) + (stats.carbon || 0);
-  const assetRevenue = (stats.franchise || 0) + (stats.realestate || 0) + (stats.resort || 0) + (stats.stocks || 0) + (stats.offline || 0);
+  const assetRevenue = (stats.franchise || 0) + (stats.realestate || 0) + (stats.resort || 0) + (stats.stocks || 0) + (stats.offline || 0) + (stats.heli || 0);
   const gross = Math.max(opRevenue + marketRevenue + assetRevenue, ledger.grossRevenue || 0);
   const loanCost = ledger.loanRepaid || 0;
   const capex = ledger.upgradeSpend || 0;
@@ -2606,6 +2756,16 @@ export function getRoiRecommendations() {
   const mult = getRevenueMultiplier();
   const list = [];
 
+  const nextRail = getRailwayNextTier();
+  if (nextRail) {
+    const addedCpm = Math.round(nextRail.cashPer10s * 6 * getPrestigeMultiplier() + 240 * mult);
+    list.push({ id: 'railway', name: nextRail.name, category: 'Đường Sắt Công Nghiệp', cost: nextRail.costCash, addedCpm, paybackMin: Number((nextRail.costCash / Math.max(1, addedCpm)).toFixed(1)) });
+  }
+  const nextHeli = getHeliNextTier();
+  if (nextHeli) {
+    const addedCpm = Math.round(nextHeli.cashPer10s * 6 * getPrestigeMultiplier() + 190 * mult);
+    list.push({ id: 'heli', name: nextHeli.name, category: 'Trực Thăng VIP', cost: nextHeli.costCash, addedCpm, paybackMin: Number((nextHeli.costCash / Math.max(1, addedCpm)).toFixed(1)) });
+  }
   const nextDeep = getDeepPortNextTier();
   if (nextDeep) {
     const addedCpm = Math.round(nextDeep.royalty10s * 6 * getPrestigeMultiplier() + 260 * mult);
@@ -2677,4 +2837,133 @@ export function quickBatchFurniture() {
   const res = craftFurnitureBatch(true);
   return res;
 }
+
+// ---------------------------------------------------------------------------
+// Phase 8 Helpers: Industrial Railway, VIP Helicopter, Auto Container & Metropolis
+// ---------------------------------------------------------------------------
+export function getRailwayNextTier() {
+  const cur = gameState.railwayTier || 0;
+  return RAILWAY_TIERS.find((r) => r.tier === cur + 1) || null;
+}
+
+export function upgradeRailway() {
+  const next = getRailwayNextTier();
+  if (!next) return { ok: false, reason: 'Tuyến Đường Sắt Công Nghiệp đã đạt Cấp 3/3 tối đa.' };
+  if (gameState.cash < next.costCash) return { ok: false, reason: 'Chưa đủ tiền mặt xây dựng Tuyến Đường Sắt!' };
+  gameState.cash -= next.costCash;
+  gameState.railwayTier = next.tier;
+  recordPnlExpense('upgradeSpend', next.costCash);
+  addVipXp(70);
+  addSeasonXp(50);
+  logTransaction('fleet', `Khánh thành ${next.name} (Cấp ${next.tier})`, -next.costCash, 0);
+  return { ok: true, tierDef: next };
+}
+
+export function claimRailwayYield() {
+  const cash = Math.floor(gameState.railwayAccumCash || 0);
+  if (cash <= 0) return null;
+  gameState.cash += cash;
+  gameState.railwayAccumCash = 0;
+  recordRevenue('railway', cash);
+  addVipXp(16);
+  logTransaction('export', 'Thu Cước Vận Tải Đường Sắt Công Nghiệp', cash, 0);
+  return { cash };
+}
+
+export function triggerTrainExpressBoost() {
+  if ((gameState.railwayTier || 0) <= 0) {
+    return { ok: false, reason: 'Hãy xây Tuyến Đường Sắt Nội Khu Cấp 1 trước!' };
+  }
+  if ((gameState.trainBoostTimer || 0) > 0) {
+    return { ok: false, reason: `Tàu Hỏa đang tăng tốc Express (${Math.ceil(gameState.trainBoostTimer)}s)!` };
+  }
+  gameState.trainBoostTimer = 25;
+  let hauledLogs = 0;
+  if (gameState.logs > 0) {
+    hauledLogs = gameState.logs;
+    gameState.sawmillBuffer += hauledLogs;
+    gameState.logs = 0;
+  }
+  const railDef = RAILWAY_TIERS.find((r) => r.tier === (gameState.railwayTier || 1)) || RAILWAY_TIERS[0];
+  const bonusCash = Math.round(railDef.cashPer10s * 1.45 * getPrestigeMultiplier());
+  gameState.cash += bonusCash;
+  gameState.trainTripsCompleted = (gameState.trainTripsCompleted || 0) + 1;
+  recordRevenue('railway', bonusCash);
+  addSeasonXp(12);
+  return { ok: true, bonusCash, hauledLogs };
+}
+
+export function getHeliNextTier() {
+  const cur = gameState.heliTier || 0;
+  return HELI_TIERS.find((h) => h.tier === cur + 1) || null;
+}
+
+export function getHeliData() {
+  const lv = Math.max(1, gameState.heliTier || 1);
+  return HELI_TIERS.find((h) => h.tier === lv) || HELI_TIERS[0];
+}
+
+export function getHeliEngineCost(lv = gameState.heliEngineTier || 1) {
+  if (lv >= ENGINE_MAX_TIER) return null;
+  return Math.round(3900 * Math.pow(2.2, Math.max(0, lv - 1)));
+}
+
+export function upgradeHeli() {
+  const next = getHeliNextTier();
+  if (!next) return { ok: false, reason: 'Bãi Đáp & Trực Thăng VIP đã đạt Cấp 3/3 tối đa.' };
+  if (gameState.cash < next.costCash) return { ok: false, reason: 'Chưa đủ tiền mặt nâng cấp Trực Thăng VIP!' };
+  gameState.cash -= next.costCash;
+  gameState.heliTier = next.tier;
+  recordPnlExpense('upgradeSpend', next.costCash);
+  addVipXp(75);
+  addSeasonXp(55);
+  logTransaction('fleet', `Biên chế ${next.name} (Cấp ${next.tier})`, -next.costCash, 0);
+  return { ok: true, tierDef: next };
+}
+
+export function claimHeliYield() {
+  const cash = Math.floor(gameState.heliAccumCash || 0);
+  const gems = Math.floor(gameState.heliAccumGems || 0);
+  if (cash <= 0 && gems <= 0) return null;
+  gameState.cash += cash;
+  gameState.gems += gems;
+  gameState.heliAccumCash = 0;
+  gameState.heliAccumGems = 0;
+  if (cash > 0) recordRevenue('heli', cash);
+  addVipXp(18);
+  logTransaction('income', 'Thu Quỹ Chuyên Cơ Trực Thăng VIP', cash, gems);
+  return { cash, gems };
+}
+
+export function autoTryDispatchContainerVoyage() {
+  if (!gameState.autoDispatchContainer) return null;
+  if ((gameState.deepPortTier || 0) <= 0 || gameState.activeContainerVoyage) return null;
+  // Pick highest reward route that we have enough stock for
+  for (let i = CONTAINER_ROUTES.length - 1; i >= 0; i--) {
+    const rt = CONTAINER_ROUTES[i];
+    if (
+      gameState.planks >= rt.reqPlanks
+      && gameState.pallets >= rt.reqPallets
+      && gameState.cannedFish >= rt.reqCanned
+      && (gameState.furniture || 0) >= rt.reqFurniture
+    ) {
+      const res = dispatchContainerVoyage(rt.id);
+      if (res.ok) return res.voyage;
+    }
+  }
+  return null;
+}
+
+export async function fetchMetropolisState() {
+  try {
+    const res = await fetch(`${API_BASE}/api/city-state`);
+    if (!res.ok) return metropolisState;
+    const data = await res.json();
+    if (data && data.city) {
+      Object.assign(metropolisState, data.city);
+    }
+  } catch (e) {}
+  return metropolisState;
+}
+
 

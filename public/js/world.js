@@ -38,6 +38,8 @@ import {
   createFurnitureFactoryModel,
   createLighthouseModel,
   createDeepContainerPortModel,
+  createRailwayAndTrainModel,
+  createHelipadModel,
   syncBuildingEvolution,
   disposeObject3D
 } from './models.js';
@@ -55,6 +57,8 @@ export const ZONES = {
   canneryDock: new THREE.Vector3(-6.5, 0.5, 29),
   yachtBerth: new THREE.Vector3(14.5, 0.5, 29),
   deepPort: new THREE.Vector3(-20, 0.5, 29),
+  railDepot: new THREE.Vector3(-17.2, 0, -10.5),
+  helipad: new THREE.Vector3(19.5, 0, 15.5),
   runwayStart: new THREE.Vector3(30, 0.14, 13),
   hqPlaza: new THREE.Vector3(15, 0, 7),
   furnitureMill: new THREE.Vector3(16, 0, -24),
@@ -92,6 +96,11 @@ export class WorldManager {
     this.furnitureFactory = null;
     this.lighthouse = null;
     this.deepContainerPort = null;
+    this.railwaySystem = null;
+    this.helipad = null;
+    this.streetLampMat = null;
+    this.nightFactor = 0;
+    this.trainSmokeTimer = 0;
     this.weatherGroup = null;
     this.stormBeacon = null;
     this._weatherDummy = new THREE.Object3D();
@@ -196,6 +205,8 @@ export class WorldManager {
     this.addFloorMarker(ZONES.hqPlaza, 2.4, '#a855f7', 'TRỤ SỞ TẬP ĐOÀN', '🏢 Cổ phiếu & Tài chính');
     this.addFloorMarker(ZONES.furnitureMill, 2.4, '#fb7185', 'NHÀ MÁY NỘI THẤT', '🛋️ Chế biến & Bán');
     this.addFloorMarker(ZONES.deepPort, 2.5, '#0ea5e9', 'CẢNG CONTAINER', '🚢 Siêu cảng Nước Sâu');
+    this.addFloorMarker(ZONES.railDepot, 2.3, '#f59e0b', 'GA ĐƯỜNG SẮT', '🚂 Tàu Hỏa Logistics');
+    this.addFloorMarker(ZONES.helipad, 2.5, '#38bdf8', 'BÃI TRỰC THĂNG VIP', '🚁 Cất cánh [E]');
   }
 
   addFloorMarker(pos, radius, colorHex, title, sub) {
@@ -242,6 +253,7 @@ export class WorldManager {
       emissiveIntensity: 1.15,
       roughness: 0.2
     });
+    this.streetLampMat = warmGlassMat;
     const planterStoneMat = new THREE.MeshStandardMaterial({ color: 0xe2d6c3, roughness: 0.75 });
     const hedgeMat = new THREE.MeshStandardMaterial({ color: 0x15803d, roughness: 0.84, flatShading: true });
 
@@ -1226,6 +1238,17 @@ export class WorldManager {
     this.worldGroup.add(this.deepContainerPort);
     this.syncDeepPortTier(gameState.deepPortTier || 0, gameState.greenEnergyTier || 0);
 
+    // Phase 8: Pre-built Industrial Railway Track, Depot & Diesel-Electric Freight Train
+    this.railwaySystem = createRailwayAndTrainModel(this.lowSpec);
+    this.worldGroup.add(this.railwaySystem);
+    this.syncRailwayTier(gameState.railwayTier || 0);
+
+    // Phase 8: Pre-built Illuminated Helipad at East Corporate Plaza (19.5, 0, 15.5)
+    this.helipad = createHelipadModel(this.lowSpec);
+    this.helipad.position.copy(ZONES.helipad);
+    this.worldGroup.add(this.helipad);
+    this.syncHeliTier(gameState.heliTier || 0);
+
     // Pre-built Instanced Clouds & Storm Rain (auto-gated OFF on <8GB RAM)
     this.weatherGroup = createCloudsAndStormGroup(this.lowSpec);
     this.worldGroup.add(this.weatherGroup);
@@ -1339,6 +1362,53 @@ export class WorldManager {
     if (u?.tier3Group) u.tier3Group.visible = tier >= 3;
     if (u?.greenSolarArray) u.greenSolarArray.visible = greenTier >= 1;
     if (u?.beaconLight) u.beaconLight.visible = !this.lowSpec && tier >= 1;
+  }
+
+  syncRailwayTier(tier = 0) {
+    if (!this.railwaySystem) return;
+    const u = this.railwaySystem.userData;
+    if (u?.trainGroup) u.trainGroup.visible = tier >= 1;
+    if (u?.wagon2) u.wagon2.visible = tier >= 2;
+    if (u?.contBox2) u.contBox2.visible = tier >= 3;
+  }
+
+  syncHeliTier(tier = 0) {
+    if (!this.helipad) return;
+    this.helipad.visible = true;
+    const u = this.helipad.userData;
+    if (u?.ringMat) {
+      u.ringMat.emissiveIntensity = tier > 0 ? 0.9 + tier * 0.25 : 0.35;
+    }
+    if (u?.hMarkMat) {
+      u.hMarkMat.emissiveIntensity = tier > 0 ? 0.75 + tier * 0.2 : 0.25;
+    }
+  }
+
+  applyNightMode(nightFactor = 0) {
+    this.nightFactor = nightFactor;
+    if (this.streetLampMat) {
+      this.streetLampMat.emissiveIntensity = 0.55 + nightFactor * 1.95;
+    }
+    if (this.harborBeaconLight && !this.lowSpec) {
+      this.harborBeaconLight.intensity = 1.2 + nightFactor * 2.1;
+    }
+    for (const pl of this.landPointLights) {
+      if (!this.lowSpec) {
+        pl.intensity = 0.75 + nightFactor * 1.85;
+      }
+    }
+    if (this.lighthouse?.userData?.beamLight && !this.lowSpec) {
+      this.lighthouse.userData.beamLight.intensity = 1.4 + nightFactor * 2.4;
+    }
+    if (this.corporateHq?.userData?.facadeLight && !this.lowSpec) {
+      this.corporateHq.userData.facadeLight.intensity = 1.1 + nightFactor * 1.8;
+    }
+    if (this.railwaySystem?.userData?.headlightMat) {
+      this.railwaySystem.userData.headlightMat.emissiveIntensity = 0.85 + nightFactor * 1.65;
+    }
+    if (this.helipad?.userData?.beaconMat) {
+      this.helipad.userData.beaconMat.emissiveIntensity = 0.9 + nightFactor * 1.6;
+    }
   }
 
   setLowSpec(isLow) {
@@ -1757,6 +1827,35 @@ export class WorldManager {
         }
         if (dp.trolley) {
           dp.trolley.position.z = 3.2 + Math.sin(elapsed * 0.72) * 3.1;
+        }
+      }
+    }
+
+    // Phase 8: Animated Diesel-Electric Freight Train running between Sawmill Depot (z=-9.5) and Deep Port (z=22.5)
+    if (this.railwaySystem?.userData?.trainGroup?.visible) {
+      const ru = this.railwaySystem.userData;
+      const boostMult = (gameState.trainBoostTimer || 0) > 0 ? 1.85 : 1.0;
+      const tierSpeed = 1 + ((gameState.railwayTier || 1) - 1) * 0.25;
+      const phase = elapsed * 0.22 * tierSpeed * boostMult;
+      const rawSin = Math.sin(phase);
+      const rawCos = Math.cos(phase);
+      const trainZ = 6.5 + rawSin * 15.2;
+      ru.trainGroup.position.z = trainZ;
+      if (ru.wheels) {
+        const wheelSpin = dt * 6.5 * tierSpeed * boostMult * (rawCos >= 0 ? 1 : -1);
+        for (let i = 0; i < ru.wheels.length; i++) {
+          ru.wheels[i].rotation.x += wheelSpin;
+        }
+      }
+      if (!this.lowSpec) {
+        this.trainSmokeTimer -= dt;
+        if (this.trainSmokeTimer <= 0) {
+          this.trainSmokeTimer = (gameState.trainBoostTimer || 0) > 0 ? 0.25 : 0.48;
+          this.spawnParticles(
+            { x: -19.5, y: 2.2, z: trainZ + 1.2 },
+            (gameState.trainBoostTimer || 0) > 0 ? 0xfacc15 : 0x94a3b8,
+            1
+          );
         }
       }
     }
