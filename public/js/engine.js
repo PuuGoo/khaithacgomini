@@ -116,25 +116,115 @@ import { WorldManager, WORLD_BOUNDS, SEA_BOUNDS, AIR_BOUNDS, ZONES } from './wor
 import { UIManager } from './ui.js';
 
 // ---------------------------------------------------------------------------
-// 0. Island Pedestrian Waypoint Graph (Mainland Promenade & Offshore Resort)
+// 0. Island Pedestrian Waypoint Graph, Building POIs & Obstacle Colliders
 // ---------------------------------------------------------------------------
 const ISLAND_WAYPOINTS = {
-  plaza_center: { id: 'plaza_center', x: 0.5, z: 4.5, isShelter: false, lookYaw: 0, neighbors: ['sawmill_walk', 'hq_plaza', 'boardwalk_center', 'rail_station'] },
-  sawmill_walk: { id: 'sawmill_walk', x: 5.0, z: -3.2, isShelter: true, lookYaw: Math.PI, neighbors: ['plaza_center', 'hq_plaza', 'furniture_walk'] },
-  hq_plaza: { id: 'hq_plaza', x: 13.5, z: -10.5, isShelter: true, lookYaw: 0, neighbors: ['plaza_center', 'sawmill_walk', 'east_avenue'] },
-  east_avenue: { id: 'east_avenue', x: 18.5, z: -4.0, isShelter: false, lookYaw: -Math.PI * 0.5, neighbors: ['hq_plaza', 'airport_terminal', 'furniture_walk'] },
-  furniture_walk: { id: 'furniture_walk', x: 13.2, z: 4.8, isShelter: true, lookYaw: Math.PI, neighbors: ['sawmill_walk', 'east_avenue', 'helipad_plaza', 'boardwalk_center'] },
-  rail_station: { id: 'rail_station', x: -14.5, z: -2.5, isShelter: true, lookYaw: -Math.PI * 0.5, neighbors: ['plaza_center', 'boardwalk_west'] },
-  boardwalk_west: { id: 'boardwalk_west', x: -9.5, z: 17.2, isShelter: true, lookYaw: 0, neighbors: ['rail_station', 'boardwalk_center'] },
-  boardwalk_center: { id: 'boardwalk_center', x: 1.5, z: 17.2, isShelter: true, lookYaw: 0, neighbors: ['plaza_center', 'furniture_walk', 'boardwalk_west', 'harbor_pier', 'boardwalk_east'] },
-  harbor_pier: { id: 'harbor_pier', x: 2.0, z: 22.8, isShelter: false, lookYaw: 0, neighbors: ['boardwalk_center'] },
-  boardwalk_east: { id: 'boardwalk_east', x: 12.8, z: 18.8, isShelter: true, lookYaw: 0.25, neighbors: ['boardwalk_center', 'helipad_plaza'] },
-  helipad_plaza: { id: 'helipad_plaza', x: 17.5, z: 12.2, isShelter: false, lookYaw: 0.5, neighbors: ['furniture_walk', 'boardwalk_east', 'airport_terminal'] },
-  airport_terminal: { id: 'airport_terminal', x: 23.2, z: 3.5, isShelter: true, lookYaw: Math.PI * 0.5, neighbors: ['east_avenue', 'helipad_plaza'] },
+  plaza_center: {
+    id: 'plaza_center', x: 0.5, z: 4.5, isShelter: false,
+    buildingId: 'plaza', buildingLabel: 'Quảng Trường Trung Tâm',
+    interactAction: '🏛️ Ngắm Quảng trường Đế Chế', pose: 'photo',
+    lookAt: { x: 0, z: -8 },
+    neighbors: ['sawmill_walk', 'hq_plaza', 'boardwalk_center', 'rail_station']
+  },
+  sawmill_walk: {
+    id: 'sawmill_walk', x: 5.2, z: -3.2, isShelter: true,
+    buildingId: 'sawmill', buildingLabel: 'Xưởng Cưa Công Nghiệp',
+    interactAction: '🪵 Kiểm định dây chuyền Xưởng Cưa', pose: 'inspect',
+    lookAt: { x: 1.5, z: -11.5 },
+    neighbors: ['plaza_center', 'hq_plaza', 'furniture_walk']
+  },
+  hq_plaza: {
+    id: 'hq_plaza', x: 13.5, z: -9.8, isShelter: true,
+    buildingId: 'hq', buildingLabel: 'Tháp Trụ Sở Tập Đoàn',
+    interactAction: '📊 Xem bảng cổ phiếu Trụ sở HQ', pose: 'point_up',
+    lookAt: { x: 15.0, z: -14.5 },
+    neighbors: ['plaza_center', 'sawmill_walk', 'east_avenue']
+  },
+  east_avenue: {
+    id: 'east_avenue', x: 18.5, z: -4.0, isShelter: false,
+    buildingId: 'avenue', buildingLabel: 'Đại Lộ Thương Mại Đông',
+    interactAction: '🌳 Dạo mát Đại lộ Đông', pose: 'sip_coffee',
+    lookAt: { x: 24.0, z: -4.0 },
+    neighbors: ['hq_plaza', 'airport_terminal', 'furniture_walk']
+  },
+  furniture_walk: {
+    id: 'furniture_walk', x: 12.8, z: 4.8, isShelter: true,
+    buildingId: 'furniture', buildingLabel: 'Nhà Máy Nội Thất Cao Cấp',
+    interactAction: '🛋️ Xem Showroom Nội thất xuất khẩu', pose: 'inspect',
+    lookAt: { x: 16.0, z: 2.5 },
+    neighbors: ['sawmill_walk', 'east_avenue', 'helipad_plaza', 'boardwalk_center']
+  },
+  rail_station: {
+    id: 'rail_station', x: -14.5, z: -2.5, isShelter: true,
+    buildingId: 'railway', buildingLabel: 'Ga Tàu Hỏa Logistics',
+    interactAction: '🚂 Kiểm tra toa hàng Ga Đường Sắt', pose: 'wave_ship',
+    lookAt: { x: -19.5, z: -2.5 },
+    neighbors: ['plaza_center', 'boardwalk_west']
+  },
+  boardwalk_west: {
+    id: 'boardwalk_west', x: -9.5, z: 17.2, isShelter: true,
+    buildingId: 'deep_port', buildingLabel: 'Bến Cảng Tây & Nhà Máy Cá',
+    interactAction: '🏗️ Quan sát Cẩu Container Cảng Sâu', pose: 'photo',
+    lookAt: { x: -18.0, z: 26.0 },
+    neighbors: ['rail_station', 'boardwalk_center']
+  },
+  boardwalk_center: {
+    id: 'boardwalk_center', x: 1.5, z: 17.2, isShelter: true,
+    buildingId: 'promenade', buildingLabel: 'Phố Đi Bộ & Café Bến Cảng',
+    interactAction: '☕ Thưởng thức Cà phê Phố Đi Bộ', pose: 'sip_coffee',
+    lookAt: { x: 2.0, z: 26.0 },
+    neighbors: ['plaza_center', 'furniture_walk', 'boardwalk_west', 'harbor_pier', 'boardwalk_east']
+  },
+  harbor_pier: {
+    id: 'harbor_pier', x: 2.0, z: 22.6, isShelter: false,
+    buildingId: 'harbor', buildingLabel: 'Cầu Tàu Xuất Khẩu Quốc Tế',
+    interactAction: '🚢 Vẫy chào tàu viễn dương cập cảng', pose: 'wave_ship',
+    lookAt: { x: 2.0, z: 32.0 },
+    neighbors: ['boardwalk_center']
+  },
+  boardwalk_east: {
+    id: 'boardwalk_east', x: 12.8, z: 18.8, isShelter: true,
+    buildingId: 'yacht', buildingLabel: 'Bến Du Thuyền VIP',
+    interactAction: '📸 Chụp ảnh Bến Du Thuyền VIP', pose: 'photo',
+    lookAt: { x: 16.0, z: 28.0 },
+    neighbors: ['boardwalk_center', 'helipad_plaza']
+  },
+  helipad_plaza: {
+    id: 'helipad_plaza', x: 17.2, z: 12.2, isShelter: false,
+    buildingId: 'helipad', buildingLabel: 'Sân Đáp Trực Thăng VIP (H)',
+    interactAction: '🚁 Chiêm ngưỡng Trực thăng Chuyên cơ', pose: 'photo',
+    lookAt: { x: 19.5, z: 15.5 },
+    neighbors: ['furniture_walk', 'boardwalk_east', 'airport_terminal']
+  },
+  airport_terminal: {
+    id: 'airport_terminal', x: 23.2, z: 3.5, isShelter: true,
+    buildingId: 'airport', buildingLabel: 'Nhà Ga Sân Bay Đông',
+    interactAction: '✈️ Xem lịch bay tại Nhà ga Hàng không', pose: 'inspect',
+    lookAt: { x: 30.0, z: 5.0 },
+    neighbors: ['east_avenue', 'helipad_plaza']
+  },
   // Offshore Luxury Resort Island Loop
-  resort_west: { id: 'resort_west', x: 47.5, z: 48.5, isShelter: false, lookYaw: -0.4, neighbors: ['resort_plaza', 'resort_lighthouse'] },
-  resort_plaza: { id: 'resort_plaza', x: 52.0, z: 52.0, isShelter: true, lookYaw: 0, neighbors: ['resort_west', 'resort_lighthouse'] },
-  resort_lighthouse: { id: 'resort_lighthouse', x: 56.5, z: 55.5, isShelter: true, lookYaw: 0.6, neighbors: ['resort_plaza', 'resort_west'] }
+  resort_west: {
+    id: 'resort_west', x: 47.5, z: 48.5, isShelter: false,
+    buildingId: 'resort_bridge', buildingLabel: 'Bến Đảo Nghỉ Dưỡng',
+    interactAction: '🌊 Ngắm vịnh biển từ Đảo Resort', pose: 'photo',
+    lookAt: { x: 35.0, z: 42.0 },
+    neighbors: ['resort_plaza', 'resort_lighthouse']
+  },
+  resort_plaza: {
+    id: 'resort_plaza', x: 52.0, z: 52.0, isShelter: true,
+    buildingId: 'resort', buildingLabel: 'Biệt Thự Nghỉ Dưỡng 5 Sao',
+    interactAction: '🌴 Thư giãn tại Biệt thự Đảo VIP', pose: 'sip_coffee',
+    lookAt: { x: 54.0, z: 50.0 },
+    neighbors: ['resort_west', 'resort_lighthouse']
+  },
+  resort_lighthouse: {
+    id: 'resort_lighthouse', x: 56.5, z: 55.5, isShelter: true,
+    buildingId: 'lighthouse', buildingLabel: 'Hải Đăng Đảo Ngoài Khơi',
+    interactAction: '🚨 Check-in dưới chân Hải Đăng Đảo', pose: 'point_up',
+    lookAt: { x: 58.0, z: 58.0 },
+    neighbors: ['resort_plaza', 'resort_west']
+  }
 };
 const MAINLAND_WP_KEYS = [
   'plaza_center', 'sawmill_walk', 'hq_plaza', 'east_avenue',
@@ -142,6 +232,17 @@ const MAINLAND_WP_KEYS = [
   'harbor_pier', 'boardwalk_east', 'helipad_plaza', 'airport_terminal'
 ];
 const RESORT_WP_KEYS = ['resort_west', 'resort_plaza', 'resort_lighthouse'];
+
+// Soft circular building obstacle colliders so pedestrians never clip into structures while steering
+const BUILDING_COLLIDERS = [
+  { x: 0.0, z: -11.5, radius: 5.4 },   // Main Sawmill complex
+  { x: 15.0, z: -14.2, radius: 3.8 },  // Corporate HQ Tower
+  { x: 16.2, z: 1.5, radius: 3.2 },    // Luxury Furniture Mill
+  { x: -19.5, z: -3.5, radius: 2.8 },  // West Railway Depot
+  { x: -7.5, z: 22.0, radius: 2.8 },   // Harbor Cannery Building
+  { x: -5.8, z: 11.2, radius: 1.65 },  // Civic Tourist Kiosk
+  { x: 5.8, z: 11.2, radius: 1.65 }    // Civic Golden Monument
+];
 
 // ---------------------------------------------------------------------------
 // 1. Hardware & WebGL Capability Profiler (<8GB RAM / Intel HD Guard)
@@ -2983,7 +3084,7 @@ class TimberPortEngine {
   }
 
   // -------------------------------------------------------------------------
-  // 5B. Phase 9: Living Island AI Civilians, Waypoint Graph & CEO Greeting
+  // 5B. Phase 9: Living Island AI Civilians (Stroll, Building Interaction & Collision Avoidance)
   // -------------------------------------------------------------------------
   rebuildCitizens() {
     const targetCount = getActiveCitizenCount(this.activeProfile);
@@ -2995,6 +3096,11 @@ class TimberPortEngine {
       if (removed.bubble?.material?.map) removed.bubble.material.map.dispose();
       if (removed.bubble?.material) removed.bubble.material.dispose();
       disposeObject3D(removed.mesh);
+    }
+
+    // Reusable steering output object (Zero GC per frame)
+    if (!this._avoidVec) {
+      this._avoidVec = { steerX: 0, steerZ: 0, speedFactor: 1.0, evadingPlayer: false };
     }
 
     while (this.aiCitizens.length < targetCount) {
@@ -3009,8 +3115,9 @@ class TimberPortEngine {
       const targetWp = ISLAND_WAYPOINTS[nextKey] || startWp;
 
       const mesh = createCitizenModel(arch);
-      const jitterX = ((idx % 3) - 1) * 0.65;
-      const jitterZ = (((idx + 1) % 3) - 1) * 0.65;
+      const laneOffset = ((idx % 3) - 1) * 0.55;
+      const jitterX = ((idx % 3) - 1) * 0.7;
+      const jitterZ = (((idx + 1) % 3) - 1) * 0.7;
       const pos = new THREE.Vector3(startWp.x + jitterX, 0, startWp.z + jitterZ);
       mesh.position.copy(pos);
 
@@ -3027,11 +3134,19 @@ class TimberPortEngine {
         bubble,
         pos,
         useResortLoop,
+        prevWpKey: null,
         currentWpKey: startKey,
         targetWpKey: nextKey,
-        targetPos: new THREE.Vector3(targetWp.x + jitterX * 0.5, 0, targetWp.z + jitterZ * 0.5),
-        state: 'walk', // 'walk' | 'admire' | 'shelter' | 'greet_ceo'
+        targetPos: new THREE.Vector3(targetWp.x + jitterX * 0.45, 0, targetWp.z + jitterZ * 0.45),
+        laneOffset,
+        currentSpeed: arch.speed || 2.35,
+        state: 'stroll', // 'stroll' | 'interact_building' | 'shelter' | 'greet_ceo'
         stateTimer: 0,
+        interactPose: 'inspect',
+        interactLabel: '',
+        photoFlashed: false,
+        chatPartnerIdx: -1,
+        evadingPlayer: false,
         walkPhase: idx * 1.35,
         bubbleIdx: idx % arch.bubbles.length,
         bubbleTimer: 3.5 + (idx % 4),
@@ -3097,7 +3212,6 @@ class TimberPortEngine {
   greetNearbyCitizen(allowFallbackAny = false) {
     let target = this.findNearestCitizen(4.5);
     if (!target && allowFallbackAny && this.aiCitizens.length > 0) {
-      // Find any citizen with an active tip, or the closest one on the island
       target = this.aiCitizens.find((c) => c.hasTip) || this.aiCitizens[0];
     }
     if (!target) {
@@ -3119,6 +3233,177 @@ class TimberPortEngine {
     this.spawnWorldText(target.pos, `👋 ${target.arch.name}`, 'gem');
     this.ui.toast(`🗣️ ${target.arch.name}: "${quote}"`);
     return true;
+  }
+
+  /**
+   * Computes real-time collision avoidance steering vector for citizen `c`:
+   * 1. Avoids Player / CEO & active land vehicle (radial repulsion + tangential sidestep + yield slowdown)
+   * 2. Avoids other AI Citizens, AI Lumberjacks, AI Forklifts & Remote Players (separation + right-hand passing rule)
+   * 3. Avoids static 3D Building Colliders so avoidance never pushes a citizen into a wall
+   */
+  computeCitizenAvoidance(c, desiredNx, desiredNz, playerOnLand) {
+    const out = this._avoidVec;
+    out.steerX = 0;
+    out.steerZ = 0;
+    out.speedFactor = 1.0;
+    out.evadingPlayer = false;
+
+    const cx = c.pos.x;
+    const cz = c.pos.z;
+
+    // 1. Avoid Player / CEO (on foot or driving land vehicle)
+    if (playerOnLand) {
+      const avoidRad = this.inVehicle ? 3.5 : 2.35;
+      const dxP = cx - this.playerPos.x;
+      const dzP = cz - this.playerPos.z;
+      const distSqP = dxP * dxP + dzP * dzP;
+      if (distSqP < avoidRad * avoidRad && distSqP > 0.0001) {
+        const distP = Math.sqrt(distSqP);
+        const strength = ((avoidRad - distP) / avoidRad) * (this.inVehicle ? 2.4 : 1.75);
+        const rx = dxP / distP;
+        const rz = dzP / distP;
+        // Tangential sidestep (choose left or right of player relative to citizen's heading)
+        const cross = desiredNx * rz - desiredNz * rx;
+        const sideSign = cross >= 0 ? 1 : -1;
+        const tx = -rz * sideSign;
+        const tz = rx * sideSign;
+
+        out.steerX += rx * strength * 1.15 + tx * strength * 0.95;
+        out.steerZ += rz * strength * 1.15 + tz * strength * 0.95;
+
+        if (distP < (this.inVehicle ? 2.4 : 1.65)) {
+          out.evadingPlayer = true;
+          out.speedFactor = this.inVehicle ? 1.25 : 0.72; // step aside quickly for vehicle, yield politely on foot
+        }
+      }
+    }
+
+    // Also avoid parked vehicle when player is on foot
+    if (!this.inVehicle && this.parkedVehicle) {
+      const dxV = cx - this.vehiclePos.x;
+      const dzV = cz - this.vehiclePos.z;
+      const distSqV = dxV * dxV + dzV * dzV;
+      if (distSqV < 4.84 && distSqV > 0.0001) { // 2.2m radius
+        const distV = Math.sqrt(distSqV);
+        const str = ((2.2 - distV) / 2.2) * 1.5;
+        out.steerX += (dxV / distV) * str;
+        out.steerZ += (dzV / distV) * str;
+      }
+    }
+
+    // 2A. Separation & Right-Hand Passing against other AI Citizens
+    const minCitDist = 1.25;
+    for (let j = 0; j < this.aiCitizens.length; j++) {
+      const other = this.aiCitizens[j];
+      if (other === c) continue;
+      const dx = cx - other.pos.x;
+      const dz = cz - other.pos.z;
+      const dSq = dx * dx + dz * dz;
+      if (dSq < minCitDist * minCitDist && dSq > 0.0001) {
+        const d = Math.sqrt(dSq);
+        const push = ((minCitDist - d) / minCitDist) * 1.35;
+        const rx = dx / d;
+        const rz = dz / d;
+        // Right-hand passing tangent (-rz, rx)
+        out.steerX += rx * push + (-rz) * push * 0.55;
+        out.steerZ += rz * push + rx * push * 0.55;
+      }
+    }
+
+    // 2B. Avoid AI Lumberjack Workers & Harbor Forklifts
+    for (let j = 0; j < this.aiWorkers.length; j++) {
+      const w = this.aiWorkers[j];
+      const dx = cx - w.pos.x;
+      const dz = cz - w.pos.z;
+      const dSq = dx * dx + dz * dz;
+      if (dSq < 1.96 && dSq > 0.0001) { // 1.4m
+        const d = Math.sqrt(dSq);
+        const push = ((1.4 - d) / 1.4) * 1.4;
+        out.steerX += (dx / d) * push;
+        out.steerZ += (dz / d) * push;
+      }
+    }
+
+    for (let j = 0; j < this.aiForklifts.length; j++) {
+      const f = this.aiForklifts[j];
+      const dx = cx - f.pos.x;
+      const dz = cz - f.pos.z;
+      const dSq = dx * dx + dz * dz;
+      if (dSq < 6.76 && dSq > 0.0001) { // 2.6m safety radius around moving forklifts
+        const d = Math.sqrt(dSq);
+        const push = ((2.6 - d) / 2.6) * 2.1;
+        const rx = dx / d;
+        const rz = dz / d;
+        out.steerX += rx * push + (-rz) * push * 0.7;
+        out.steerZ += rz * push + rx * push * 0.7;
+      }
+    }
+
+    // 2C. Avoid Remote Multiplayer Characters
+    if (this.remotePlayers && this.remotePlayers.size > 0) {
+      for (const rp of this.remotePlayers.values()) {
+        const rPos = rp.mesh.position;
+        const dx = cx - rPos.x;
+        const dz = cz - rPos.z;
+        const dSq = dx * dx + dz * dz;
+        if (dSq < 4.0 && dSq > 0.0001) {
+          const d = Math.sqrt(dSq);
+          const push = ((2.0 - d) / 2.0) * 1.5;
+          out.steerX += (dx / d) * push;
+          out.steerZ += (dz / d) * push;
+        }
+      }
+    }
+
+    // 3. Soft Repulsion from Static 3D Building Colliders
+    if (!c.useResortLoop) {
+      for (let k = 0; k < BUILDING_COLLIDERS.length; k++) {
+        const b = BUILDING_COLLIDERS[k];
+        const dx = cx - b.x;
+        const dz = cz - b.z;
+        const dSq = dx * dx + dz * dz;
+        const safeR = b.radius + 0.85;
+        if (dSq < safeR * safeR && dSq > 0.0001) {
+          const d = Math.sqrt(dSq);
+          const push = ((safeR - d) / 0.85) * 2.2;
+          out.steerX += (dx / d) * push;
+          out.steerZ += (dz / d) * push;
+        }
+      }
+    }
+
+    return out;
+  }
+
+  pickNextCitizenWaypoint(c) {
+    const curWp = ISLAND_WAYPOINTS[c.currentWpKey] || ISLAND_WAYPOINTS.plaza_center;
+    const neighbors = curWp.neighbors || ['plaza_center'];
+    // Filter out previous waypoint to prevent immediate ping-pong backtracking
+    let candidates = neighbors;
+    if (neighbors.length > 1 && c.prevWpKey) {
+      const filtered = neighbors.filter((k) => k !== c.prevWpKey);
+      if (filtered.length > 0) candidates = filtered;
+    }
+    const nextKey = candidates[(c.idx + Math.floor(this.elapsed * 1.3)) % candidates.length];
+    const nextWp = ISLAND_WAYPOINTS[nextKey] || ISLAND_WAYPOINTS.plaza_center;
+
+    c.prevWpKey = c.currentWpKey;
+    c.targetWpKey = nextWp.id;
+
+    // Compute right-hand sidewalk lane offset perpendicular to path segment
+    const segDx = nextWp.x - curWp.x;
+    const segDz = nextWp.z - curWp.z;
+    const segLen = Math.max(0.01, Math.hypot(segDx, segDz));
+    const rightX = -segDz / segLen;
+    const rightZ = segDx / segLen;
+    const lane = c.laneOffset || 0;
+
+    c.targetPos.set(
+      nextWp.x + rightX * lane,
+      0,
+      nextWp.z + rightZ * lane
+    );
+    c.state = 'stroll';
   }
 
   updateCitizensAI(dt) {
@@ -3152,10 +3437,10 @@ class TimberPortEngine {
         const distToCeo = c.pos.distanceTo(this.playerPos);
         if (c.hasTip && distToCeo < 2.95) {
           this.collectCitizenTip(c);
-        } else if (distToCeo < 2.35 && c.state !== 'greet_ceo' && c.greetCooldown <= 0) {
+        } else if (distToCeo < 2.15 && c.state !== 'greet_ceo' && c.greetCooldown <= 0) {
           c.state = 'greet_ceo';
           c.stateTimer = 1.9;
-          c.greetCooldown = 10.0;
+          c.greetCooldown = 11.0;
         }
       }
 
@@ -3167,7 +3452,14 @@ class TimberPortEngine {
         const tipBadge = c.arch.tipMult >= 1.45 ? `💎 VIP · ${c.arch.name}` : `💰 Tip · ${c.arch.name}`;
         updateCitizenBubbleSprite(c.bubble, tipBadge, '#facc15', true);
       } else if (isStorm) {
-        updateCitizenBubbleSprite(c.bubble, c.state === 'shelter' ? `☔ Đang trú mưa` : `☔ Chạy trú bão!`, '#38bdf8', false);
+        updateCitizenBubbleSprite(c.bubble, c.state === 'shelter' ? `☔ Trú mưa: ${c.interactLabel || 'Mái hiên'}` : `☔ Chạy trú bão!`, '#38bdf8', false);
+      } else if (c.evadingPlayer) {
+        updateCitizenBubbleSprite(c.bubble, `🚶 Nhường đường Chủ tịch`, '#38bdf8', false);
+      } else if (c.state === 'interact_building') {
+        const actLabel = c.chatPartnerIdx >= 0
+          ? `💬 Thảo luận · ${c.arch.name}`
+          : (c.interactLabel || `${c.arch.bubbles[0]} ${c.arch.name}`);
+        updateCitizenBubbleSprite(c.bubble, actLabel, c.arch.badgeHex || '#38bdf8', false);
       } else {
         if (c.bubbleTimer <= 0) {
           c.bubbleTimer = 4.5 + (c.idx % 3) * 1.4;
@@ -3177,7 +3469,9 @@ class TimberPortEngine {
         updateCitizenBubbleSprite(c.bubble, `${emo} ${c.arch.name}`, c.arch.badgeHex || '#38bdf8', false);
       }
 
-      // State Machine: Greet CEO
+      // ---------------------------------------------------------------------
+      // STATE 1: Greet CEO
+      // ---------------------------------------------------------------------
       if (c.state === 'greet_ceo') {
         c.stateTimer -= dt;
         const dx = this.playerPos.x - c.pos.x;
@@ -3188,15 +3482,19 @@ class TimberPortEngine {
         ud.leftLeg.rotation.x = 0;
         ud.rightLeg.rotation.x = 0;
         ud.leftArm.rotation.x = 0;
+        ud.leftArm.rotation.z = 0;
+        if (ud.torso) ud.torso.rotation.x = 0;
         ud.rightArm.rotation.x = -2.35 + Math.sin(this.elapsed * 14) * 0.35;
+        ud.rightArm.rotation.z = 0.22 + Math.cos(this.elapsed * 14) * 0.18;
         if (c.stateTimer <= 0) {
-          c.state = 'walk';
+          c.state = 'stroll';
           ud.rightArm.rotation.x = 0;
+          ud.rightArm.rotation.z = 0;
         }
         continue;
       }
 
-      // Storm override: redirect toward nearest shelter waypoint if not already heading to one
+      // Storm override: redirect toward nearest shelter building if not already heading to one
       if (isStorm) {
         const curTargetWp = ISLAND_WAYPOINTS[c.targetWpKey];
         if (!curTargetWp || !curTargetWp.isShelter) {
@@ -3217,88 +3515,203 @@ class TimberPortEngine {
           if (sWp) {
             c.targetWpKey = sWp.id;
             c.targetPos.set(sWp.x, 0, sWp.z);
-            c.state = 'walk';
+            c.state = 'stroll';
           }
         }
       } else if (c.state === 'shelter') {
-        c.state = 'walk';
+        c.state = 'stroll';
       }
 
-      // State Machine: Walking between Waypoints
-      if (c.state === 'walk') {
+      // ---------------------------------------------------------------------
+      // STATE 2: Strolling Along Island Waypoints with Collision Avoidance
+      // ---------------------------------------------------------------------
+      if (c.state === 'stroll' || c.state === 'walk') {
         const dx = c.targetPos.x - c.pos.x;
         const dz = c.targetPos.z - c.pos.z;
         const dist = Math.hypot(dx, dz);
-        const speedMult = isStorm ? 1.65 : (isNight && c.arch.group !== 'security' ? 0.85 : 1.0);
-        const stepSpeed = (c.arch.speed || 2.5) * speedMult;
 
-        if (dist > 0.38) {
+        if (dist > 0.42) {
           const inv = 1 / Math.max(0.0001, dist);
-          const nx = dx * inv;
-          const nz = dz * inv;
-          c.pos.x += nx * stepSpeed * dt;
-          c.pos.z += nz * stepSpeed * dt;
+          const desiredNx = dx * inv;
+          const desiredNz = dz * inv;
+
+          // Compute real-time collision avoidance against Player, Vehicles, NPCs & Buildings
+          const avoid = this.computeCitizenAvoidance(c, desiredNx, desiredNz, playerOnLand);
+          c.evadingPlayer = avoid.evadingPlayer;
+
+          let moveX = desiredNx + avoid.steerX;
+          let moveZ = desiredNz + avoid.steerZ;
+          const moveLen = Math.hypot(moveX, moveZ);
+          if (moveLen > 0.0001) {
+            moveX /= moveLen;
+            moveZ /= moveLen;
+          } else {
+            moveX = desiredNx;
+            moveZ = desiredNz;
+          }
+
+          const weatherMult = isStorm ? 1.65 : (isNight && c.arch.group !== 'security' ? 0.86 : 1.0);
+          // Smooth deceleration when approaching building POI
+          const arrivalSlowdown = dist < 1.5 ? THREE.MathUtils.clamp(dist / 1.5, 0.55, 1.0) : 1.0;
+          const targetSpeed = (c.arch.speed || 2.4) * weatherMult * avoid.speedFactor * arrivalSlowdown;
+          c.currentSpeed = THREE.MathUtils.lerp(c.currentSpeed || targetSpeed, targetSpeed, Math.min(1, dt * 8));
+
+          c.pos.x += moveX * c.currentSpeed * dt;
+          c.pos.z += moveZ * c.currentSpeed * dt;
           c.pos.y = c.pos.z > 24.5 && !c.useResortLoop ? 0.72 : 0;
           c.mesh.position.copy(c.pos);
 
-          const targetYaw = Math.atan2(nx, nz);
+          const targetYaw = Math.atan2(moveX, moveZ);
           let diff = targetYaw - c.mesh.rotation.y;
           while (diff > Math.PI) diff -= Math.PI * 2;
           while (diff < -Math.PI) diff += Math.PI * 2;
           c.mesh.rotation.y += diff * Math.min(1, dt * 10);
 
-          c.walkPhase += dt * stepSpeed * 3.6;
+          // Articulated walking limb kinematics
+          c.walkPhase += dt * c.currentSpeed * 3.6;
           const swing = Math.sin(c.walkPhase) * (isStorm ? 0.72 : 0.52);
           ud.leftLeg.rotation.x = swing;
           ud.rightLeg.rotation.x = -swing;
           ud.leftArm.rotation.x = -swing * 0.65;
+          ud.leftArm.rotation.z = 0;
           ud.rightArm.rotation.x = swing * 0.65;
-          if (ud.head) ud.head.rotation.y = Math.sin(c.walkPhase * 0.5) * 0.1;
-        } else {
-          // Reached waypoint
-          c.currentWpKey = c.targetWpKey;
-          const reachedWp = ISLAND_WAYPOINTS[c.currentWpKey];
-          if (isStorm && reachedWp?.isShelter) {
-            c.state = 'shelter';
-            c.stateTimer = 2.5;
-          } else {
-            c.state = 'admire';
-            c.stateTimer = 1.8 + (c.idx % 3) * 0.85;
+          ud.rightArm.rotation.z = 0;
+          if (ud.torso) ud.torso.rotation.x = THREE.MathUtils.lerp(ud.torso.rotation.x, isStorm ? 0.14 : 0, Math.min(1, dt * 6));
+          if (ud.head) {
+            if (c.evadingPlayer) {
+              // Glance politely toward the player while sidestepping
+              const pYaw = Math.atan2(this.playerPos.x - c.pos.x, this.playerPos.z - c.pos.z) - c.mesh.rotation.y;
+              ud.head.rotation.y = THREE.MathUtils.clamp(pYaw, -0.55, 0.55);
+            } else {
+              ud.head.rotation.y = Math.sin(c.walkPhase * 0.5) * 0.1;
+            }
+            ud.head.rotation.x = 0;
           }
-          if (reachedWp && typeof reachedWp.lookYaw === 'number') {
-            c.mesh.rotation.y = reachedWp.lookYaw;
+        } else {
+          // Reached Building POI Waypoint -> Transition to Building Interaction or Storm Shelter
+          c.evadingPlayer = false;
+          c.currentWpKey = c.targetWpKey;
+          const reachedWp = ISLAND_WAYPOINTS[c.currentWpKey] || ISLAND_WAYPOINTS.plaza_center;
+          c.interactLabel = reachedWp.interactAction || `${c.arch.bubbles[0]} ${reachedWp.buildingLabel || ''}`;
+          c.interactPose = reachedWp.pose || 'inspect';
+          c.photoFlashed = false;
+          c.chatPartnerIdx = -1;
+
+          // Check if another citizen is already interacting at this building to form a social conversation pair
+          for (let j = 0; j < this.aiCitizens.length; j++) {
+            const other = this.aiCitizens[j];
+            if (other !== c && other.state === 'interact_building' && other.currentWpKey === c.currentWpKey) {
+              if (c.pos.distanceTo(other.pos) < 2.6) {
+                c.chatPartnerIdx = j;
+                break;
+              }
+            }
+          }
+
+          if (isStorm && reachedWp.isShelter) {
+            c.state = 'shelter';
+            c.interactLabel = reachedWp.buildingLabel || 'Mái hiên';
+            c.stateTimer = 3.0;
+          } else {
+            c.state = 'interact_building';
+            c.stateTimer = 2.6 + (c.idx % 4) * 0.95;
           }
         }
-      } else if (c.state === 'admire' || c.state === 'shelter') {
+      }
+      // ---------------------------------------------------------------------
+      // STATE 3: Stopping & Interacting with 3D Buildings (or Storm Shelter)
+      // ---------------------------------------------------------------------
+      else if (c.state === 'interact_building' || c.state === 'admire' || c.state === 'shelter') {
         c.stateTimer -= dt;
+        c.evadingPlayer = false;
+
+        // Even while stopped at a building, gently step aside if player or another NPC walks too close
+        const avoid = this.computeCitizenAvoidance(c, 0, 0, playerOnLand);
+        if (Math.abs(avoid.steerX) > 0.05 || Math.abs(avoid.steerZ) > 0.05) {
+          c.pos.x += avoid.steerX * dt * 1.35;
+          c.pos.z += avoid.steerZ * dt * 1.35;
+          c.mesh.position.copy(c.pos);
+        }
+
+        // Smoothly orient toward either a social chat partner or the building's 3D focal point (`lookAt`)
+        const curWp = ISLAND_WAYPOINTS[c.currentWpKey] || ISLAND_WAYPOINTS.plaza_center;
+        let lookTargetX = curWp.lookAt ? curWp.lookAt.x : c.pos.x;
+        let lookTargetZ = curWp.lookAt ? curWp.lookAt.z : c.pos.z + 4;
+        if (c.chatPartnerIdx >= 0 && this.aiCitizens[c.chatPartnerIdx]) {
+          const partner = this.aiCitizens[c.chatPartnerIdx];
+          lookTargetX = partner.pos.x;
+          lookTargetZ = partner.pos.z;
+        }
+        const ldx = lookTargetX - c.pos.x;
+        const ldz = lookTargetZ - c.pos.z;
+        if (ldx * ldx + ldz * ldz > 0.01) {
+          const desiredYaw = Math.atan2(ldx, ldz);
+          let yDiff = desiredYaw - c.mesh.rotation.y;
+          while (yDiff > Math.PI) yDiff -= Math.PI * 2;
+          while (yDiff < -Math.PI) yDiff += Math.PI * 2;
+          c.mesh.rotation.y += yDiff * Math.min(1, dt * 7);
+        }
+
+        // Return legs to standing rest
         ud.leftLeg.rotation.x = THREE.MathUtils.lerp(ud.leftLeg.rotation.x, 0, Math.min(1, dt * 8));
         ud.rightLeg.rotation.x = THREE.MathUtils.lerp(ud.rightLeg.rotation.x, 0, Math.min(1, dt * 8));
-        ud.leftArm.rotation.x = THREE.MathUtils.lerp(ud.leftArm.rotation.x, 0, Math.min(1, dt * 8));
 
-        // Role-specific idle pose (snapping photo, sipping coffee, scanning port)
-        const idleArmPitch = c.arch.prop === 'camera'
-          ? -0.95
-          : c.arch.prop === 'coffee'
-            ? -0.75
-            : 0;
-        ud.rightArm.rotation.x = THREE.MathUtils.lerp(ud.rightArm.rotation.x, idleArmPitch, Math.min(1, dt * 6));
-        if (ud.head) {
-          ud.head.rotation.y = Math.sin(this.elapsed * 1.8 + c.idx) * 0.25;
+        // Multi-Joint 3D Building Interaction Kinematics
+        const t = this.elapsed * 3.2 + c.idx;
+        if (c.chatPartnerIdx >= 0) {
+          // Animated peer conversation gestures
+          ud.leftArm.rotation.x = THREE.MathUtils.lerp(ud.leftArm.rotation.x, -0.55 + Math.sin(t * 1.5) * 0.22, Math.min(1, dt * 6));
+          ud.rightArm.rotation.x = THREE.MathUtils.lerp(ud.rightArm.rotation.x, -0.65 + Math.cos(t * 1.7) * 0.28, Math.min(1, dt * 6));
+          if (ud.head) {
+            ud.head.rotation.x = Math.sin(t * 2.2) * 0.1;
+            ud.head.rotation.y = Math.cos(t * 1.1) * 0.15;
+          }
+        } else if (c.interactPose === 'photo' || c.arch.prop === 'camera') {
+          // Raise both hands to frame a photo of the landmark + trigger camera shutter flash particle once
+          ud.leftArm.rotation.x = THREE.MathUtils.lerp(ud.leftArm.rotation.x, -1.18, Math.min(1, dt * 7));
+          ud.leftArm.rotation.z = THREE.MathUtils.lerp(ud.leftArm.rotation.z, -0.22, Math.min(1, dt * 7));
+          ud.rightArm.rotation.x = THREE.MathUtils.lerp(ud.rightArm.rotation.x, -1.22, Math.min(1, dt * 7));
+          ud.rightArm.rotation.z = THREE.MathUtils.lerp(ud.rightArm.rotation.z, 0.22, Math.min(1, dt * 7));
+          if (ud.head) ud.head.rotation.x = -0.08;
+          if (!c.photoFlashed && c.stateTimer < 1.4 && this.activeProfile !== 'low') {
+            c.photoFlashed = true;
+            this._tmpVec.set(c.pos.x + Math.sin(c.mesh.rotation.y) * 0.45, c.pos.y + 1.55, c.pos.z + Math.cos(c.mesh.rotation.y) * 0.45);
+            this.world.spawnParticles(this._tmpVec, 0xfef08a, 2);
+          }
+        } else if (c.interactPose === 'point_up') {
+          // Gaze up at Corporate HQ tower / Lighthouse and point upward
+          ud.leftArm.rotation.x = THREE.MathUtils.lerp(ud.leftArm.rotation.x, -0.35, Math.min(1, dt * 6));
+          ud.rightArm.rotation.x = THREE.MathUtils.lerp(ud.rightArm.rotation.x, -1.75 + Math.sin(t) * 0.15, Math.min(1, dt * 6));
+          if (ud.head) {
+            ud.head.rotation.x = THREE.MathUtils.lerp(ud.head.rotation.x, -0.26, Math.min(1, dt * 6));
+            ud.head.rotation.y = Math.sin(t * 0.7) * 0.18;
+          }
+        } else if (c.interactPose === 'sip_coffee' || c.arch.prop === 'coffee') {
+          // Relax at Harbor Boardwalk Café / Resort and sip coffee
+          const sipWave = Math.sin(t * 0.85) > 0.2 ? -1.1 : -0.55;
+          ud.leftArm.rotation.x = THREE.MathUtils.lerp(ud.leftArm.rotation.x, sipWave, Math.min(1, dt * 5));
+          ud.rightArm.rotation.x = THREE.MathUtils.lerp(ud.rightArm.rotation.x, -0.2, Math.min(1, dt * 5));
+          if (ud.head) ud.head.rotation.y = Math.sin(t * 0.6) * 0.28;
+        } else if (c.interactPose === 'wave_ship') {
+          // Wave at Cargo Ships / Freight Train at the Pier & Station
+          ud.leftArm.rotation.x = THREE.MathUtils.lerp(ud.leftArm.rotation.x, 0, Math.min(1, dt * 6));
+          ud.rightArm.rotation.x = -2.15 + Math.sin(this.elapsed * 11 + c.idx) * 0.32;
+          ud.rightArm.rotation.z = 0.2 + Math.cos(this.elapsed * 11 + c.idx) * 0.16;
+        } else {
+          // Default 'inspect' pose: lean slightly forward examining Sawmill / Furniture / Airport blueprints
+          if (ud.torso) ud.torso.rotation.x = THREE.MathUtils.lerp(ud.torso.rotation.x, 0.11, Math.min(1, dt * 6));
+          ud.leftArm.rotation.x = THREE.MathUtils.lerp(ud.leftArm.rotation.x, -0.82, Math.min(1, dt * 6));
+          ud.rightArm.rotation.x = THREE.MathUtils.lerp(ud.rightArm.rotation.x, -0.68 + Math.sin(t * 1.4) * 0.22, Math.min(1, dt * 6));
+          if (ud.head) ud.head.rotation.y = Math.sin(t * 0.8) * 0.22;
         }
 
+        // Finish building interaction & pick next connected waypoint
         if (c.stateTimer <= 0 && !(isStorm && c.state === 'shelter')) {
-          const curWp = ISLAND_WAYPOINTS[c.currentWpKey] || ISLAND_WAYPOINTS.plaza_center;
-          const neighbors = curWp.neighbors || ['plaza_center'];
-          const nextKey = neighbors[(c.idx + Math.floor(this.elapsed)) % neighbors.length];
-          const nextWp = ISLAND_WAYPOINTS[nextKey] || ISLAND_WAYPOINTS.plaza_center;
-          const offsetAngle = (c.idx * 1.9) % (Math.PI * 2);
-          c.targetWpKey = nextWp.id;
-          c.targetPos.set(
-            nextWp.x + Math.cos(offsetAngle) * 0.75,
-            0,
-            nextWp.z + Math.sin(offsetAngle) * 0.75
-          );
-          c.state = 'walk';
+          ud.leftArm.rotation.z = 0;
+          ud.rightArm.rotation.z = 0;
+          if (ud.torso) ud.torso.rotation.x = 0;
+          if (ud.head) ud.head.rotation.x = 0;
+          this.pickNextCitizenWaypoint(c);
         }
       }
     }
