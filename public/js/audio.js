@@ -303,6 +303,25 @@ class SoundEngine {
     osc.start(now);
     osc.stop(now + 0.09);
   }
+
+  playCitizenGreet() {
+    const ctx = this.ensureCtx();
+    if (!ctx) return;
+    const now = ctx.currentTime;
+    const notes = [523.25, 659.25, 783.99];
+    notes.forEach((freq, i) => {
+      const osc = ctx.createOscillator();
+      const gain = ctx.createGain();
+      osc.type = 'sine';
+      osc.frequency.setValueAtTime(freq, now + i * 0.055);
+      gain.gain.setValueAtTime(0.065, now + i * 0.055);
+      gain.gain.exponentialRampToValueAtTime(0.001, now + i * 0.055 + 0.14);
+      osc.connect(gain);
+      gain.connect(ctx.destination);
+      osc.start(now + i * 0.055);
+      osc.stop(now + i * 0.055 + 0.16);
+    });
+  }
 }
 
 export const sound = new SoundEngine();

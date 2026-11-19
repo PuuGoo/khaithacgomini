@@ -10,7 +10,7 @@
   <link rel="preconnect" href="https://fonts.googleapis.com">
   <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
   <link href="https://fonts.googleapis.com/css2?family=JetBrains+Mono:wght@500;600;700&family=Outfit:wght@600;700&family=Plus+Jakarta+Sans:wght@400;500;600;700&display=swap" rel="stylesheet">
-  <link rel="stylesheet" href="/css/style.css?v=2.9.0">
+  <link rel="stylesheet" href="/css/style.css?v=2.10.0">
   <link rel="icon" href="data:image/svg+xml,<svg xmlns=%22http://www.w3.org/2000/svg%22 viewBox=%220 0 100 100%22><text y=%22.9em%22 font-size=%2290%22>🪵</text></svg>">
   <script type="importmap">
   {
@@ -77,6 +77,11 @@
       <span class="meta-sep" aria-hidden="true">·</span>
       <span class="res-item res-gems" title="Đá quý thương mại">
         💎 <span class="res-val" id="val-gems">30</span>
+      </span>
+      <span class="meta-sep hide-sm" aria-hidden="true">·</span>
+      <span class="res-item hide-sm" title="Dân số Đảo &amp; Chỉ số Hài Lòng Đô Thị (Tăng Thuế Du Lịch &amp; Tiền Tip)">
+        👥 <span class="res-val" id="val-pop">36</span>
+        <span class="res-cpm" id="val-happy">74%</span>
       </span>
     </div>
 
@@ -168,6 +173,9 @@
     <button type="button" id="btn-quick-export" class="fleet-quick-btn is-supply" title="Giao nhanh hàng vào Hợp đồng Cảng">
       <span>📦</span><span>Xuất HĐ</span>
     </button>
+    <button type="button" id="btn-quick-greet" class="fleet-quick-btn is-civic" title="Chào đón Dân cư AI đi bộ &amp; Nhận tiền Tip / Đá quý (Phím G)">
+      <span>👋</span><span>Dân cư</span>
+    </button>
     <button type="button" id="btn-quick-train" class="fleet-quick-btn is-rail" title="Kéo còi &amp; Tăng tốc Tàu Hỏa Công Nghiệp (Phím T)">
       <span>🚂</span><span>Tàu hỏa</span>
     </button>
@@ -216,11 +224,11 @@
       <div class="minimap-legend">
         <span>🌲 Rừng</span>
         <span class="meta-sep" aria-hidden="true">·</span>
+        <span>👥 Dân</span>
+        <span class="meta-sep" aria-hidden="true">·</span>
         <span>🚂 Tàu</span>
         <span class="meta-sep" aria-hidden="true">·</span>
         <span>🚢 Cảng</span>
-        <span class="meta-sep" aria-hidden="true">·</span>
-        <span>🚁 Bay</span>
       </div>
     </div>
   </aside>
@@ -418,6 +426,6 @@
   <div id="toast-container" class="toast-container" aria-live="polite"></div>
 
   <!-- Application Entry Point (Modern ES Modules) -->
-  <script type="module" src="/js/engine.js?v=2.9.0"></script>
+  <script type="module" src="/js/engine.js?v=2.10.0"></script>
 </body>
 </html>

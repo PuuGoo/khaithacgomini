@@ -2301,3 +2301,333 @@ export function createHelipadModel(lowSpec = false) {
   return g;
 }
 
+// ---------------------------------------------------------------------------
+// Phase 9: Living Island AI Civilian Pedestrian Models & Civic Promenade
+// ---------------------------------------------------------------------------
+let citizenGeos = null;
+function getCitizenGeos() {
+  if (citizenGeos) return citizenGeos;
+  citizenGeos = {
+    Briefcase: markShared(new THREE.BoxGeometry(0.32, 0.24, 0.1)),
+    BriefcaseHandle: markShared(new THREE.BoxGeometry(0.12, 0.05, 0.04)),
+    CameraBody: markShared(new THREE.BoxGeometry(0.22, 0.16, 0.14)),
+    CameraLens: markShared(new THREE.CylinderGeometry(0.055, 0.055, 0.09, 8)),
+    BlueprintTube: markShared(new THREE.CylinderGeometry(0.055, 0.055, 0.44, 8)),
+    CoffeeCup: markShared(new THREE.CylinderGeometry(0.06, 0.045, 0.16, 8)),
+    FlashlightBody: markShared(new THREE.CylinderGeometry(0.04, 0.045, 0.28, 8)),
+    FlashlightBeam: markShared(new THREE.ConeGeometry(0.42, 1.5, 10, 1, true)),
+    SunhatBrim: markShared(new THREE.CylinderGeometry(0.42, 0.44, 0.03, 12)),
+    SailorCrown: markShared(new THREE.CylinderGeometry(0.27, 0.23, 0.15, 10)),
+    Tie: markShared(new THREE.BoxGeometry(0.1, 0.36, 0.04))
+  };
+  citizenGeos.FlashlightBeam.translate(0, -0.78, 0);
+  citizenGeos.FlashlightBeam.rotateX(-Math.PI / 2);
+  return citizenGeos;
+}
+
+export function createCitizenModel(archDef = {}) {
+  const pGeos = getPlayerGeos();
+  const cGeos = getCitizenGeos();
+  const root = new THREE.Group();
+  root.add(makeContactShadow(0.82, 0.32));
+
+  const skinTones = [0xf4c7a1, 0xe8b48b, 0xd69e72, 0xf7d7bc];
+  const skinHex = skinTones[Math.abs((archDef.id || 'm').charCodeAt(0)) % skinTones.length];
+
+  const mats = {
+    skin: new THREE.MeshStandardMaterial({ color: skinHex, roughness: 0.65 }),
+    suit: new THREE.MeshStandardMaterial({ color: archDef.suitColor || 0x1e3a8a, roughness: 0.68 }),
+    pants: new THREE.MeshStandardMaterial({ color: archDef.pantsColor || 0x0f172a, roughness: 0.8 }),
+    accent: new THREE.MeshStandardMaterial({ color: archDef.accentColor || 0xf59e0b, roughness: 0.35, metalness: 0.45 }),
+    hat: new THREE.MeshStandardMaterial({ color: archDef.hatColor || 0x1e293b, roughness: 0.42 }),
+    boot: new THREE.MeshStandardMaterial({ color: 0x1c1917, roughness: 0.86 }),
+    darkMetal: new THREE.MeshStandardMaterial({ color: 0x334155, roughness: 0.3, metalness: 0.75 }),
+    beam: new THREE.MeshBasicMaterial({
+      color: 0xfef08a,
+      transparent: true,
+      opacity: 0.24,
+      side: THREE.DoubleSide,
+      depthWrite: false
+    })
+  };
+
+  const leftLeg = new THREE.Group();
+  leftLeg.position.set(-0.17, 0.72, 0);
+  const lThigh = new THREE.Mesh(pGeos.thigh, mats.pants);
+  lThigh.position.y = -0.28;
+  lThigh.castShadow = true;
+  const lBoot = new THREE.Mesh(pGeos.boot, mats.boot);
+  lBoot.position.set(0, -0.62, 0.04);
+  leftLeg.add(lThigh, lBoot);
+  root.add(leftLeg);
+
+  const rightLeg = new THREE.Group();
+  rightLeg.position.set(0.17, 0.72, 0);
+  const rThigh = new THREE.Mesh(pGeos.thigh, mats.pants);
+  rThigh.position.y = -0.28;
+  rThigh.castShadow = true;
+  const rBoot = new THREE.Mesh(pGeos.boot, mats.boot);
+  rBoot.position.set(0, -0.62, 0.04);
+  rightLeg.add(rThigh, rBoot);
+  root.add(rightLeg);
+
+  const torso = new THREE.Group();
+  torso.position.set(0, 0.76, 0);
+  root.add(torso);
+
+  const chest = new THREE.Mesh(pGeos.chest, mats.suit);
+  chest.position.y = 0.39;
+  chest.castShadow = true;
+  torso.add(chest);
+
+  const vestOrTrim = new THREE.Mesh(pGeos.vest, mats.accent);
+  vestOrTrim.position.y = 0.44;
+  torso.add(vestOrTrim);
+
+  if (archDef.group === 'commerce' || archDef.group === 'investors') {
+    const tie = new THREE.Mesh(cGeos.Tie, mats.accent);
+    tie.position.set(0, 0.44, 0.22);
+    torso.add(tie);
+  }
+
+  const belt = new THREE.Mesh(pGeos.belt, mats.boot);
+  belt.position.y = 0.06;
+  torso.add(belt);
+
+  const head = new THREE.Group();
+  head.position.set(0, 0.98, 0);
+  torso.add(head);
+
+  const skull = new THREE.Mesh(pGeos.skull, mats.skin);
+  skull.castShadow = true;
+  head.add(skull);
+
+  [-0.1, 0.1].forEach((ex) => {
+    const eye = new THREE.Mesh(pGeos.eye, pGeos.eyeMat);
+    eye.position.set(ex, 0.03, 0.23);
+    head.add(eye);
+  });
+
+  // Archetype headwear
+  const hatCrown = new THREE.Mesh(
+    archDef.hatStyle === 'sailor' ? cGeos.SailorCrown : pGeos.helmet,
+    mats.hat
+  );
+  hatCrown.position.y = 0.26;
+  head.add(hatCrown);
+
+  if (archDef.hatStyle === 'sunhat' || archDef.hatStyle === 'fedora') {
+    const brim = new THREE.Mesh(cGeos.SunhatBrim, mats.hat);
+    brim.position.y = 0.2;
+    if (archDef.hatStyle === 'fedora') brim.scale.set(0.8, 1, 0.8);
+    head.add(brim);
+  } else if (archDef.hatStyle === 'cap' || archDef.hatStyle === 'hardhat') {
+    const visor = new THREE.Mesh(pGeos.brim, mats.hat);
+    visor.position.set(0, 0.19, 0.12);
+    head.add(visor);
+  }
+
+  const leftArm = new THREE.Group();
+  leftArm.position.set(-0.47, 0.68, 0);
+  const lArmMesh = new THREE.Mesh(pGeos.arm, mats.suit);
+  lArmMesh.position.y = -0.26;
+  lArmMesh.castShadow = true;
+  leftArm.add(lArmMesh);
+  torso.add(leftArm);
+
+  const rightArm = new THREE.Group();
+  rightArm.position.set(0.47, 0.68, 0);
+  const rArmMesh = new THREE.Mesh(pGeos.arm, mats.suit);
+  rArmMesh.position.y = -0.26;
+  rArmMesh.castShadow = true;
+  rightArm.add(rArmMesh);
+  torso.add(rightArm);
+
+  // Archetype 3D Hand / Chest Props
+  let flashlightBeam = null;
+  if (archDef.prop === 'briefcase') {
+    const bc = new THREE.Group();
+    bc.position.set(-0.08, -0.58, 0.04);
+    const body = new THREE.Mesh(cGeos.Briefcase, mats.accent);
+    body.rotation.y = Math.PI / 2;
+    const hdl = new THREE.Mesh(cGeos.BriefcaseHandle, mats.boot);
+    hdl.rotation.y = Math.PI / 2;
+    hdl.position.y = 0.14;
+    bc.add(body, hdl);
+    leftArm.add(bc);
+  } else if (archDef.prop === 'camera') {
+    const cam = new THREE.Group();
+    cam.position.set(0, 0.42, 0.27);
+    const cBody = new THREE.Mesh(cGeos.CameraBody, mats.darkMetal);
+    const cLens = new THREE.Mesh(cGeos.CameraLens, mats.accent);
+    cLens.rotation.x = Math.PI / 2;
+    cLens.position.z = 0.09;
+    cam.add(cBody, cLens);
+    torso.add(cam);
+  } else if (archDef.prop === 'blueprint') {
+    const tube = new THREE.Mesh(cGeos.BlueprintTube, mats.hat);
+    tube.rotation.x = Math.PI / 2;
+    tube.position.set(-0.06, -0.54, 0.12);
+    leftArm.add(tube);
+  } else if (archDef.prop === 'coffee') {
+    const cup = new THREE.Mesh(cGeos.CoffeeCup, mats.hat);
+    cup.position.set(0, -0.52, 0.16);
+    leftArm.add(cup);
+  } else if (archDef.prop === 'flashlight') {
+    const fl = new THREE.Group();
+    fl.position.set(0, -0.52, 0.16);
+    const flBody = new THREE.Mesh(cGeos.FlashlightBody, mats.darkMetal);
+    flBody.rotation.x = Math.PI / 2;
+    flashlightBeam = new THREE.Mesh(cGeos.FlashlightBeam, mats.beam);
+    flashlightBeam.position.z = 0.14;
+    flashlightBeam.visible = false;
+    fl.add(flBody, flashlightBeam);
+    rightArm.add(fl);
+  }
+
+  root.scale.setScalar(0.84);
+  root.userData = {
+    leftLeg,
+    rightLeg,
+    leftArm,
+    rightArm,
+    torso,
+    head,
+    flashlightBeam
+  };
+  return root;
+}
+
+export function createCivicPromenadeModel(lowSpec = false) {
+  const g = new THREE.Group();
+  const woodMat = new THREE.MeshStandardMaterial({ color: 0x9a5b25, roughness: 0.72 });
+  const ironMat = new THREE.MeshStandardMaterial({ color: 0x1e293b, roughness: 0.4, metalness: 0.7 });
+  const stoneMat = new THREE.MeshStandardMaterial({ color: 0x64748b, roughness: 0.8 });
+  const foliageMat = new THREE.MeshStandardMaterial({ color: 0x16a34a, roughness: 0.75, flatShading: true });
+  const lampGlowMat = new THREE.MeshStandardMaterial({
+    color: 0xfef3c7,
+    emissive: 0xf59e0b,
+    emissiveIntensity: 0.85,
+    roughness: 0.2
+  });
+  const goldMat = new THREE.MeshStandardMaterial({
+    color: 0xfbbf24,
+    roughness: 0.25,
+    metalness: 0.85
+  });
+  const parasolRedMat = new THREE.MeshStandardMaterial({ color: 0xe11d48, roughness: 0.6, flatShading: true });
+  const parasolCyanMat = new THREE.MeshStandardMaterial({ color: 0x0284c7, roughness: 0.6, flatShading: true });
+
+  // Tier 1: Harbor & Central Avenue Park Benches, Planters & Warm Street Bollards
+  const tier1Group = new THREE.Group();
+  tier1Group.visible = false;
+  const benchCoords = [
+    [-6.5, 5.5, 0], [6.5, 5.5, 0], [-6.5, 16.5, 0], [6.5, 16.5, 0],
+    [-11.5, 22.8, Math.PI], [5.5, 22.8, Math.PI]
+  ];
+  for (const [bx, bz, rotY] of benchCoords) {
+    const bench = new THREE.Group();
+    bench.position.set(bx, 0, bz);
+    bench.rotation.y = rotY;
+    const seat = new THREE.Mesh(new THREE.BoxGeometry(1.5, 0.1, 0.48), woodMat);
+    seat.position.y = 0.42;
+    seat.castShadow = !lowSpec;
+    const back = new THREE.Mesh(new THREE.BoxGeometry(1.5, 0.42, 0.08), woodMat);
+    back.position.set(0, 0.66, -0.2);
+    const legL = new THREE.Mesh(new THREE.BoxGeometry(0.1, 0.42, 0.44), ironMat);
+    legL.position.set(-0.62, 0.21, 0);
+    const legR = new THREE.Mesh(new THREE.BoxGeometry(0.1, 0.42, 0.44), ironMat);
+    legR.position.set(0.62, 0.21, 0);
+    bench.add(seat, back, legL, legR);
+    tier1Group.add(bench);
+
+    // Adjacent planter box + bollard lamp
+    const planter = new THREE.Group();
+    planter.position.set(bx + (bx < 0 ? -1.35 : 1.35), 0, bz);
+    const pot = new THREE.Mesh(new THREE.BoxGeometry(0.72, 0.48, 0.72), stoneMat);
+    pot.position.y = 0.24;
+    const bush = new THREE.Mesh(new THREE.DodecahedronGeometry(0.46, 0), foliageMat);
+    bush.position.y = 0.68;
+    const post = new THREE.Mesh(new THREE.CylinderGeometry(0.06, 0.08, 2.2, 6), ironMat);
+    post.position.set(0, 1.1, 0.55);
+    const lantern = new THREE.Mesh(new THREE.SphereGeometry(0.18, 8, 6), lampGlowMat);
+    lantern.position.set(0, 2.25, 0.55);
+    planter.add(pot, bush, post, lantern);
+    tier1Group.add(planter);
+  }
+  g.add(tier1Group);
+
+  // Tier 2: Harbor Boardwalk Café Tables, Striped Parasols & Tourist Kiosk
+  const tier2Group = new THREE.Group();
+  tier2Group.visible = false;
+  const cafeSpots = [
+    [-14.5, 20.8], [-9.2, 20.8], [7.8, 20.8], [12.4, 20.8]
+  ];
+  cafeSpots.forEach(([cx, cz], idx) => {
+    const cafe = new THREE.Group();
+    cafe.position.set(cx, 0, cz);
+    const pole = new THREE.Mesh(new THREE.CylinderGeometry(0.05, 0.05, 2.3, 6), ironMat);
+    pole.position.y = 1.15;
+    const table = new THREE.Mesh(new THREE.CylinderGeometry(0.68, 0.68, 0.08, 10), woodMat);
+    table.position.y = 0.74;
+    const canopy = new THREE.Mesh(
+      new THREE.ConeGeometry(1.35, 0.55, 8),
+      idx % 2 === 0 ? parasolRedMat : parasolCyanMat
+    );
+    canopy.position.y = 2.32;
+    canopy.castShadow = !lowSpec;
+    cafe.add(pole, table, canopy);
+    tier2Group.add(cafe);
+  });
+
+  // Harbor Tourist Welcome Kiosk near Central Plaza
+  const kiosk = new THREE.Group();
+  kiosk.position.set(-5.8, 0, 11.2);
+  const kBase = new THREE.Mesh(new THREE.CylinderGeometry(1.1, 1.15, 1.1, 8), woodMat);
+  kBase.position.y = 0.55;
+  const kGlass = new THREE.Mesh(new THREE.CylinderGeometry(0.98, 0.98, 1.1, 8), lampGlowMat);
+  kGlass.position.y = 1.45;
+  const kRoof = new THREE.Mesh(new THREE.ConeGeometry(1.45, 0.85, 8), parasolCyanMat);
+  kRoof.position.y = 2.35;
+  kiosk.add(kBase, kGlass, kRoof);
+  tier2Group.add(kiosk);
+  g.add(tier2Group);
+
+  // Tier 3: Golden Wall Street Harbor Arch & Royal Maritime Monument
+  const tier3Group = new THREE.Group();
+  tier3Group.visible = false;
+  const arch = new THREE.Group();
+  arch.position.set(0, 0, 21.6);
+  const colL = new THREE.Mesh(new THREE.CylinderGeometry(0.32, 0.38, 4.8, 8), ironMat);
+  colL.position.set(-3.4, 2.4, 0);
+  const colR = new THREE.Mesh(new THREE.CylinderGeometry(0.32, 0.38, 4.8, 8), ironMat);
+  colR.position.set(3.4, 2.4, 0);
+  const beam = new THREE.Mesh(new THREE.BoxGeometry(7.8, 0.62, 0.58), goldMat);
+  beam.position.set(0, 4.95, 0);
+  const crest = new THREE.Mesh(new THREE.OctahedronGeometry(0.55, 0), goldMat);
+  crest.position.set(0, 5.65, 0);
+  arch.add(colL, colR, beam, crest);
+  tier3Group.add(arch);
+
+  // Golden Bull / Maritime Sphere Monument in Central Plaza
+  const monument = new THREE.Group();
+  monument.position.set(5.8, 0, 11.2);
+  const ped = new THREE.Mesh(new THREE.CylinderGeometry(0.95, 1.2, 1.1, 8), stoneMat);
+  ped.position.y = 0.55;
+  const globe = new THREE.Mesh(new THREE.TorusKnotGeometry(0.52, 0.14, 28, 6), goldMat);
+  globe.position.y = 1.85;
+  monument.add(ped, globe);
+  tier3Group.add(monument);
+  g.add(tier3Group);
+
+  g.userData = {
+    tier1Group,
+    tier2Group,
+    tier3Group,
+    lampGlowMat,
+    globe
+  };
+  return g;
+}
+
+

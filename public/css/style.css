@@ -2861,7 +2861,16 @@ body.zen-hud #btn-notifications {
    ========================================================================= */
 
 .fleet-quick-strip {
-  max-width: 440px;
+  max-width: 520px;
+}
+
+.fleet-quick-btn.is-civic {
+  border-color: rgba(250, 204, 21, 0.58);
+  color: #fef08a;
+}
+.fleet-quick-btn.is-civic:hover {
+  border-color: #facc15;
+  background: #27210f;
 }
 
 .fleet-quick-btn.is-rail {

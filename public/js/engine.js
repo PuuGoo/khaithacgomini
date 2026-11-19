@@ -22,6 +22,12 @@ import {
   RAILWAY_TIERS,
   HELI_TIERS,
   WEATHER_PRESETS,
+  CIVIC_AMENITY_TIERS,
+  CITIZEN_ARCHETYPES,
+  getIslandPopulation,
+  getCitizenHappiness,
+  getCivicTaxPer10s,
+  getActiveCitizenCount,
   fleetMissionState,
   marketState,
   stormState,
@@ -84,7 +90,13 @@ import {
   loadGameLocal
 } from './state.js';
 import { sound } from './audio.js';
-import { setTextureAnisotropy, makeWorldBadgeSprite, disposeAllCachedTextures } from './textures.js';
+import {
+  setTextureAnisotropy,
+  makeWorldBadgeSprite,
+  makeCitizenBubbleSprite,
+  updateCitizenBubbleSprite,
+  disposeAllCachedTextures
+} from './textures.js';
 import {
   createPlayerModel,
   updatePlayerModelSkin,
@@ -93,6 +105,7 @@ import {
   createVehicleModel,
   createFishingBoatModel,
   createWorkerModel,
+  createCitizenModel,
   createDrivableYachtModel,
   createAirplaneModel,
   createHelicopterModel,
@@ -101,6 +114,34 @@ import {
 } from './models.js';
 import { WorldManager, WORLD_BOUNDS, SEA_BOUNDS, AIR_BOUNDS, ZONES } from './world.js';
 import { UIManager } from './ui.js';
+
+// ---------------------------------------------------------------------------
+// 0. Island Pedestrian Waypoint Graph (Mainland Promenade & Offshore Resort)
+// ---------------------------------------------------------------------------
+const ISLAND_WAYPOINTS = {
+  plaza_center: { id: 'plaza_center', x: 0.5, z: 4.5, isShelter: false, lookYaw: 0, neighbors: ['sawmill_walk', 'hq_plaza', 'boardwalk_center', 'rail_station'] },
+  sawmill_walk: { id: 'sawmill_walk', x: 5.0, z: -3.2, isShelter: true, lookYaw: Math.PI, neighbors: ['plaza_center', 'hq_plaza', 'furniture_walk'] },
+  hq_plaza: { id: 'hq_plaza', x: 13.5, z: -10.5, isShelter: true, lookYaw: 0, neighbors: ['plaza_center', 'sawmill_walk', 'east_avenue'] },
+  east_avenue: { id: 'east_avenue', x: 18.5, z: -4.0, isShelter: false, lookYaw: -Math.PI * 0.5, neighbors: ['hq_plaza', 'airport_terminal', 'furniture_walk'] },
+  furniture_walk: { id: 'furniture_walk', x: 13.2, z: 4.8, isShelter: true, lookYaw: Math.PI, neighbors: ['sawmill_walk', 'east_avenue', 'helipad_plaza', 'boardwalk_center'] },
+  rail_station: { id: 'rail_station', x: -14.5, z: -2.5, isShelter: true, lookYaw: -Math.PI * 0.5, neighbors: ['plaza_center', 'boardwalk_west'] },
+  boardwalk_west: { id: 'boardwalk_west', x: -9.5, z: 17.2, isShelter: true, lookYaw: 0, neighbors: ['rail_station', 'boardwalk_center'] },
+  boardwalk_center: { id: 'boardwalk_center', x: 1.5, z: 17.2, isShelter: true, lookYaw: 0, neighbors: ['plaza_center', 'furniture_walk', 'boardwalk_west', 'harbor_pier', 'boardwalk_east'] },
+  harbor_pier: { id: 'harbor_pier', x: 2.0, z: 22.8, isShelter: false, lookYaw: 0, neighbors: ['boardwalk_center'] },
+  boardwalk_east: { id: 'boardwalk_east', x: 12.8, z: 18.8, isShelter: true, lookYaw: 0.25, neighbors: ['boardwalk_center', 'helipad_plaza'] },
+  helipad_plaza: { id: 'helipad_plaza', x: 17.5, z: 12.2, isShelter: false, lookYaw: 0.5, neighbors: ['furniture_walk', 'boardwalk_east', 'airport_terminal'] },
+  airport_terminal: { id: 'airport_terminal', x: 23.2, z: 3.5, isShelter: true, lookYaw: Math.PI * 0.5, neighbors: ['east_avenue', 'helipad_plaza'] },
+  // Offshore Luxury Resort Island Loop
+  resort_west: { id: 'resort_west', x: 47.5, z: 48.5, isShelter: false, lookYaw: -0.4, neighbors: ['resort_plaza', 'resort_lighthouse'] },
+  resort_plaza: { id: 'resort_plaza', x: 52.0, z: 52.0, isShelter: true, lookYaw: 0, neighbors: ['resort_west', 'resort_lighthouse'] },
+  resort_lighthouse: { id: 'resort_lighthouse', x: 56.5, z: 55.5, isShelter: true, lookYaw: 0.6, neighbors: ['resort_plaza', 'resort_west'] }
+};
+const MAINLAND_WP_KEYS = [
+  'plaza_center', 'sawmill_walk', 'hq_plaza', 'east_avenue',
+  'furniture_walk', 'rail_station', 'boardwalk_west', 'boardwalk_center',
+  'harbor_pier', 'boardwalk_east', 'helipad_plaza', 'airport_terminal'
+];
+const RESORT_WP_KEYS = ['resort_west', 'resort_plaza', 'resort_lighthouse'];
 
 // ---------------------------------------------------------------------------
 // 1. Hardware & WebGL Capability Profiler (<8GB RAM / Intel HD Guard)
@@ -223,6 +264,7 @@ class TimberPortEngine {
     this.world.syncEvolution(getSawmillVisualTier(), getHarborVisualTier());
     this.world.syncRailwayTier(gameState.railwayTier || 0);
     this.world.syncHeliTier(gameState.heliTier || 0);
+    this.world.syncCivicTier(gameState.civicTier || 0);
 
     // Pre-allocated math vectors (Zero GC inside render loop)
     this._vecForward = new THREE.Vector3();
@@ -255,6 +297,7 @@ class TimberPortEngine {
     this.empirePhase6Timer = 0;
     this.phase7TickTimer = 0;
     this.phase8TickTimer = 0;
+    this.civicTickTimer = 0;
     this.revSampleTimer = 0;
     this.stockAccum = 0;
     this.chopCooldown = 0;
@@ -304,6 +347,9 @@ class TimberPortEngine {
     this.fishingBoats = [];
     this.rebuildWorkforce();
 
+    this.aiCitizens = [];
+    this.rebuildCitizens();
+
     this.drivableYacht = null;
     this.drivablePlane = null;
     this.drivableHeli = null;
@@ -336,19 +382,24 @@ class TimberPortEngine {
       onYachtChange: () => {
         this.world?.syncYachtTier(gameState.yachtTier || 0);
         this.rebuildAirSeaFleet();
+        this.rebuildCitizens();
       },
       onAirportChange: () => {
         this.world?.syncAirportTier(gameState.airportTier || 0);
         this.rebuildAirSeaFleet();
+        this.rebuildCitizens();
       },
       onIslandChange: () => {
         this.world?.syncIslandTier(gameState.islandStationTier || 0);
+        this.rebuildCitizens();
       },
       onHqChange: () => {
         this.world?.syncHqTier(gameState.hqTier || 0);
+        this.rebuildCitizens();
       },
       onResortChange: () => {
         this.world?.syncResortTier(gameState.islandResortTier || 0);
+        this.rebuildCitizens();
       },
       onFurnitureMillChange: () => {
         this.world?.syncFurnitureMillTier(gameState.furnitureMillTier || 0);
@@ -358,17 +409,25 @@ class TimberPortEngine {
       },
       onDeepPortChange: () => {
         this.world?.syncDeepPortTier(gameState.deepPortTier || 0, gameState.greenEnergyTier || 0);
+        this.rebuildCitizens();
       },
       onGreenEnergyChange: () => {
         this.world?.syncDeepPortTier(gameState.deepPortTier || 0, gameState.greenEnergyTier || 0);
       },
       onRailwayChange: () => {
         this.world?.syncRailwayTier(gameState.railwayTier || 0);
+        this.rebuildCitizens();
       },
       onHeliChange: () => {
         this.world?.syncHeliTier(gameState.heliTier || 0);
         this.rebuildAirSeaFleet();
+        this.rebuildCitizens();
       },
+      onCivicChange: () => {
+        this.world?.syncCivicTier(gameState.civicTier || 0);
+        this.rebuildCitizens();
+      },
+      onGreetCitizen: () => this.greetNearbyCitizen(true),
       onTrainExpress: () => this.triggerTrainBoost(),
       onCycleWeather: () => this.cycleWeatherPreset(),
       onCycleCamera: () => this.cycleCameraMode(),
@@ -635,6 +694,7 @@ class TimberPortEngine {
     this.world?.setLowSpec(this.activeProfile === 'low');
     this.rebuildVehicle();
     this.rebuildAirSeaFleet();
+    this.rebuildCitizens();
     saveGameServer();
     this.ui.toast(`⚙️ Đã chuyển đồ họa: ${this.getGraphicsInfo().profileLabel}`);
   }
@@ -690,6 +750,7 @@ class TimberPortEngine {
     this.aiWorkers.forEach((w) => disposeObject3D(w.mesh));
     this.aiForklifts.forEach((f) => disposeObject3D(f.mesh));
     this.fishingBoats.forEach((b) => disposeObject3D(b.mesh));
+    this.aiCitizens.forEach((c) => disposeObject3D(c.mesh));
     this.aiSeaYachts.forEach((y) => disposeObject3D(y.mesh));
     this.aiAirPlanes.forEach((p) => disposeObject3D(p.mesh));
     this.remotePlayers.forEach((rp) => disposeObject3D(rp.mesh));
@@ -990,6 +1051,10 @@ class TimberPortEngine {
         this.triggerTrainBoost();
         return;
       }
+      if (code === 'KeyG') {
+        this.greetNearbyCitizen(true);
+        return;
+      }
       const isAircraft = this.controlMode === 'plane' || this.controlMode === 'heli';
       if (code === 'KeyE' || (code === 'Space' && !isAircraft)) {
         if (!this.ui.isAnyModalOpen()) {
@@ -1138,6 +1203,11 @@ class TimberPortEngine {
       const veh = VEHICLES.find((v) => v.id === (gameState.equippedVehicle || 'forklift')) || VEHICLES[0];
       return { action: 'vehicle', key: 'E', label: `Lái ${veh.name}` };
     }
+    const nearCitizen = this.findNearestCitizen(3.6);
+    if (nearCitizen) {
+      const tipTag = nearCitizen.hasTip ? ' · Nhận Tip 💰' : '';
+      return { action: 'greet_citizen', key: 'G', label: `Chào ${nearCitizen.arch.name}${tipTag}` };
+    }
     return null;
   }
 
@@ -1152,6 +1222,7 @@ class TimberPortEngine {
     else if (prompt.action === 'board_plane') this.boardPlane();
     else if (prompt.action === 'board_heli') this.boardHeli();
     else if (prompt.action === 'train_express') this.triggerTrainBoost();
+    else if (prompt.action === 'greet_citizen') this.greetNearbyCitizen(true);
     else if (prompt.action === 'vehicle') this.toggleVehicle();
     else if (prompt.action === 'export') this.handleDeliverContract(true);
     else if (prompt.action === 'sell_saw') this.sellAllAtSawmill();
@@ -1597,7 +1668,9 @@ class TimberPortEngine {
     this.world.syncDeepPortTier(gameState.deepPortTier || 0, gameState.greenEnergyTier || 0);
     this.world.syncRailwayTier(gameState.railwayTier || 0);
     this.world.syncHeliTier(gameState.heliTier || 0);
+    this.world.syncCivicTier(gameState.civicTier || 0);
     this.rebuildAirSeaFleet();
+    this.rebuildCitizens();
     this.lastVisualBuffer = -1;
     this.lastVisualPlanks = -1;
     this.lastVisualPallets = -1;
@@ -1649,6 +1722,7 @@ class TimberPortEngine {
     this.updateSawmillAndCannery(dt);
     this.updateArcadePads(dt);
     this.updateWorkforceAI(dt);
+    this.updateCitizensAI(dt);
     this.updatePet(dt);
     this.updateRemotePlayers(dt);
     this.updateCamera(dt);
@@ -1677,7 +1751,8 @@ class TimberPortEngine {
         {
           treasures: this.world.seaTreasures,
           controlMode: this.controlMode,
-          fleetMissionState
+          fleetMissionState,
+          citizens: this.aiCitizens
         }
       );
     }
@@ -1961,6 +2036,23 @@ class TimberPortEngine {
       const autoVoyage = autoTryDispatchContainerVoyage();
       if (autoVoyage && autoVoyage.ok && autoVoyage.route) {
         this.ui.toast(`🚢 Cảng Tự Động đã xuất bến tàu: ${autoVoyage.route.name}!`);
+      }
+    }
+
+    // Phase 9: Living Island AI Civilians & Tourism Tax 5s Passive Accumulation
+    this.civicTickTimer += dt;
+    if (this.civicTickTimer >= 5.0) {
+      this.civicTickTimer = 0;
+      const tax10s = getCivicTaxPer10s();
+      if (tax10s > 0) {
+        gameState.civicAccumCash = (gameState.civicAccumCash || 0) + Math.round(tax10s / 2);
+      }
+      const cTier = gameState.civicTier || 0;
+      if (cTier > 0) {
+        const cDef = CIVIC_AMENITY_TIERS.find((t) => t.tier === cTier);
+        if (cDef && Math.random() < (cDef.gemChance || 0) * 0.5) {
+          gameState.civicAccumGems = (gameState.civicAccumGems || 0) + 1;
+        }
       }
     }
 
@@ -2886,6 +2978,328 @@ class TimberPortEngine {
       const props = p.mesh.userData?.propellers || [];
       for (let i = 0; i < props.length; i++) {
         props[i].rotation.z += dt * 26;
+      }
+    }
+  }
+
+  // -------------------------------------------------------------------------
+  // 5B. Phase 9: Living Island AI Civilians, Waypoint Graph & CEO Greeting
+  // -------------------------------------------------------------------------
+  rebuildCitizens() {
+    const targetCount = getActiveCitizenCount(this.activeProfile);
+    const hasIsland = (gameState.islandStationTier || 0) >= 1 || (gameState.islandResortTier || 0) >= 1;
+
+    while (this.aiCitizens.length > targetCount) {
+      const removed = this.aiCitizens.pop();
+      this.scene.remove(removed.mesh);
+      if (removed.bubble?.material?.map) removed.bubble.material.map.dispose();
+      if (removed.bubble?.material) removed.bubble.material.dispose();
+      disposeObject3D(removed.mesh);
+    }
+
+    while (this.aiCitizens.length < targetCount) {
+      const idx = this.aiCitizens.length;
+      const arch = CITIZEN_ARCHETYPES[idx % CITIZEN_ARCHETYPES.length];
+      const useResortLoop = hasIsland && (arch.id === 'resort_resident' || idx % 6 === 5);
+      const wpList = useResortLoop ? RESORT_WP_KEYS : MAINLAND_WP_KEYS;
+      const startKey = wpList[idx % wpList.length];
+      const startWp = ISLAND_WAYPOINTS[startKey] || ISLAND_WAYPOINTS.plaza_center;
+      const nextNeighbors = startWp.neighbors || ['plaza_center'];
+      const nextKey = nextNeighbors[idx % nextNeighbors.length];
+      const targetWp = ISLAND_WAYPOINTS[nextKey] || startWp;
+
+      const mesh = createCitizenModel(arch);
+      const jitterX = ((idx % 3) - 1) * 0.65;
+      const jitterZ = (((idx + 1) % 3) - 1) * 0.65;
+      const pos = new THREE.Vector3(startWp.x + jitterX, 0, startWp.z + jitterZ);
+      mesh.position.copy(pos);
+
+      const initText = `${arch.bubbles[0]} ${arch.name}`;
+      const bubble = makeCitizenBubbleSprite(initText, arch.badgeHex || '#38bdf8', false);
+      bubble.position.set(0, 2.52, 0);
+      mesh.add(bubble);
+
+      this.scene.add(mesh);
+      this.aiCitizens.push({
+        idx,
+        arch,
+        mesh,
+        bubble,
+        pos,
+        useResortLoop,
+        currentWpKey: startKey,
+        targetWpKey: nextKey,
+        targetPos: new THREE.Vector3(targetWp.x + jitterX * 0.5, 0, targetWp.z + jitterZ * 0.5),
+        state: 'walk', // 'walk' | 'admire' | 'shelter' | 'greet_ceo'
+        stateTimer: 0,
+        walkPhase: idx * 1.35,
+        bubbleIdx: idx % arch.bubbles.length,
+        bubbleTimer: 3.5 + (idx % 4),
+        hasTip: idx % 3 === 0,
+        tipCooldown: idx % 3 === 0 ? 0 : 6 + (idx % 5) * 3.2,
+        greetCooldown: 0
+      });
+    }
+  }
+
+  findNearestCitizen(maxRadius = 4.0) {
+    if (this.controlMode !== 'foot' && this.controlMode !== 'land') return null;
+    let best = null;
+    let bestDist = maxRadius;
+    for (const c of this.aiCitizens) {
+      const d = this.playerPos.distanceTo(c.pos);
+      if (d < bestDist) {
+        bestDist = d;
+        best = c;
+      }
+    }
+    return best;
+  }
+
+  collectCitizenTip(c) {
+    if (!c) return false;
+    c.hasTip = false;
+    c.tipCooldown = 22 + Math.random() * 14;
+    c.state = 'greet_ceo';
+    c.stateTimer = 2.4;
+    c.greetCooldown = 8.0;
+
+    const happyMult = Math.max(0.8, getCitizenHappiness() / 72);
+    const baseTip = Math.round((85 + (gameState.level || 1) * 30) * (c.arch.tipMult || 1.0) * happyMult * getRevenueMultiplier());
+    const gemRoll = c.arch.id === 'wall_street' || c.arch.id === 'vip_tourist' ? 0.55 : 0.3;
+    const bonusGems = Math.random() < gemRoll ? (c.arch.tipMult >= 1.5 ? 2 : 1) : 0;
+
+    gameState.cash += baseTip;
+    if (bonusGems > 0) gameState.gems += bonusGems;
+    gameState.civicTipsCollected = (gameState.civicTipsCollected || 0) + 1;
+    gameState.xp += 18;
+    if (gameState.xp >= gameState.level * 120) gameState.level++;
+    recordRevenue('contracts', baseTip);
+    addVipXp(10);
+    addSeasonXp(10);
+
+    sound.playCitizenGreet();
+    this.world.spawnParticles(c.pos, 0xfacc15, 5);
+    const floatLabel = bonusGems > 0
+      ? `+$${baseTip.toLocaleString()} · +${bonusGems}💎`
+      : `+$${baseTip.toLocaleString()} 💰`;
+    this.spawnWorldText(c.pos, floatLabel, 'cash');
+
+    const quotes = c.arch.quotes || ['Chúc Đế Chế TimberPort thịnh vượng!'];
+    const quote = quotes[Math.floor(Math.random() * quotes.length)];
+    updateCitizenBubbleSprite(c.bubble, `👋 +$${baseTip.toLocaleString()}`, '#facc15', true);
+    this.ui.toast(`🗣️ ${c.arch.name}: "${quote}" (+$${baseTip.toLocaleString()}${bonusGems > 0 ? ` & +${bonusGems} 💎` : ''})`);
+    saveGameLocal();
+    this.ui.refreshHUD();
+    return true;
+  }
+
+  greetNearbyCitizen(allowFallbackAny = false) {
+    let target = this.findNearestCitizen(4.5);
+    if (!target && allowFallbackAny && this.aiCitizens.length > 0) {
+      // Find any citizen with an active tip, or the closest one on the island
+      target = this.aiCitizens.find((c) => c.hasTip) || this.aiCitizens[0];
+    }
+    if (!target) {
+      this.ui.toast('👥 Hãy lại gần Phố Đi Bộ hoặc Bến Cảng để trò chuyện với Dân cư!');
+      return false;
+    }
+
+    if (target.hasTip) {
+      return this.collectCitizenTip(target);
+    }
+
+    target.state = 'greet_ceo';
+    target.stateTimer = 2.2;
+    target.greetCooldown = 6.0;
+    sound.playCitizenGreet();
+    const quotes = target.arch.quotes || ['Chào Chủ tịch!'];
+    const quote = quotes[Math.floor(Math.random() * quotes.length)];
+    updateCitizenBubbleSprite(target.bubble, `👋 Chào Chủ tịch!`, '#38bdf8', false);
+    this.spawnWorldText(target.pos, `👋 ${target.arch.name}`, 'gem');
+    this.ui.toast(`🗣️ ${target.arch.name}: "${quote}"`);
+    return true;
+  }
+
+  updateCitizensAI(dt) {
+    if (!this.aiCitizens || this.aiCitizens.length === 0) return;
+
+    const isStorm = Boolean(stormState.active || gameState.weatherMode === 'storm');
+    const isNight = this.lastAppliedNightFactor > 0.45;
+    const playerOnLand = this.controlMode === 'foot' || this.controlMode === 'land';
+
+    for (let i = 0; i < this.aiCitizens.length; i++) {
+      const c = this.aiCitizens[i];
+      const ud = c.mesh.userData;
+
+      // Toggle nighttime security flashlight cone
+      if (ud.flashlightBeam) {
+        ud.flashlightBeam.visible = isNight;
+      }
+
+      if (c.greetCooldown > 0) c.greetCooldown = Math.max(0, c.greetCooldown - dt);
+
+      // Tip readiness timer
+      if (!c.hasTip) {
+        c.tipCooldown -= dt;
+        if (c.tipCooldown <= 0) {
+          c.hasTip = true;
+        }
+      }
+
+      // Check proximity to CEO for automatic tip collection or wave greeting
+      if (playerOnLand) {
+        const distToCeo = c.pos.distanceTo(this.playerPos);
+        if (c.hasTip && distToCeo < 2.95) {
+          this.collectCitizenTip(c);
+        } else if (distToCeo < 2.35 && c.state !== 'greet_ceo' && c.greetCooldown <= 0) {
+          c.state = 'greet_ceo';
+          c.stateTimer = 1.9;
+          c.greetCooldown = 10.0;
+        }
+      }
+
+      // Update overhead 3D Emote Bubble (Dirty-checked in updateCitizenBubbleSprite -> zero GC)
+      c.bubbleTimer -= dt;
+      if (c.state === 'greet_ceo') {
+        updateCitizenBubbleSprite(c.bubble, `👋 Chào Chủ tịch!`, '#facc15', true);
+      } else if (c.hasTip) {
+        const tipBadge = c.arch.tipMult >= 1.45 ? `💎 VIP · ${c.arch.name}` : `💰 Tip · ${c.arch.name}`;
+        updateCitizenBubbleSprite(c.bubble, tipBadge, '#facc15', true);
+      } else if (isStorm) {
+        updateCitizenBubbleSprite(c.bubble, c.state === 'shelter' ? `☔ Đang trú mưa` : `☔ Chạy trú bão!`, '#38bdf8', false);
+      } else {
+        if (c.bubbleTimer <= 0) {
+          c.bubbleTimer = 4.5 + (c.idx % 3) * 1.4;
+          c.bubbleIdx = (c.bubbleIdx + 1) % c.arch.bubbles.length;
+        }
+        const emo = isNight && c.arch.group === 'security' ? '🔦' : c.arch.bubbles[c.bubbleIdx];
+        updateCitizenBubbleSprite(c.bubble, `${emo} ${c.arch.name}`, c.arch.badgeHex || '#38bdf8', false);
+      }
+
+      // State Machine: Greet CEO
+      if (c.state === 'greet_ceo') {
+        c.stateTimer -= dt;
+        const dx = this.playerPos.x - c.pos.x;
+        const dz = this.playerPos.z - c.pos.z;
+        if (dx * dx + dz * dz > 0.001) {
+          c.mesh.rotation.y = Math.atan2(dx, dz);
+        }
+        ud.leftLeg.rotation.x = 0;
+        ud.rightLeg.rotation.x = 0;
+        ud.leftArm.rotation.x = 0;
+        ud.rightArm.rotation.x = -2.35 + Math.sin(this.elapsed * 14) * 0.35;
+        if (c.stateTimer <= 0) {
+          c.state = 'walk';
+          ud.rightArm.rotation.x = 0;
+        }
+        continue;
+      }
+
+      // Storm override: redirect toward nearest shelter waypoint if not already heading to one
+      if (isStorm) {
+        const curTargetWp = ISLAND_WAYPOINTS[c.targetWpKey];
+        if (!curTargetWp || !curTargetWp.isShelter) {
+          const pool = c.useResortLoop ? RESORT_WP_KEYS : MAINLAND_WP_KEYS;
+          let bestShelterKey = pool[0];
+          let bestDist = 9999;
+          for (let k = 0; k < pool.length; k++) {
+            const wp = ISLAND_WAYPOINTS[pool[k]];
+            if (wp && wp.isShelter) {
+              const d = Math.hypot(wp.x - c.pos.x, wp.z - c.pos.z);
+              if (d < bestDist) {
+                bestDist = d;
+                bestShelterKey = wp.id;
+              }
+            }
+          }
+          const sWp = ISLAND_WAYPOINTS[bestShelterKey];
+          if (sWp) {
+            c.targetWpKey = sWp.id;
+            c.targetPos.set(sWp.x, 0, sWp.z);
+            c.state = 'walk';
+          }
+        }
+      } else if (c.state === 'shelter') {
+        c.state = 'walk';
+      }
+
+      // State Machine: Walking between Waypoints
+      if (c.state === 'walk') {
+        const dx = c.targetPos.x - c.pos.x;
+        const dz = c.targetPos.z - c.pos.z;
+        const dist = Math.hypot(dx, dz);
+        const speedMult = isStorm ? 1.65 : (isNight && c.arch.group !== 'security' ? 0.85 : 1.0);
+        const stepSpeed = (c.arch.speed || 2.5) * speedMult;
+
+        if (dist > 0.38) {
+          const inv = 1 / Math.max(0.0001, dist);
+          const nx = dx * inv;
+          const nz = dz * inv;
+          c.pos.x += nx * stepSpeed * dt;
+          c.pos.z += nz * stepSpeed * dt;
+          c.pos.y = c.pos.z > 24.5 && !c.useResortLoop ? 0.72 : 0;
+          c.mesh.position.copy(c.pos);
+
+          const targetYaw = Math.atan2(nx, nz);
+          let diff = targetYaw - c.mesh.rotation.y;
+          while (diff > Math.PI) diff -= Math.PI * 2;
+          while (diff < -Math.PI) diff += Math.PI * 2;
+          c.mesh.rotation.y += diff * Math.min(1, dt * 10);
+
+          c.walkPhase += dt * stepSpeed * 3.6;
+          const swing = Math.sin(c.walkPhase) * (isStorm ? 0.72 : 0.52);
+          ud.leftLeg.rotation.x = swing;
+          ud.rightLeg.rotation.x = -swing;
+          ud.leftArm.rotation.x = -swing * 0.65;
+          ud.rightArm.rotation.x = swing * 0.65;
+          if (ud.head) ud.head.rotation.y = Math.sin(c.walkPhase * 0.5) * 0.1;
+        } else {
+          // Reached waypoint
+          c.currentWpKey = c.targetWpKey;
+          const reachedWp = ISLAND_WAYPOINTS[c.currentWpKey];
+          if (isStorm && reachedWp?.isShelter) {
+            c.state = 'shelter';
+            c.stateTimer = 2.5;
+          } else {
+            c.state = 'admire';
+            c.stateTimer = 1.8 + (c.idx % 3) * 0.85;
+          }
+          if (reachedWp && typeof reachedWp.lookYaw === 'number') {
+            c.mesh.rotation.y = reachedWp.lookYaw;
+          }
+        }
+      } else if (c.state === 'admire' || c.state === 'shelter') {
+        c.stateTimer -= dt;
+        ud.leftLeg.rotation.x = THREE.MathUtils.lerp(ud.leftLeg.rotation.x, 0, Math.min(1, dt * 8));
+        ud.rightLeg.rotation.x = THREE.MathUtils.lerp(ud.rightLeg.rotation.x, 0, Math.min(1, dt * 8));
+        ud.leftArm.rotation.x = THREE.MathUtils.lerp(ud.leftArm.rotation.x, 0, Math.min(1, dt * 8));
+
+        // Role-specific idle pose (snapping photo, sipping coffee, scanning port)
+        const idleArmPitch = c.arch.prop === 'camera'
+          ? -0.95
+          : c.arch.prop === 'coffee'
+            ? -0.75
+            : 0;
+        ud.rightArm.rotation.x = THREE.MathUtils.lerp(ud.rightArm.rotation.x, idleArmPitch, Math.min(1, dt * 6));
+        if (ud.head) {
+          ud.head.rotation.y = Math.sin(this.elapsed * 1.8 + c.idx) * 0.25;
+        }
+
+        if (c.stateTimer <= 0 && !(isStorm && c.state === 'shelter')) {
+          const curWp = ISLAND_WAYPOINTS[c.currentWpKey] || ISLAND_WAYPOINTS.plaza_center;
+          const neighbors = curWp.neighbors || ['plaza_center'];
+          const nextKey = neighbors[(c.idx + Math.floor(this.elapsed)) % neighbors.length];
+          const nextWp = ISLAND_WAYPOINTS[nextKey] || ISLAND_WAYPOINTS.plaza_center;
+          const offsetAngle = (c.idx * 1.9) % (Math.PI * 2);
+          c.targetWpKey = nextWp.id;
+          c.targetPos.set(
+            nextWp.x + Math.cos(offsetAngle) * 0.75,
+            0,
+            nextWp.z + Math.sin(offsetAngle) * 0.75
+          );
+          c.state = 'walk';
+        }
       }
     }
   }

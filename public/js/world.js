@@ -40,6 +40,7 @@ import {
   createDeepContainerPortModel,
   createRailwayAndTrainModel,
   createHelipadModel,
+  createCivicPromenadeModel,
   syncBuildingEvolution,
   disposeObject3D
 } from './models.js';
@@ -1249,6 +1250,11 @@ export class WorldManager {
     this.worldGroup.add(this.helipad);
     this.syncHeliTier(gameState.heliTier || 0);
 
+    // Phase 9: Pre-built Civic Promenade, Park Benches, Harbor Café & Golden Wall Street Arch
+    this.civicPromenade = createCivicPromenadeModel(this.lowSpec);
+    this.worldGroup.add(this.civicPromenade);
+    this.syncCivicTier(gameState.civicTier || 0);
+
     // Pre-built Instanced Clouds & Storm Rain (auto-gated OFF on <8GB RAM)
     this.weatherGroup = createCloudsAndStormGroup(this.lowSpec);
     this.worldGroup.add(this.weatherGroup);
@@ -1384,10 +1390,21 @@ export class WorldManager {
     }
   }
 
+  syncCivicTier(tier = 0) {
+    if (!this.civicPromenade) return;
+    const u = this.civicPromenade.userData;
+    if (u?.tier1Group) u.tier1Group.visible = tier >= 1;
+    if (u?.tier2Group) u.tier2Group.visible = tier >= 2;
+    if (u?.tier3Group) u.tier3Group.visible = tier >= 3;
+  }
+
   applyNightMode(nightFactor = 0) {
     this.nightFactor = nightFactor;
     if (this.streetLampMat) {
       this.streetLampMat.emissiveIntensity = 0.55 + nightFactor * 1.95;
+    }
+    if (this.civicPromenade?.userData?.lampGlowMat) {
+      this.civicPromenade.userData.lampGlowMat.emissiveIntensity = 0.65 + nightFactor * 2.1;
     }
     if (this.harborBeaconLight && !this.lowSpec) {
       this.harborBeaconLight.intensity = 1.2 + nightFactor * 2.1;

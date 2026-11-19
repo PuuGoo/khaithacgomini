@@ -556,6 +556,240 @@ export const HELI_TIERS = [
   }
 ];
 
+export const CIVIC_AMENITY_TIERS = [
+  {
+    tier: 1,
+    name: 'Đại Lộ Đèn Vàng & Phố Đi Bộ Bến Cảng',
+    costCash: 12000,
+    taxPer10s: 360,
+    gemChance: 0.22,
+    extraCitizens: 6,
+    happinessBonus: 8,
+    revBonus: 0.03,
+    desc: 'Lát vỉa hè ghế gỗ, cột đèn vàng và bồn cây cảnh: thu hút Thương gia, Thủy thủ & Kỹ sư cảng đi dạo, mở thu Thuế Du Lịch Đảo.'
+  },
+  {
+    tier: 2,
+    name: 'Quảng Trường Cà Phê Cảng & Trung Tâm Du Lịch VIP',
+    costCash: 34000,
+    taxPer10s: 920,
+    gemChance: 0.36,
+    extraCitizens: 10,
+    happinessBonus: 16,
+    revBonus: 0.06,
+    desc: 'Khai trương Quầy Cà Phê Bến Cảng, dù che nắng & Kiosk Đón Khách: thu hút Đoàn khách tham quan & Du khách Resort hào phóng Tip lớn.'
+  },
+  {
+    tier: 3,
+    name: 'Đại Lộ Tài Chính Phố Wall & Cổng Chào Hoàng Gia',
+    costCash: 78000,
+    taxPer10s: 2150,
+    gemChance: 0.52,
+    extraCitizens: 15,
+    happinessBonus: 25,
+    revBonus: 0.1,
+    desc: 'Dựng Cổng Chào Vàng & Tượng Đài Thương Cảng: đón Phái đoàn Nhà Đầu Tư Phố Wall, thưởng +10% Doanh thu toàn Đế Chế & Tip Kim Cương.'
+  }
+];
+
+export const CITIZEN_ARCHETYPES = [
+  {
+    id: 'merchant',
+    group: 'commerce',
+    label: 'Thương gia Cảng biển',
+    icon: '💼',
+    suitColor: 0x1e3a8a,
+    pantsColor: 0x0f172a,
+    accentColor: 0xf59e0b,
+    hatColor: 0x1e293b,
+    hatStyle: 'fedora',
+    prop: 'briefcase',
+    speed: 2.35,
+    tipMult: 1.35,
+    quotes: [
+      'Gỗ xẻ của Chủ tịch chất lượng số 1 vùng vịnh!',
+      'Hợp đồng xuất khẩu hôm nay sinh lời vượt kỳ vọng!',
+      'Tôi vừa chốt thêm 2 lô Pallet trên sàn cảng!'
+    ]
+  },
+  {
+    id: 'vip_tourist',
+    group: 'commerce',
+    label: 'Du khách VIP Quốc tế',
+    icon: '📸',
+    suitColor: 0xf43f5e,
+    pantsColor: 0xf8fafc,
+    accentColor: 0xfbbf24,
+    hatColor: 0xfef08a,
+    hatStyle: 'sunhat',
+    prop: 'camera',
+    speed: 2.15,
+    tipMult: 1.45,
+    quotes: [
+      'Cảnh bến du thuyền và đảo hải đăng đẹp tuyệt vời!',
+      'Cho tôi chụp một kiểu ảnh kỷ niệm với Chủ tịch nhé!',
+      'Kỳ nghỉ 5 sao đáng nhớ nhất năm của gia đình tôi!'
+    ]
+  },
+  {
+    id: 'engineer',
+    group: 'commerce',
+    label: 'Kỹ sư Trưởng Cảng biển',
+    icon: '📐',
+    suitColor: 0x0284c7,
+    pantsColor: 0x1e293b,
+    accentColor: 0xf97316,
+    hatColor: 0xfacc15,
+    hatStyle: 'hardhat',
+    prop: 'blueprint',
+    speed: 2.55,
+    tipMult: 1.2,
+    quotes: [
+      'Dây chuyền cưa và đường sắt vận hành đạt hiệu suất 100%!',
+      'Bản vẽ mở rộng cầu cảng nước sâu đã sẵn sàng thưa Chủ tịch!',
+      'Hệ thống cẩu STS và điện gió hoạt động cực kỳ êm ái!'
+    ]
+  },
+  {
+    id: 'sailor',
+    group: 'maritime',
+    label: 'Thủy thủ Viễn dương',
+    icon: '⚓',
+    suitColor: 0xf8fafc,
+    pantsColor: 0x1e3a8a,
+    accentColor: 0x0ea5e9,
+    hatColor: 0xffffff,
+    hatStyle: 'sailor',
+    prop: 'none',
+    speed: 2.45,
+    tipMult: 1.15,
+    quotes: [
+      'Biển hôm nay êm sóng, tàu hàng cập cảng đúng giờ!',
+      'Không cảng nào bốc dỡ nhanh như TimberPort của Chủ tịch!',
+      'Anh em thủy thủ rất thích khu phố đi bộ bến cảng mới!'
+    ]
+  },
+  {
+    id: 'offduty_worker',
+    group: 'maritime',
+    label: 'Công nhân Nghỉ ca',
+    icon: '☕',
+    suitColor: 0xd97706,
+    pantsColor: 0x1e293b,
+    accentColor: 0x84cc16,
+    hatColor: 0xf59e0b,
+    hatStyle: 'cap',
+    prop: 'coffee',
+    speed: 2.3,
+    tipMult: 1.1,
+    quotes: [
+      'Làm việc ở đế chế của Chủ tịch lương thưởng hậu hĩnh thật!',
+      'Ly cà phê bến cảng sau ca xẻ gỗ làm tỉnh cả người!',
+      'Chào Chủ tịch! Ca chiều nay anh em sẽ vượt chỉ tiêu!'
+    ]
+  },
+  {
+    id: 'resort_resident',
+    group: 'maritime',
+    label: 'Cư dân Đảo Resort',
+    icon: '🌴',
+    suitColor: 0x06b6d4,
+    pantsColor: 0xfef3c7,
+    accentColor: 0xf472b6,
+    hatColor: 0xfde68a,
+    hatStyle: 'sunhat',
+    prop: 'camera',
+    speed: 2.05,
+    tipMult: 1.4,
+    quotes: [
+      'Sống trên đảo TimberPort không khí trong lành chuẩn ESG!',
+      'Cầu vượt biển nối sang khu biệt thự đảo tiện lợi quá!',
+      'Gửi Chủ tịch phí dịch vụ nghỉ dưỡng tháng này nhé!'
+    ]
+  },
+  {
+    id: 'wall_street',
+    group: 'investors',
+    label: 'Nhà Đầu Tư Phố Wall',
+    icon: '📈',
+    suitColor: 0x0f172a,
+    pantsColor: 0x1e293b,
+    accentColor: 0xfacc15,
+    hatColor: 0xf59e0b,
+    hatStyle: 'fedora',
+    prop: 'briefcase',
+    speed: 2.4,
+    tipMult: 2.1,
+    quotes: [
+      'Cổ phiếu TMBR & PORT đang dẫn đầu bảng tăng trưởng Phố Wall!',
+      'Quỹ đầu tư chúng tôi quyết định rót thêm vốn thưởng cho Chủ tịch!',
+      'Hạng tín nhiệm AAA của TimberPort làm giới tài chính kinh ngạc!'
+    ]
+  },
+  {
+    id: 'tour_group',
+    group: 'investors',
+    label: 'Đoàn Khách Tham Quan Đế Chế',
+    icon: '🔭',
+    suitColor: 0x8b5cf6,
+    pantsColor: 0x1e293b,
+    accentColor: 0x38bdf8,
+    hatColor: 0x38bdf8,
+    hatStyle: 'cap',
+    prop: 'camera',
+    speed: 2.2,
+    tipMult: 1.55,
+    quotes: [
+      'Đoàn tham quan rất ngưỡng mộ quy mô Xưởng Nội Thất & Sân Bay!',
+      'Tàu hỏa chở gỗ chạy dọc bờ biển nhìn hoành tráng như phim!',
+      'Cảm ơn Chủ tịch đã mở cửa đón đoàn khách thương mại quốc tế!'
+    ]
+  },
+  {
+    id: 'harbor_security',
+    group: 'security',
+    label: 'Đội Tuần Tra An Ninh Cảng',
+    icon: '🛡️',
+    suitColor: 0x0f172a,
+    pantsColor: 0x090d16,
+    accentColor: 0xeab308,
+    hatColor: 0x1e293b,
+    hatStyle: 'cap',
+    prop: 'flashlight',
+    speed: 2.65,
+    tipMult: 1.25,
+    quotes: [
+      'Báo cáo Chủ tịch: Toàn bộ kho cảng và bến tàu an toàn tuyệt đối!',
+      'Đội tuần tra đêm đã kiểm tra hệ thống đèn pha và hàng rào cảng!',
+      'An ninh trật tự trên đảo đạt 100%, du khách hoàn toàn yên tâm!'
+    ]
+  },
+  {
+    id: 'airport_crew',
+    group: 'security',
+    label: 'Điều Phối Viên Sân Bay & Helipad',
+    icon: '🎧',
+    suitColor: 0x1e293b,
+    pantsColor: 0x0f172a,
+    accentColor: 0xa855f7,
+    hatColor: 0xf97316,
+    hatStyle: 'hardhat',
+    prop: 'flashlight',
+    speed: 2.6,
+    tipMult: 1.3,
+    quotes: [
+      'Đường băng và Sân đáp Trực thăng H thông thoáng sẵn sàng cất cánh!',
+      'Tín hiệu đèn dẫn đường hàng không đêm hoạt động hoàn hảo!',
+      'Chuyên cơ VIP và đội bay vận tải đã nạp đầy nhiên liệu thưa Chủ tịch!'
+    ]
+  }
+].map((a) => ({
+  ...a,
+  name: a.name || a.label,
+  badgeHex: '#' + Number(a.accentColor || 0x38bdf8).toString(16).padStart(6, '0'),
+  bubbles: a.bubbles || [a.icon, '✨', '👍']
+}));
+
 export const WEATHER_PRESETS = {
   auto: { id: 'auto', label: 'Tự động 24h', icon: '🕒', hour: null, fixedHour: null },
   dawn: { id: 'dawn', label: 'Bình Minh', icon: '🌅', hour: 6.25, fixedHour: 6.25 },
@@ -652,6 +886,7 @@ export function getCashPerMinute() {
   const railPerMin = railDef ? railDef.cashPer10s * 6 * getPrestigeMultiplier() : 0;
   const heliDef = HELI_TIERS.find((h) => h.tier === (gameState.heliTier || 0));
   const heliPerMin = heliDef ? heliDef.cashPer10s * 6 * getPrestigeMultiplier() : 0;
+  const civicPerMin = getCivicTaxPer10s() * 6;
   const greenDef = GREEN_ENERGY_TIERS.find((g) => g.tier === (gameState.greenEnergyTier || 0));
   const carbonPerMin = greenDef
     ? Math.round(greenDef.creditsPer10s * (hasPatent('pat_green_grid') ? 1.35 : 1) * 6 * (carbonMarketState.price || 44))
@@ -670,6 +905,7 @@ export function getCashPerMinute() {
     + deepPerMin
     + railPerMin
     + heliPerMin
+    + civicPerMin
     + carbonPerMin
     + franchisePerMin
     + realEstatePerMin
@@ -895,6 +1131,13 @@ export function createDefaultState() {
     worldTimeHours: 10.5,
     weatherMode: 'auto',
 
+    // Phase 9: Living Island AI Citizens, Civic Promenade Infrastructure, Happiness & Tourism Tax
+    civicTier: 0,
+    civicAccumCash: 0,
+    civicAccumGems: 0,
+    civicTipsCollected: 0,
+    civicTaxCollected: 0,
+
     // Cosmetics & Fleet
     equippedSkin: 'classic',
     unlockedSkins: ['classic'],
@@ -1023,6 +1266,8 @@ export function getRevenueMultiplier() {
   const prestigeMult = getPrestigeMultiplier();
   const badgeMult = 1 + getBadgeRevenueBonus();
   const hqMult = 1 + getHqMultiplierBonus();
+  const civicDef = CIVIC_AMENITY_TIERS.find((c) => c.tier === (gameState.civicTier || 0));
+  const civicMult = 1 + (civicDef ? civicDef.revBonus : 0);
   const franchiseMult = 1 + getFranchiseBonusPct() / 100;
   const patentKilnMult = hasPatent('pat_kiln') ? 1.22 : 1.0;
   const ev = activeEventState.current;
@@ -1032,7 +1277,7 @@ export function getRevenueMultiplier() {
   let skinMult = 1.0;
   if (gameState.equippedSkin === 'captain') skinMult = 1.15;
   if (gameState.equippedSkin === 'gold_tycoon') skinMult = 1.25;
-  return branchMult * plankMult * vipMult * skinMult * mgrMult * prestigeMult * badgeMult * hqMult * franchiseMult * patentKilnMult * eventMult * expoMult;
+  return branchMult * plankMult * vipMult * skinMult * mgrMult * prestigeMult * badgeMult * hqMult * civicMult * franchiseMult * patentKilnMult * eventMult * expoMult;
 }
 
 export function getContractMultiplier() {
@@ -1873,7 +2118,8 @@ export function getTotalPendingYields() {
     + Math.floor(gameState.realEstateAccumCash || 0)
     + Math.floor(gameState.containerAccumCash || 0)
     + Math.floor(gameState.railwayAccumCash || 0)
-    + Math.floor(gameState.heliAccumCash || 0);
+    + Math.floor(gameState.heliAccumCash || 0)
+    + Math.floor(gameState.civicAccumCash || 0);
 }
 
 export function collectAllEmpireYields() {
@@ -1914,6 +2160,11 @@ export function collectAllEmpireYields() {
   if (hl) {
     cash += hl.cash;
     gems += hl.gems;
+  }
+  const cv = claimCivicYield();
+  if (cv) {
+    cash += cv.cash;
+    gems += cv.gems;
   }
   if (cash <= 0 && gems <= 0) return null;
   return { cash, gems };
@@ -2779,7 +3030,7 @@ export function getPnlStatement() {
   const ledger = gameState.pnlLedger || { grossRevenue: 0, loanRepaid: 0, upgradeSpend: 0, insuranceSaved: 0, greenSaved: 0 };
   const opRevenue = (stats.sawmill || 0) + (stats.furniture || 0) + (stats.contracts || 0) + (stats.container || 0) + (stats.fishery || 0) + (stats.railway || 0);
   const marketRevenue = (stats.market || 0) + (stats.futures || 0) + (stats.carbon || 0);
-  const assetRevenue = (stats.franchise || 0) + (stats.realestate || 0) + (stats.resort || 0) + (stats.stocks || 0) + (stats.offline || 0) + (stats.heli || 0);
+  const assetRevenue = (stats.franchise || 0) + (stats.realestate || 0) + (stats.resort || 0) + (stats.stocks || 0) + (stats.offline || 0) + (stats.heli || 0) + (stats.tourism || 0);
   const gross = Math.max(opRevenue + marketRevenue + assetRevenue, ledger.grossRevenue || 0);
   const loanCost = ledger.loanRepaid || 0;
   const capex = ledger.upgradeSpend || 0;
@@ -2803,6 +3054,11 @@ export function getRoiRecommendations() {
   const mult = getRevenueMultiplier();
   const list = [];
 
+  const nextCivic = getCivicNextTier();
+  if (nextCivic) {
+    const addedCpm = Math.round(nextCivic.taxPer10s * 6 * getPrestigeMultiplier() + 165 * mult);
+    list.push({ id: 'civic', name: nextCivic.name, category: 'Hạ Tầng Dân Cư & Du Lịch', cost: nextCivic.costCash, addedCpm, paybackMin: Number((nextCivic.costCash / Math.max(1, addedCpm)).toFixed(1)) });
+  }
   const nextRail = getRailwayNextTier();
   if (nextRail) {
     const addedCpm = Math.round(nextRail.cashPer10s * 6 * getPrestigeMultiplier() + 240 * mult);
@@ -3012,5 +3268,90 @@ export async function fetchMetropolisState() {
   } catch (e) {}
   return metropolisState;
 }
+
+// ---------------------------------------------------------------------------
+// Phase 9: Living Island AI Citizens, Population, Happiness & Tourism Tax
+// ---------------------------------------------------------------------------
+export function getCivicNextTier() {
+  const cur = gameState.civicTier || 0;
+  return CIVIC_AMENITY_TIERS.find((c) => c.tier === cur + 1) || null;
+}
+
+export function getIslandPopulation() {
+  const base = 36;
+  const civicBonus = (gameState.civicTier || 0) * 28;
+  const hqBonus = (gameState.hqTier || 0) * 18;
+  const resortBonus = (gameState.islandResortTier || 0) * 24;
+  const railBonus = (gameState.railwayTier || 0) * 15;
+  const heliBonus = (gameState.heliTier || 0) * 12;
+  const airportBonus = (gameState.airportTier || 0) * 16;
+  const deepPortBonus = (gameState.deepPortTier || 0) * 20;
+  const millBonus = (gameState.furnitureMillTier || 0) * 12;
+  const workforceBonus = ((gameState.lumberjacks || 0) + (gameState.autoForklifts || 0) + (gameState.fishingBoats || 0)) * 4;
+  const levelBonus = Math.max(0, (gameState.level || 1) - 1) * 6;
+  return base + civicBonus + hqBonus + resortBonus + railBonus + heliBonus + airportBonus + deepPortBonus + millBonus + workforceBonus + levelBonus;
+}
+
+export function getCitizenHappiness() {
+  let score = 74;
+  const civicDef = CIVIC_AMENITY_TIERS.find((c) => c.tier === (gameState.civicTier || 0));
+  if (civicDef) score += civicDef.happinessBonus;
+  score += (gameState.islandResortTier || 0) * 4;
+  score += (gameState.greenEnergyTier || 0) * 4;
+  score += (gameState.hqTier || 0) * 3;
+  score += (gameState.railwayTier || 0) * 2;
+  score += (gameState.lighthouseTier || 0) * 2;
+  if (stormState.active || gameState.weatherMode === 'storm') {
+    score -= (gameState.insuranceTier || 0) >= 2 ? 3 : 7;
+  }
+  return Math.max(60, Math.min(100, Math.round(score)));
+}
+
+export function getCivicTaxPer10s() {
+  const civicDef = CIVIC_AMENITY_TIERS.find((c) => c.tier === (gameState.civicTier || 0));
+  const baseTax = civicDef ? civicDef.taxPer10s : 95;
+  const popBonus = Math.round(getIslandPopulation() * 2.2);
+  const happyMult = getCitizenHappiness() / 85;
+  return Math.round((baseTax + popBonus) * happyMult * getPrestigeMultiplier());
+}
+
+export function getActiveCitizenCount(profile = 'high') {
+  const civicDef = CIVIC_AMENITY_TIERS.find((c) => c.tier === (gameState.civicTier || 0));
+  const extra = civicDef ? civicDef.extraCitizens : 0;
+  const infraExtra = Math.min(6, (gameState.hqTier || 0) + (gameState.islandResortTier || 0) + (gameState.railwayTier || 0) + (gameState.airportTier || 0));
+  const raw = 10 + extra + infraExtra;
+  if (profile === 'low') return Math.min(10, raw);
+  if (profile === 'balanced') return Math.min(16, raw);
+  return Math.min(24, raw);
+}
+
+export function upgradeCivicAmenity() {
+  const next = getCivicNextTier();
+  if (!next) return { ok: false, reason: 'Hạ tầng Phố Đi Bộ & Dân Cư Đảo đã đạt Cấp 3/3 tối đa.' };
+  if (gameState.cash < next.costCash) return { ok: false, reason: 'Chưa đủ tiền mặt nâng cấp Hạ tầng Dân cư & Du lịch!' };
+  gameState.cash -= next.costCash;
+  gameState.civicTier = next.tier;
+  recordPnlExpense('upgradeSpend', next.costCash);
+  addVipXp(65);
+  addSeasonXp(45);
+  logTransaction('fleet', `Khánh thành ${next.name} (Cấp ${next.tier})`, -next.costCash, 0);
+  return { ok: true, tierDef: next };
+}
+
+export function claimCivicYield() {
+  const cash = Math.floor(gameState.civicAccumCash || 0);
+  const gems = Math.floor(gameState.civicAccumGems || 0);
+  if (cash <= 0 && gems <= 0) return null;
+  gameState.cash += cash;
+  gameState.gems += gems;
+  gameState.civicAccumCash = 0;
+  gameState.civicAccumGems = 0;
+  gameState.civicTaxCollected = (gameState.civicTaxCollected || 0) + cash;
+  if (cash > 0) recordRevenue('tourism', cash);
+  addVipXp(16);
+  logTransaction('income', 'Thu Quỹ Thuế Du Lịch & Dịch Vụ Dân Cư Đảo', cash, gems);
+  return { cash, gems };
+}
+
 
 

@@ -42,6 +42,15 @@ import {
   RAILWAY_TIERS,
   HELI_TIERS,
   WEATHER_PRESETS,
+  CIVIC_AMENITY_TIERS,
+  CITIZEN_ARCHETYPES,
+  getCivicNextTier,
+  getIslandPopulation,
+  getCitizenHappiness,
+  getCivicTaxPer10s,
+  getActiveCitizenCount,
+  upgradeCivicAmenity,
+  claimCivicYield,
   BADGE_CODEX,
   MILESTONE_QUESTS,
   activeEventState,
@@ -193,6 +202,8 @@ export class UIManager {
       valCanned: document.getElementById('val-canned'),
       valFurniture: document.getElementById('val-furniture'),
       valGems: document.getElementById('val-gems'),
+      valPop: document.getElementById('val-pop'),
+      valHappy: document.getElementById('val-happy'),
       questTitle: document.getElementById('quest-strip-title'),
       questDesc: document.getElementById('quest-strip-desc'),
       questProg: document.getElementById('quest-strip-progress'),
@@ -215,6 +226,7 @@ export class UIManager {
       btnQuickSaw: document.getElementById('btn-quick-saw'),
       btnQuickFurn: document.getElementById('btn-quick-furn'),
       btnQuickExport: document.getElementById('btn-quick-export'),
+      btnQuickGreet: document.getElementById('btn-quick-greet'),
       btnQuickTrain: document.getElementById('btn-quick-train'),
       btnQuickYacht: document.getElementById('btn-quick-yacht'),
       btnQuickHeli: document.getElementById('btn-quick-heli'),
@@ -406,6 +418,9 @@ export class UIManager {
     });
     this.els.btnQuickExport?.addEventListener('click', () => {
       this.cb.onDeliverContract?.(true);
+    });
+    this.els.btnQuickGreet?.addEventListener('click', () => {
+      this.cb.onGreetCitizen?.();
     });
     this.els.btnQuickTrain?.addEventListener('click', () => {
       this.cb.onTrainExpress?.();
@@ -654,6 +669,17 @@ export class UIManager {
       }
     }
 
+    // Living Island AI Citizens walking along promenades (gold dot if tip ready, sky cyan dot otherwise)
+    if (extras.citizens && extras.citizens.length) {
+      for (const c of extras.citizens) {
+        if (!c.pos) continue;
+        ctx.fillStyle = c.hasTip ? '#fde047' : '#38bdf8';
+        ctx.beginPath();
+        ctx.arc(toMapX(c.pos.x), toMapY(c.pos.z), c.hasTip ? 2.4 : 1.7, 0, Math.PI * 2);
+        ctx.fill();
+      }
+    }
+
     // Fleet Mission Target Rings (Sea cyan / Air amber)
     const fms = extras.fleetMissionState || fleetMissionState;
     if (fms?.sea) {
@@ -897,6 +923,12 @@ export class UIManager {
       this.els.valFurniture.textContent = (gameState.furniture || 0).toLocaleString();
     }
     this.els.valGems.textContent = gameState.gems.toLocaleString();
+    if (this.els.valPop) {
+      this.els.valPop.textContent = getIslandPopulation().toLocaleString();
+    }
+    if (this.els.valHappy) {
+      this.els.valHappy.textContent = `${getCitizenHappiness()}%`;
+    }
 
     const ct = gameState.activeContract;
     if (ct) {
@@ -1073,6 +1105,11 @@ export class UIManager {
       const heliYieldEl = this.els.hubBody?.querySelector('[data-live-heli="yield"]');
       if (heliYieldEl) {
         heliYieldEl.textContent = `+$${Math.floor(gameState.heliAccumCash || 0).toLocaleString()} · +${Math.floor(gameState.heliAccumGems || 0)} 💎`;
+      }
+      const civicYieldEls = this.els.hubBody?.querySelectorAll('[data-live-civic="yield"]');
+      if (civicYieldEls && civicYieldEls.length) {
+        const cText = `+$${Math.floor(gameState.civicAccumCash || 0).toLocaleString()}${(gameState.civicAccumGems || 0) > 0 ? ` · +${Math.floor(gameState.civicAccumGems || 0)} 💎` : ''}`;
+        civicYieldEls.forEach((el) => { el.textContent = cText; });
       }
       const contCdEl = this.els.hubBody?.querySelector('[data-live-countdown="container"]');
       if (contCdEl && gameState.activeContainerVoyage) {
@@ -1476,6 +1513,9 @@ export class UIManager {
       this.renderHub();
     });
     root.appendChild(railSec);
+
+    // 1A-Civic. Living Island AI Civilians, Pedestrian Promenade & Tourism Economy (Phase 9 AAA)
+    root.appendChild(this.buildCivicPromenadeSection());
 
     // 1B. Deep-Water Container Port & Mega Container Voyages
     const deepLv = gameState.deepPortTier || 0;
@@ -2550,6 +2590,12 @@ export class UIManager {
             sound.playHeliRotor();
             this.cb.onHeliChange?.();
             this.toast(`🚁 Đã nâng ${res.tierDef.name}!`);
+          } else if (actId === 'civic') {
+            const res = upgradeCivicAmenity();
+            if (!res.ok) return this.toast(res.reason);
+            sound.playCitizenGreet();
+            this.cb.onCivicChange?.();
+            this.toast(`🏙️ Đã nâng ${res.tierDef.name}!`);
           } else if (actId === 'yacht') {
             const ny = getYachtNextTier();
             if (!ny || gameState.cash < ny.costCash) return;
@@ -3157,6 +3203,77 @@ export class UIManager {
     ctx.fillText(`CERT NO: TP-${String(gameState.prestigeLevel || 0).padStart(2, '0')}-${ratingInfo.score} · ${new Date().toISOString().slice(0, 10)}`, 42, h - 52);
   }
 
+  buildCivicPromenadeSection() {
+    const civicLv = gameState.civicTier || 0;
+    const civicDef = CIVIC_AMENITY_TIERS.find((t) => t.tier === civicLv) || null;
+    const nextCivic = getCivicNextTier();
+    const pop = getIslandPopulation();
+    const happy = getCitizenHappiness();
+    const tax10s = getCivicTaxPer10s();
+    const cCash = Math.floor(gameState.civicAccumCash || 0);
+    const cGems = Math.floor(gameState.civicAccumGems || 0);
+    const activeWalkers = getActiveCitizenCount('high');
+
+    const sec = document.createElement('section');
+    sec.innerHTML = `
+      <div class="section-heading">
+        <h3>Hệ Sinh Thái Dân Cư AI Đi Bộ &amp; Phố Đô Thị Du Lịch 3D</h3>
+        <span class="tabular-nums">👥 Dân số: <b>${pop}</b> (${activeWalkers} AI dạo phố 3D) · 😊 Hài lòng: <b style="color:#34d399;">${happy}%</b> · 💵 Thuế Du lịch: <b style="color:#38bdf8;">+$${tax10s.toLocaleString()}/10s</b></span>
+      </div>
+      <div class="deep-port-banner">
+        <div style="flex:1.35; min-width:250px;">
+          <div class="card-title">🏙️ ${civicDef ? `${civicDef.name} (Cấp ${civicLv}/3)` : 'Phố Đi Bộ & Quảng Trường Dân Cư (Cơ bản)'}</div>
+          <div class="card-desc" style="margin-top:4px;">
+            ${nextCivic ? `Cấp kế (${nextCivic.tier} · ${nextCivic.name}): ${nextCivic.desc}` : 'Đại Lộ Tài Chính Phố Wall & Quảng Trường Vàng đã hoàn thiện 100%, thu hút tối đa Nhà đầu tư & Du khách VIP!'}
+          </div>
+          <div class="card-meta tabular-nums" style="margin-top:6px; color:#fde047;">
+            Quỹ Thuế Du lịch chờ thu: <span data-live-civic="yield">+$${cCash.toLocaleString()}${cGems > 0 ? ` · +${cGems} 💎` : ''}</span> · Đã nhận Tip từ Dân cư: <b>${gameState.civicTipsCollected || 0} lần</b>
+          </div>
+          <div class="card-meta" style="margin-top:5px; color:#cbd5e1;">
+            4 Nhóm Dân Cư AI hoạt động: <b>💼 Thương gia &amp; Kỹ sư</b> · <b>⚓ Thủy thủ &amp; Cư dân Resort</b> · <b>📈 Nhà đầu tư Phố Wall &amp; Đoàn khách</b> · <b>🛡️ Đội An ninh Cảng (Đèn pin đêm)</b>
+          </div>
+        </div>
+        <div style="display:flex; gap:8px; flex-wrap:wrap; min-width:260px; align-items:center;">
+          <button type="button" data-civic-act="greet" class="btn-secondary" style="width:auto;">
+            👋 Chào &amp; Nhận Tip (G)
+          </button>
+          <button type="button" data-civic-act="claim" class="btn-gem tabular-nums" style="width:auto;" ${cCash <= 0 && cGems <= 0 ? 'disabled' : ''}>
+            Thu Thuế Du Lịch
+          </button>
+          <button type="button" data-civic-act="upgrade" class="btn-primary tabular-nums" style="flex:1;" ${!nextCivic || gameState.cash < nextCivic.costCash ? 'disabled' : ''}>
+            ${nextCivic ? `Nâng Cấp ${nextCivic.tier} · $${nextCivic.costCash.toLocaleString()}` : 'Đã Đạt Cấp 3/3 ✓'}
+          </button>
+        </div>
+      </div>
+    `;
+
+    sec.querySelector('[data-civic-act="greet"]')?.addEventListener('click', () => {
+      this.cb.onGreetCitizen?.();
+      this.renderHub();
+    });
+    sec.querySelector('[data-civic-act="claim"]')?.addEventListener('click', () => {
+      const gained = claimCivicYield();
+      if (!gained) return;
+      sound.playCash();
+      this.triggerCelebration('Thu Thuế Du Lịch & Đô Thị!', `+$${gained.cash.toLocaleString()}${gained.gems > 0 ? ` · +${gained.gems} 💎` : ''}`);
+      saveGameServer();
+      this.refreshHUD();
+      this.renderHub();
+    });
+    sec.querySelector('[data-civic-act="upgrade"]')?.addEventListener('click', () => {
+      const res = upgradeCivicAmenity();
+      if (!res.ok) return this.toast(res.reason);
+      sound.playCitizenGreet();
+      this.cb.onCivicChange?.();
+      this.triggerCelebration(`Khánh Thành ${res.tierDef.name}!`, `Dân số +${res.tierDef.popBonus} · Hài lòng +${res.tierDef.happyBonus}% · Thuế +$${res.tierDef.taxPer10s}/10s`, true);
+      saveGameServer();
+      this.refreshHUD();
+      this.renderHub();
+    });
+
+    return sec;
+  }
+
   renderBoardroomTab(root) {
     root.appendChild(this.makeSubtabBar('boardroom', [
       { id: 'global', label: '🌐 Mạng Lưới Toàn Cầu' },
@@ -3165,6 +3282,7 @@ export class UIManager {
     ]));
 
     if (this.subTabs.boardroom === 'metropolis') {
+      root.appendChild(this.buildCivicPromenadeSection());
       const m = metropolisState;
       const woodPct = Math.min(100, Math.round(((m.totalWoodContributed || 0) / Math.max(1, m.goalWood || 5000)) * 100));
       const cashPct = Math.min(100, Math.round(((m.totalMoneyContributed || 0) / Math.max(1, m.goalMoney || 1000000)) * 100));

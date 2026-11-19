@@ -519,6 +519,61 @@ export function makeWorldBadgeSprite(title, subtitle, accentColor = '#f59e0b') {
   return sprite;
 }
 
+export function drawCitizenBubbleToCanvas(ctx, text = '💼', accentColor = '#fbbf24', isTip = false) {
+  ctx.clearRect(0, 0, 192, 64);
+
+  ctx.fillStyle = isTip ? 'rgba(28, 22, 10, 0.94)' : 'rgba(11, 17, 30, 0.88)';
+  ctx.beginPath();
+  if (ctx.roundRect) ctx.roundRect(12, 6, 168, 44, 14);
+  else ctx.rect(12, 6, 168, 44);
+  ctx.fill();
+
+  ctx.strokeStyle = isTip ? '#fbbf24' : accentColor;
+  ctx.lineWidth = isTip ? 2.4 : 1.5;
+  ctx.stroke();
+
+  // Pointer triangle at bottom center
+  ctx.beginPath();
+  ctx.moveTo(90, 50);
+  ctx.lineTo(102, 50);
+  ctx.lineTo(96, 59);
+  ctx.closePath();
+  ctx.fillStyle = isTip ? '#fbbf24' : accentColor;
+  ctx.fill();
+
+  ctx.fillStyle = isTip ? '#fef08a' : '#f8fafc';
+  ctx.font = '700 21px "Plus Jakarta Sans", Outfit, sans-serif';
+  ctx.textAlign = 'center';
+  ctx.fillText(text, 96, 35);
+}
+
+export function makeCitizenBubbleSprite(text = '💼', accentColor = '#38bdf8', isTip = false) {
+  const cv = document.createElement('canvas');
+  cv.width = 192;
+  cv.height = 64;
+  const ctx = cv.getContext('2d');
+  drawCitizenBubbleToCanvas(ctx, text, accentColor, isTip);
+
+  const tex = new THREE.CanvasTexture(cv);
+  tex.colorSpace = THREE.SRGBColorSpace;
+  tex.needsUpdate = true;
+  const sprite = new THREE.Sprite(new THREE.SpriteMaterial({ map: tex, depthTest: false, transparent: true }));
+  sprite.scale.set(1.45, 0.48, 1);
+  sprite.userData._canvasCtx = ctx;
+  sprite.userData._canvasTex = tex;
+  sprite.userData._lastKey = `${text}|${accentColor}|${isTip}`;
+  return sprite;
+}
+
+export function updateCitizenBubbleSprite(sprite, text, accentColor = '#38bdf8', isTip = false) {
+  if (!sprite || !sprite.userData?._canvasCtx) return;
+  const key = `${text}|${accentColor}|${isTip}`;
+  if (sprite.userData._lastKey === key) return;
+  sprite.userData._lastKey = key;
+  drawCitizenBubbleToCanvas(sprite.userData._canvasCtx, text, accentColor, isTip);
+  sprite.userData._canvasTex.needsUpdate = true;
+}
+
 export function disposeAllCachedTextures() {
   for (const tex of cache.values()) {
     tex.dispose();
