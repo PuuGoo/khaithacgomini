@@ -57,6 +57,7 @@ import {
   triggerTrainExpressBoost,
   autoTryDispatchContainerVoyage,
   fetchMetropolisState,
+  syncMetropolisFromServer,
   tickTradeExpo,
   tickContainerVoyage,
   tickFuturesContracts,
@@ -3145,30 +3146,35 @@ class TimberPortEngine {
                 disposeObject3D(rp.mesh);
                 this.remotePlayers.delete(msg.id);
               }
-            } else if (msg.type === 'city_state_sync' && msg.city) {
-              Object.assign(metropolisState, msg.city);
+            } else if (msg.type === 'city_state_sync' && (msg.cityState || msg.city)) {
+              syncMetropolisFromServer(msg.cityState || msg.city);
               if (!this.ui.els.hubModal.hidden && this.ui.activeTab === 'boardroom') {
                 this.ui.renderHub();
               }
-            } else if (msg.type === 'city_announcement' && msg.message) {
-              if (msg.city) Object.assign(metropolisState, msg.city);
-              this.ui.toast(`🏙️ ${msg.message}`);
+            } else if (msg.type === 'city_announcement' && (msg.announcement || msg.message)) {
+              if (msg.cityState || msg.city) syncMetropolisFromServer(msg.cityState || msg.city);
+              this.ui.toast(`🏙️ ${msg.announcement || msg.message}`);
               if (!this.ui.els.hubModal.hidden && this.ui.activeTab === 'boardroom') {
                 this.ui.renderHub();
               }
-            } else if (msg.type === 'market_update' && Array.isArray(msg.listings)) {
-              metropolisState.marketListings = msg.listings;
+            } else if (msg.type === 'market_update') {
+              if (Array.isArray(msg.listings)) {
+                syncMetropolisFromServer({ marketListings: msg.listings });
+              }
+              if (msg.announcement) this.ui.toast(msg.announcement);
               if (!this.ui.els.hubModal.hidden && this.ui.activeTab === 'boardroom') {
                 this.ui.renderHub();
               }
-            } else if (msg.type === 'market_item_bought' && msg.listing) {
-              const l = msg.listing;
-              if (l.seller === (gameState.username || 'Chủ tịch')) {
-                const gain = Number(l.price) || 0;
+            } else if (msg.type === 'market_item_bought') {
+              const l = msg.listing || msg;
+              const sellerName = l.seller || l.sellerName;
+              const buyerName = l.buyer || msg.buyerName || 'Thương gia';
+              const gain = Number(l.price ?? msg.totalPrice ?? 0);
+              if (sellerName === (gameState.username || 'Chủ tịch') && gain > 0) {
                 gameState.cash += gain;
                 recordRevenue('market', gain);
                 sound.playCash();
-                this.ui.toast(`🤝 ${l.buyer} đã mua lô hàng của bạn trên Chợ Liên Server (+$${gain.toLocaleString()})!`);
+                this.ui.toast(`🤝 ${buyerName} đã mua lô hàng của bạn trên Chợ Liên Server (+$${gain.toLocaleString()})!`);
                 saveGameServer();
                 this.ui.refreshHUD();
               }
@@ -3196,9 +3202,9 @@ class TimberPortEngine {
 
     if (this.ws && this.ws.readyState === WebSocket.OPEN) {
       this.ws.send(JSON.stringify({
-        type: 'contribute_landmark',
-        woodAmount: w,
-        moneyAmount: m
+        type: 'city_contribute',
+        planks: w,
+        money: m
       }));
     } else {
       metropolisState.totalWoodContributed = (metropolisState.totalWoodContributed || 0) + w;
@@ -3223,12 +3229,13 @@ class TimberPortEngine {
     }
     gameState[resource] -= qty;
     sound.playCash();
+    const priceEach = Math.max(1, Math.round(ask / qty));
     if (this.ws && this.ws.readyState === WebSocket.OPEN) {
       this.ws.send(JSON.stringify({
         type: 'market_list_item',
-        resource,
-        amount: qty,
-        price: ask
+        item: resource,
+        quantity: qty,
+        priceEach
       }));
     } else {
       metropolisState.marketListings = [

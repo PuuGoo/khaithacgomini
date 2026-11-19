@@ -56,6 +56,10 @@ html, body {
   font-variant-numeric: tabular-nums;
 }
 
+[hidden] {
+  display: none !important;
+}
+
 .meta-sep {
   color: var(--text-muted);
   opacity: 0.6;
@@ -142,8 +146,8 @@ html, body {
   display: flex;
   align-items: center;
   justify-content: space-between;
-  gap: 16px;
-  padding: 0 16px;
+  gap: 10px;
+  padding: 0 12px;
   background: var(--bg-surface);
   border: 1px solid var(--border-hairline);
   border-radius: var(--radius-md);
@@ -153,41 +157,47 @@ html, body {
 .top-zone-brand {
   display: flex;
   align-items: center;
-  gap: 6px;
+  gap: 5px;
   white-space: nowrap;
   flex-shrink: 0;
 }
 
 .brand-wordmark {
   font-family: var(--font-display);
-  font-size: 16px;
+  font-size: 15.5px;
   font-weight: 700;
   letter-spacing: -0.01em;
   color: var(--text-primary);
 }
 
 .brand-meta {
-  font-size: 13px;
+  font-size: 12.5px;
   font-weight: 500;
   color: var(--text-secondary);
 }
 
 .top-zone-resources {
+  flex: 1 1 auto;
+  min-width: 180px;
   display: flex;
   align-items: center;
   justify-content: center;
-  gap: 6px;
-  font-size: 13px;
+  gap: 5px;
+  font-size: 12.5px;
   font-weight: 600;
   color: var(--text-primary);
   white-space: nowrap;
-  overflow: hidden;
+  overflow-x: auto;
+  scrollbar-width: none;
+}
+.top-zone-resources::-webkit-scrollbar {
+  display: none;
 }
 
 .res-item {
   display: inline-flex;
   align-items: center;
-  gap: 4px;
+  gap: 3px;
 }
 
 .res-cash .res-val { color: #34d399; font-weight: 700; }
@@ -196,7 +206,7 @@ html, body {
 .top-zone-actions {
   display: flex;
   align-items: center;
-  gap: 8px;
+  gap: 5px;
   flex-shrink: 0;
 }
 
@@ -204,20 +214,26 @@ html, body {
   display: inline-flex;
   align-items: center;
   justify-content: center;
-  gap: 6px;
-  min-height: 36px;
-  min-width: 36px;
-  padding: 0 12px;
+  gap: 5px;
+  min-height: 34px;
+  min-width: 34px;
+  padding: 0 9px;
   border-radius: var(--radius-sm);
   border: 1px solid var(--border-hairline);
   background: var(--bg-card);
   color: var(--text-primary);
   font-family: var(--font-body);
-  font-size: 13px;
+  font-size: 12.5px;
   font-weight: 600;
   cursor: pointer;
   white-space: nowrap;
   transition: transform 0.15s ease, background-color 0.15s ease, border-color 0.15s ease;
+}
+
+@media (max-width: 1260px) {
+  .top-zone-actions .hide-sm {
+    display: none;
+  }
 }
 
 .top-btn:hover {
@@ -303,8 +319,8 @@ html, body {
 /* Contextual Vehicle / Harbor Prompt Button (PC Key + Mobile Tap) */
 .action-prompt {
   position: fixed;
-  bottom: 108px;
-  right: 20px;
+  bottom: 168px;
+  right: 16px;
   z-index: 32;
   display: inline-flex;
   align-items: center;
@@ -1720,12 +1736,12 @@ body.zen-hud #btn-account {
 
 .fleet-quick-strip {
   position: fixed;
-  bottom: 20px;
+  bottom: 82px;
   right: 16px;
   z-index: 31;
   display: flex;
   align-items: center;
-  gap: 8px;
+  gap: 6px;
 }
 .fleet-quick-strip[hidden] {
   display: none;

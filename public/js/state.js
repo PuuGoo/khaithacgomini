@@ -556,26 +556,73 @@ export const HELI_TIERS = [
   }
 ];
 
-export const WEATHER_PRESETS = [
-  { id: 'auto', label: 'Tự động 24h', icon: '🕒', fixedHour: null },
-  { id: 'dawn', label: 'Bình Minh', icon: '🌅', fixedHour: 6.25 },
-  { id: 'sunny', label: 'Nắng Vàng', icon: '☀️', fixedHour: 11.5 },
-  { id: 'sunset', label: 'Hoàng Hôn', icon: '🌇', fixedHour: 17.85 },
-  { id: 'night', label: 'Đêm Sao', icon: '🌙', fixedHour: 22.5 },
-  { id: 'storm', label: 'Mưa Bão', icon: '⛈️', fixedHour: 15.2 }
-];
+export const WEATHER_PRESETS = {
+  auto: { id: 'auto', label: 'Tự động 24h', icon: '🕒', hour: null, fixedHour: null },
+  dawn: { id: 'dawn', label: 'Bình Minh', icon: '🌅', hour: 6.25, fixedHour: 6.25 },
+  sunny: { id: 'sunny', label: 'Nắng Vàng', icon: '☀️', hour: 11.5, fixedHour: 11.5 },
+  sunset: { id: 'sunset', label: 'Hoàng Hôn', icon: '🌇', hour: 17.85, fixedHour: 17.85 },
+  night: { id: 'night', label: 'Đêm Sao', icon: '🌙', hour: 22.5, fixedHour: 22.5 },
+  storm: { id: 'storm', label: 'Mưa Bão', icon: '⛈️', hour: 15.2, fixedHour: 15.2 }
+};
 
 export const metropolisState = {
+  landmarkLevel: 1,
   landmarkStage: 1,
   landmarkName: 'Tháp Hải Đăng Pha Lê Toàn Cầu',
-  currentWood: 0,
-  targetWood: 50000,
-  currentMoney: 0,
-  targetMoney: 250000000,
-  topContributors: {},
+  totalWoodContributed: 0,
+  goalWood: 5000,
+  totalMoneyContributed: 0,
+  goalMoney: 1000000,
+  topContributors: [],
   marketListings: [],
   lastAnnouncement: ''
 };
+
+export function syncMetropolisFromServer(raw) {
+  if (!raw || typeof raw !== 'object') return metropolisState;
+  if (raw.landmarkProject) {
+    const lp = raw.landmarkProject;
+    metropolisState.landmarkLevel = lp.stage || raw.cityLevel || 1;
+    metropolisState.landmarkStage = lp.stage || 1;
+    metropolisState.landmarkName = lp.title || metropolisState.landmarkName;
+    metropolisState.totalWoodContributed = lp.currentPlanks ?? metropolisState.totalWoodContributed;
+    metropolisState.goalWood = lp.neededPlanks || 5000;
+    metropolisState.totalMoneyContributed = lp.currentMoney ?? metropolisState.totalMoneyContributed;
+    metropolisState.goalMoney = lp.neededMoney || 1000000;
+    if (lp.topContributors && typeof lp.topContributors === 'object' && !Array.isArray(lp.topContributors)) {
+      metropolisState.topContributors = Object.entries(lp.topContributors)
+        .map(([name, score]) => ({ name, score: Number(score) || 0 }))
+        .sort((a, b) => b.score - a.score);
+    }
+  } else {
+    if (raw.landmarkLevel !== undefined) metropolisState.landmarkLevel = raw.landmarkLevel;
+    if (raw.landmarkName) metropolisState.landmarkName = raw.landmarkName;
+    if (raw.totalWoodContributed !== undefined) metropolisState.totalWoodContributed = raw.totalWoodContributed;
+    if (raw.goalWood !== undefined) metropolisState.goalWood = raw.goalWood;
+    if (raw.totalMoneyContributed !== undefined) metropolisState.totalMoneyContributed = raw.totalMoneyContributed;
+    if (raw.goalMoney !== undefined) metropolisState.goalMoney = raw.goalMoney;
+    if (Array.isArray(raw.topContributors)) metropolisState.topContributors = raw.topContributors;
+  }
+  if (Array.isArray(raw.marketListings)) {
+    const validRes = new Set(['planks', 'pallets', 'cannedFish', 'furniture']);
+    metropolisState.marketListings = raw.marketListings
+      .map((item) => {
+        const resource = validRes.has(item.resource) ? item.resource : (validRes.has(item.item) ? item.item : 'planks');
+        const amount = Math.max(1, Number(item.amount ?? item.quantity ?? 10));
+        const price = Math.max(10, Number(item.price ?? ((item.priceEach || 25) * amount)));
+        return {
+          id: item.id || ('mkt_' + Math.random().toString(36).slice(2, 8)),
+          seller: item.seller || item.sellerName || 'Thương gia Cảng',
+          empireName: item.empireName || 'Liên Minh Cảng Biển',
+          resource,
+          amount,
+          price,
+          createdAt: item.createdAt || Date.now()
+        };
+      });
+  }
+  return metropolisState;
+}
 
 // Rolling 60s Cash Telemetry (Zero GC ring of timestamped entries)
 const cashFlowSamples = [];
@@ -2959,8 +3006,8 @@ export async function fetchMetropolisState() {
     const res = await fetch(`${API_BASE}/api/city-state`);
     if (!res.ok) return metropolisState;
     const data = await res.json();
-    if (data && data.city) {
-      Object.assign(metropolisState, data.city);
+    if (data && (data.data || data.city)) {
+      syncMetropolisFromServer(data.data || data.city);
     }
   } catch (e) {}
   return metropolisState;
