@@ -1,4 +1,5 @@
-import { HIGHLAND_LANDMARKS, HIGHLAND_TRAILS, LAND_EDGE_Z, MINIMAP_BOUNDS } from './world.js';
+import { HIGHLAND_LANDMARKS, HIGHLAND_TRAILS } from './world.js';
+import { DISTRICTS, LAND_EDGE_Z, MINIMAP_BOUNDS, REGIONAL_ROADS } from './regions.js';
 import { FISHERY_LOCATION } from './island-route.js';
 /**
  * TimberPort 3D — Lightweight Cross-Platform HUD & Unified Commercial Empire Hub
@@ -285,6 +286,14 @@ export class UIManager {
       floatingContainer: document.getElementById('floating-container')
     };
 
+    this.minimapOverview = false;
+    const scaleButton = document.getElementById('btn-minimap-scale');
+    scaleButton.addEventListener('click', () => {
+      this.minimapOverview = !this.minimapOverview;
+      scaleButton.textContent = this.minimapOverview ? 'Khu vực' : 'Toàn vùng';
+      scaleButton.setAttribute('aria-pressed', String(this.minimapOverview));
+    });
+    this.regionalPopulation = document.getElementById('regional-population');
     this.minimapCollapsed = window.innerWidth <= 960;
     if (this.minimapCollapsed && this.els.minimapWrap) {
       this.els.minimapWrap.classList.add('is-collapsed');
@@ -532,7 +541,14 @@ export class UIManager {
     if (!ctx || this.minimapCollapsed || this.dockCollapsed) return;
 
     const { width: w, height: h } = ctx.canvas;
-    const { minX, maxX, minZ, maxZ } = MINIMAP_BOUNDS;
+    const regionalPopulation = extras.regionalCitizens?.length || 0;
+    this.regionalPopulation.textContent = 'Cư dân AI quanh đây: ' + regionalPopulation;
+    const range = 115;
+    const x = Math.max(MINIMAP_BOUNDS.minX + range, Math.min(MINIMAP_BOUNDS.maxX - range, playerPos.x));
+    const z = Math.max(MINIMAP_BOUNDS.minZ + range, Math.min(MINIMAP_BOUNDS.maxZ - range, playerPos.z));
+    const { minX, maxX, minZ, maxZ } = this.minimapOverview ? MINIMAP_BOUNDS : {
+      minX: x - range, maxX: x + range, minZ: z - range, maxZ: z + range
+    };
     const toMapX = (wx) => ((wx - minX) / (maxX - minX)) * w;
     const toMapY = (wz) => ((wz - minZ) / (maxZ - minZ)) * h;
 
@@ -553,6 +569,27 @@ export class UIManager {
     }
     ctx.stroke();
     ctx.restore();
+
+    ctx.strokeStyle = '#868578';
+    ctx.lineWidth = this.minimapOverview ? 0.65 : 1.5;
+    ctx.beginPath();
+    for (const [[x1, z1], [x2, z2]] of REGIONAL_ROADS) {
+      ctx.moveTo(toMapX(x1), toMapY(z1));
+      ctx.lineTo(toMapX(x2), toMapY(z2));
+    }
+    ctx.stroke();
+    ctx.fillStyle = '#f2cf9b';
+    for (const line of DISTRICTS) {
+      for (const district of line) {
+        if (district.developed) ctx.fillRect(toMapX(district.x) - 1, toMapY(district.z) - 1, 2, 2);
+      }
+    }
+    if (!this.minimapOverview) {
+      ctx.fillStyle = '#67e8f9';
+      for (const citizen of extras.regionalCitizens || []) {
+        ctx.fillRect(toMapX(citizen.x), toMapY(citizen.z), 1.4, 1.4);
+      }
+    }
 
     // Offshore Outpost Island (52, 92)
     const islX = toMapX(52);
@@ -693,6 +730,9 @@ export class UIManager {
     ctx.font = 'bold 9px sans-serif';
     ctx.textAlign = 'center';
     for (const { x, z, name, color } of HIGHLAND_LANDMARKS) {
+      if (this.minimapOverview) {
+        if (name !== 'Cao Nguyên' && name !== 'Bãi Đông') continue;
+      }
       ctx.fillStyle = color;
       ctx.fillRect(toMapX(x) - 2, toMapY(z) - 2, 4, 4);
       ctx.fillText(name, toMapX(x), toMapY(z) - 6);

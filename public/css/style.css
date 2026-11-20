@@ -3112,3 +3112,13 @@ body.zen-hud #btn-notifications {
     display: none;
   }
 }
+
+.minimap-region-controls {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  justify-content: center;
+  gap: 0.25rem;
+  font-size: 0.68rem;
+  color: #b6dce4;
+}

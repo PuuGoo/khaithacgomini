@@ -49,12 +49,11 @@ import { gameState, fleetMissionState, stormState, getUpgradeCost, UPGRADE_CATAL
 
 import { FISHERY_LOCATION } from './island-route.js';
 
-export const WORLD_BOUNDS = { minX: -100, maxX: 170, minZ: -180, maxZ: 34 };
-export const LAND_EDGE_Z = 25;
-export const MINIMAP_BOUNDS = {
-  minX: WORLD_BOUNDS.minX - 8, maxX: WORLD_BOUNDS.maxX + 8,
-  minZ: WORLD_BOUNDS.minZ - 8, maxZ: 116
-};
+import { LAND_EDGE_Z, WORLD_BOUNDS } from './regions.js';
+import { RegionalLife } from './regional-life.js';
+
+export { LAND_EDGE_Z, WORLD_BOUNDS };
+
 export const HIGHLAND_TRAILS = [
   [[-25, -4], [-66, -4]],
   [[-66, -4], [-66, -76]],
@@ -69,8 +68,8 @@ export const HIGHLAND_LANDMARKS = [
   { x: 46, z: -148, name: 'Cao Nguyên', color: '#fcdca0' },
   { x: 145, z: 21, name: 'Bãi Đông', color: '#a5f3fc' }
 ];
-export const SEA_BOUNDS = { minX: -115, maxX: WORLD_BOUNDS.maxX + 15, minZ: 27.5, maxZ: 145 };
-export const AIR_BOUNDS = { minX: -135, maxX: SEA_BOUNDS.maxX + 20, minZ: WORLD_BOUNDS.minZ - 18, maxZ: 155, minY: 0.25, maxY: 34 };
+export const SEA_BOUNDS = { minX: WORLD_BOUNDS.minX - 15, maxX: WORLD_BOUNDS.maxX + 15, minZ: 27.5, maxZ: 145 };
+export const AIR_BOUNDS = { minX: SEA_BOUNDS.minX - 20, maxX: SEA_BOUNDS.maxX + 20, minZ: WORLD_BOUNDS.minZ - 18, maxZ: 155, minY: 0.25, maxY: 34 };
 
 export const ZONES = {
   hopper: new THREE.Vector3(-4, 0, -14),
@@ -153,6 +152,7 @@ export class WorldManager {
 
     this.buildTerrainAndOcean();
     this.buildHighlandTrails();
+    this.regionalLife = new RegionalLife(this.worldGroup);
     this.buildLuxuryBoulevardsAndParking();
     this.buildExecutivePlazaAndFountain();
     this.buildCoastalPromenadeAndFishery();
@@ -171,8 +171,10 @@ export class WorldManager {
   }
 
   buildTerrainAndOcean() {
+    const grass = getGrassTexture('#4d7c3f').clone();
+    grass.repeat.set(36, 48);
     this.groundMat = new THREE.MeshStandardMaterial({
-      map: getGrassTexture('#4d7c3f'),
+      map: grass,
       roughness: 0.9,
       metalness: 0.02
     });
@@ -1158,8 +1160,10 @@ export class WorldManager {
     const mountains = new THREE.InstancedMesh(mtnGeo, mtnMat, mtnSpots.length);
     mtnSpots.forEach(([mx, mz, sx, sy], i) => {
       // Frame the outer edge so the former horizon opens into walkable land.
-      const edgeX = mz > -49 ? mx + (mx < 0 ? -55 : 125) : mx * 1.65 + 37;
-      const edgeZ = mz > -49 ? mz : mz - 137;
+      const edgeX = mz > -49
+        ? (mx < 0 ? WORLD_BOUNDS.minX - 10 : WORLD_BOUNDS.maxX + 10)
+        : mx * 5.5 + 40;
+      const edgeZ = mz > -49 ? mz : WORLD_BOUNDS.minZ + mz + 42;
       dummy.position.set(edgeX, -0.4, edgeZ);
       dummy.rotation.set(0, i * 0.8, 0);
       dummy.scale.set(sx, sy, sx * 0.9);
@@ -2141,6 +2145,7 @@ export class WorldManager {
       pad.radialTex?.dispose();
       pad.badgeTex?.dispose();
     }
+    this.regionalLife.dispose();
     disposeObject3D(this.worldGroup);
     this.scene.remove(this.worldGroup);
   }

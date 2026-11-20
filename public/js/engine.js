@@ -1844,6 +1844,7 @@ class TimberPortEngine {
     this.updateArcadePads(dt);
     this.updateWorkforceAI(dt);
     this.updateCitizensAI(dt);
+    this.world.regionalLife.update(this.playerPos, this.elapsed, this.activeProfile === 'low');
     this.updatePet(dt);
     this.updateRemotePlayers(dt);
     this.updateCamera(dt);
@@ -1873,7 +1874,8 @@ class TimberPortEngine {
           treasures: this.world.seaTreasures,
           controlMode: this.controlMode,
           fleetMissionState,
-          citizens: this.aiCitizens
+          citizens: this.aiCitizens,
+          regionalCitizens: this.world.regionalLife.people
         }
       );
     }
