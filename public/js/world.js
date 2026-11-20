@@ -49,7 +49,7 @@ import { gameState, fleetMissionState, stormState, getUpgradeCost, UPGRADE_CATAL
 
 import { FISHERY_LOCATION } from './island-route.js';
 
-export const WORLD_BOUNDS = { minX: -100, maxX: 88, minZ: -100, maxZ: 34 };
+export const WORLD_BOUNDS = { minX: -100, maxX: 170, minZ: -180, maxZ: 34 };
 export const LAND_EDGE_Z = 25;
 export const MINIMAP_BOUNDS = {
   minX: WORLD_BOUNDS.minX - 8, maxX: WORLD_BOUNDS.maxX + 8,
@@ -58,14 +58,19 @@ export const MINIMAP_BOUNDS = {
 export const HIGHLAND_TRAILS = [
   [[-25, -4], [-66, -4]],
   [[-66, -4], [-66, -76]],
-  [[-66, -76], [46, -76]]
+  [[-66, -76], [145, -76]],
+  [[46, -76], [46, -148]],
+  [[145, -76], [145, 21]],
+  [[145, 21], [25, 21]]
 ];
 export const HIGHLAND_LANDMARKS = [
   { x: -66, z: -47, name: 'Rừng Tây', color: '#a7f3d0' },
-  { x: 46, z: -76, name: 'Đồi Bắc', color: '#fde68a' }
+  { x: 46, z: -76, name: 'Đồi Bắc', color: '#fde68a' },
+  { x: 46, z: -148, name: 'Cao Nguyên', color: '#fcdca0' },
+  { x: 145, z: 21, name: 'Bãi Đông', color: '#a5f3fc' }
 ];
-export const SEA_BOUNDS = { minX: -115, maxX: 115, minZ: 27.5, maxZ: 145 };
-export const AIR_BOUNDS = { minX: -135, maxX: 135, minZ: -118, maxZ: 155, minY: 0.25, maxY: 34 };
+export const SEA_BOUNDS = { minX: -115, maxX: WORLD_BOUNDS.maxX + 15, minZ: 27.5, maxZ: 145 };
+export const AIR_BOUNDS = { minX: -135, maxX: SEA_BOUNDS.maxX + 20, minZ: WORLD_BOUNDS.minZ - 18, maxZ: 155, minY: 0.25, maxY: 34 };
 
 export const ZONES = {
   hopper: new THREE.Vector3(-4, 0, -14),
@@ -172,14 +177,18 @@ export class WorldManager {
       metalness: 0.02
     });
     const northEdge = WORLD_BOUNDS.minZ - 16;
-    const land = new THREE.Mesh(new THREE.BoxGeometry(240, 2, LAND_EDGE_Z - northEdge), this.groundMat);
-    land.position.set(0, -1, (LAND_EDGE_Z + northEdge) / 2);
+    const westEdge = WORLD_BOUNDS.minX - 20;
+    const eastEdge = WORLD_BOUNDS.maxX + 20;
+    const width = eastEdge - westEdge;
+    const centerX = (westEdge + eastEdge) / 2;
+    const land = new THREE.Mesh(new THREE.BoxGeometry(width, 2, LAND_EDGE_Z - northEdge), this.groundMat);
+    land.position.set(centerX, -1, (LAND_EDGE_Z + northEdge) / 2);
     land.receiveShadow = !this.lowSpec;
     this.worldGroup.add(land);
 
     const sandMat = new THREE.MeshStandardMaterial({ color: 0xe9cc90, roughness: 0.92, metalness: 0.0 });
-    const beach = new THREE.Mesh(new THREE.BoxGeometry(240, 0.4, 7), sandMat);
-    beach.position.set(0, -0.18, 24.5);
+    const beach = new THREE.Mesh(new THREE.BoxGeometry(width, 0.4, 7), sandMat);
+    beach.position.set(centerX, -0.18, 24.5);
     beach.receiveShadow = !this.lowSpec;
     this.worldGroup.add(beach);
 
@@ -208,9 +217,9 @@ export class WorldManager {
       roughness: 0.22,
       metalness: 0.18
     });
-    const ocean = new THREE.Mesh(new THREE.PlaneGeometry(340, 220), this.waterMat);
+    const ocean = new THREE.Mesh(new THREE.PlaneGeometry(width + 140, 220), this.waterMat);
     ocean.rotation.x = -Math.PI / 2;
-    ocean.position.set(0, -0.45, 130);
+    ocean.position.set(centerX, -0.45, 130);
     ocean.receiveShadow = false;
     this.worldGroup.add(ocean);
 
@@ -239,12 +248,14 @@ export class WorldManager {
 
   buildHighlandTrails() {
     const pathMaterial = new THREE.MeshStandardMaterial({ color: '#a48b63', roughness: 1 });
+    let pathHeight = 0.028;
     for (const [[startX, startZ], [endX, endZ]] of HIGHLAND_TRAILS) {
       const width = Math.abs(endX - startX) + 3;
       const depth = Math.abs(endZ - startZ) + 3;
       const path = new THREE.Mesh(new THREE.PlaneGeometry(width, depth), pathMaterial);
       path.rotation.x = -Math.PI / 2;
-      path.position.set((startX + endX) / 2, 0.028, (startZ + endZ) / 2);
+      path.position.set((startX + endX) / 2, pathHeight, (startZ + endZ) / 2);
+      pathHeight += 0.002;
       path.receiveShadow = !this.lowSpec;
       this.worldGroup.add(path);
     }
@@ -262,6 +273,34 @@ export class WorldManager {
     const railing = new THREE.Mesh(new THREE.BoxGeometry(8, 0.65, 0.3), wood);
     railing.position.set(lookout.x, 0.7, lookout.z - 7.35);
     this.worldGroup.add(platform, railing);
+
+    const plateau = HIGHLAND_LANDMARKS[2];
+    const cairn = new THREE.Group();
+    cairn.position.set(plateau.x + 5, 0, plateau.z);
+    for (const [level, radius] of [2.3, 1.65, 1.05, 0.55].entries()) {
+      const rock = new THREE.Mesh(new THREE.DodecahedronGeometry(radius, 0), stone);
+      rock.scale.y = 0.45;
+      rock.rotation.y = level * 0.7;
+      rock.position.y = 0.7 + level * 0.85;
+      cairn.add(rock);
+    }
+
+    const coast = HIGHLAND_LANDMARKS[3];
+    const shelter = new THREE.Group();
+    shelter.position.set(coast.x + 7, 0, coast.z - 3);
+    const posts = new THREE.BoxGeometry(0.3, 3, 0.3);
+    for (const x of [-2.5, 2.5]) {
+      for (const z of [-1.7, 1.7]) {
+        const post = new THREE.Mesh(posts, wood);
+        post.position.set(x, 1.5, z);
+        shelter.add(post);
+      }
+    }
+    const roof = new THREE.Mesh(new THREE.CylinderGeometry(0, 4.6, 1.6, 4), wood);
+    roof.rotation.y = Math.PI / 4;
+    roof.position.y = 3.7;
+    shelter.add(roof);
+    this.worldGroup.add(cairn, shelter);
   }
 
   addFloorMarker(pos, radius, colorHex, title, sub) {
@@ -1119,8 +1158,8 @@ export class WorldManager {
     const mountains = new THREE.InstancedMesh(mtnGeo, mtnMat, mtnSpots.length);
     mtnSpots.forEach(([mx, mz, sx, sy], i) => {
       // Frame the outer edge so the former horizon opens into walkable land.
-      const edgeX = mz > -49 ? mx + Math.sign(mx) * 55 : mx * 1.25;
-      const edgeZ = mz > -49 ? mz : mz - 57;
+      const edgeX = mz > -49 ? mx + (mx < 0 ? -55 : 125) : mx * 1.65 + 37;
+      const edgeZ = mz > -49 ? mz : mz - 137;
       dummy.position.set(edgeX, -0.4, edgeZ);
       dummy.rotation.set(0, i * 0.8, 0);
       dummy.scale.set(sx, sy, sx * 0.9);
@@ -1539,7 +1578,7 @@ export class WorldManager {
       }
     }
 
-    for (const [originX, originZ] of [[-91, -56], [-59, -65], [16, -91]]) {
+    for (const [originX, originZ] of [[-91, -56], [-59, -65], [16, -91], [24, -139], [55, -157], [120, -45]]) {
       for (let row = 0; row < 2; row++) {
         for (let col = 0; col < 4; col++) {
           spots.push({ x: originX + col * 5, z: originZ + row * 5.5 });
