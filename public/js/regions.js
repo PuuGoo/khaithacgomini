@@ -1,12 +1,12 @@
-export const WORLD_BOUNDS = { minX: -500, maxX: 580, minZ: -1000, maxZ: 34 };
+export const WORLD_BOUNDS = { minX: -5360, maxX: 5440, minZ: -10225, maxZ: 34 };
 export const LAND_EDGE_Z = 25;
 export const MINIMAP_BOUNDS = {
   minX: WORLD_BOUNDS.minX - 8, maxX: WORLD_BOUNDS.maxX + 8,
   minZ: WORLD_BOUNDS.minZ - 8, maxZ: 154
 };
 
-const COLUMNS = 12;
-const ROWS = 10;
+const COLUMNS = 120;
+const ROWS = 100;
 const CELL_WIDTH = (WORLD_BOUNDS.maxX - WORLD_BOUNDS.minX) / COLUMNS;
 const CELL_DEPTH = (LAND_EDGE_Z - WORLD_BOUNDS.minZ) / ROWS;
 
@@ -15,11 +15,15 @@ export const DISTRICTS = Array.from({ length: ROWS }, (_, row) =>
     const x = WORLD_BOUNDS.minX + (column + 0.5) * CELL_WIDTH;
     const z = WORLD_BOUNDS.minZ + (row + 0.5) * CELL_DEPTH;
     const developed = z < -215 || x < -125 || x > 205;
-    return { row, column, x, z, developed };
+    const stations = developed ? [{ mode: 'land', x: x + 7, z, y: 0 }] : [];
+    if (developed && column % 5 === 0) stations.push({ mode: 'heli', x: x - 11, z, y: 0.35 });
+    if (developed && column % 5 === 2) stations.push({ mode: 'plane', x: x - 12, z: z + 30, y: 0.25 });
+    if (developed && row === ROWS - 1 && column % 4 === 0) stations.push({ mode: 'yacht', x, z: 22, y: 0.05, parkZ: 31 });
+    return { row, column, x, z, developed, stations, name: 'Trạm ' + (ROWS - row) + '–' + (column + 1) };
   })
 );
 
-export const REGIONAL_ROADS = [
+export const CONNECTOR_ROADS = [
   [[46, -148], [46, -231.25]],
   [[46, -231.25], [85, -231.25]],
   [[145, 21], [265, 21]],
@@ -28,15 +32,42 @@ export const REGIONAL_ROADS = [
   [[-185, -4], [-185, -26.25]]
 ];
 
-for (const row of DISTRICTS) {
-  for (const district of row) {
+export function nearbyDistricts(row, column, radius) {
+  return DISTRICTS.slice(Math.max(0, row - radius), row + radius + 1)
+    .flatMap(line => line.slice(Math.max(0, column - radius), column + radius + 1));
+}
+
+export function districtRoads(districts) {
+  const roads = [];
+  for (const district of districts) {
     if (!district.developed) continue;
-    const east = row[district.column + 1];
+    const east = DISTRICTS[district.row][district.column + 1];
     const south = DISTRICTS[district.row + 1]?.[district.column];
     for (const neighbor of [east, south]) {
-      if (neighbor?.developed) REGIONAL_ROADS.push([[district.x, district.z], [neighbor.x, neighbor.z]]);
+      if (neighbor?.developed) roads.push([[district.x, district.z], [neighbor.x, neighbor.z]]);
     }
   }
+  return roads;
+}
+
+export function restoreCheckpoint(saved) {
+  const district = DISTRICTS[saved?.row]?.[saved?.column];
+  return district?.developed ? { row: district.row, column: district.column } : null;
+}
+
+export function findCheckpoint(position) {
+  const { row, column } = districtIndex(position.x, position.z);
+  const district = DISTRICTS[row][column];
+  return district.developed && Math.hypot(district.x - position.x, district.z - position.z) <= 6
+    ? district : null;
+}
+
+export function findRegionalStation(position, mode) {
+  const { row, column } = districtIndex(position.x, position.z);
+  const district = DISTRICTS[row][column];
+  const station = district.stations.find(item => (!mode || item.mode === mode)
+    && Math.hypot(item.x - position.x, item.z - position.z) <= 4.5);
+  return station ? { ...station, name: district.name } : null;
 }
 
 export function districtIndex(x, z) {

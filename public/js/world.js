@@ -172,7 +172,7 @@ export class WorldManager {
 
   buildTerrainAndOcean() {
     const grass = getGrassTexture('#4d7c3f').clone();
-    grass.repeat.set(36, 48);
+    grass.repeat.set(360, 480);
     this.groundMat = new THREE.MeshStandardMaterial({
       map: grass,
       roughness: 0.9,
@@ -1162,7 +1162,7 @@ export class WorldManager {
       // Frame the outer edge so the former horizon opens into walkable land.
       const edgeX = mz > -49
         ? (mx < 0 ? WORLD_BOUNDS.minX - 10 : WORLD_BOUNDS.maxX + 10)
-        : mx * 5.5 + 40;
+        : mx * 55 + 40;
       const edgeZ = mz > -49 ? mz : WORLD_BOUNDS.minZ + mz + 42;
       dummy.position.set(edgeX, -0.4, edgeZ);
       dummy.rotation.set(0, i * 0.8, 0);

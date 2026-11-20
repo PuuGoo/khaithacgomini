@@ -1,3 +1,5 @@
+import { DISTRICTS, findCheckpoint, findRegionalStation } from './regions.js';
+import { parkingStatus } from './vehicle-parking.js';
 /**
  * TimberPort 3D — Core Three.js PBR Engine, GPU Memory Manager & Simulation Loop
  * Zero-Leak Render Loop, Hardware Auto-Profiler (<8GB RAM & Intel HD Protection),
@@ -381,6 +383,12 @@ class TimberPortEngine {
 
     // Player & simulation state
     this.playerPos = new THREE.Vector3(0, 0, 2);
+    const checkpoint = gameState.checkpoint;
+    if (checkpoint) {
+      const { x, z } = DISTRICTS[checkpoint.row][checkpoint.column];
+      this.playerPos.set(x, 0, z);
+    }
+    this.vehicleHome = null;
     this.playerYaw = 0;
     this.inVehicle = false;
     this.controlMode = 'foot'; // 'foot' | 'land' | 'yacht' | 'plane' | 'heli'
@@ -480,6 +488,11 @@ class TimberPortEngine {
       onDeliverContract: (instant) => this.handleDeliverContract(instant),
       onDeliverVipRush: () => this.handleDeliverVipRush(),
       onPrestige: () => this.handlePrestigeReset(),
+      canResetPrestige: () => {
+        if (this.controlMode === 'foot') return true;
+        this.ui.toast(this.getParkingStatus().label);
+        return false;
+      },
       onQuickSellSawmill: () => this.sellAllAtSawmill(),
       onYachtChange: () => {
         this.world?.syncYachtTier(gameState.yachtTier || 0);
@@ -601,7 +614,7 @@ class TimberPortEngine {
     });
 
     this.archipelago = new Archipelago(this);
-    if (gameState.islandRoute.arrivalAt || gameState.islandRoute.fish) {
+    if (gameState.islandRoute.arrivalAt || (!gameState.checkpoint && gameState.islandRoute.fish)) {
       this.playerPos.copy(ZONES.ferryPier);
       this.playerModel.position.copy(this.playerPos);
     }
@@ -1265,14 +1278,14 @@ class TimberPortEngine {
   // 4. Contextual Interactions (Land Vehicles, Yachts, Airplanes, Helicopter, Train, Harbor)
   // -------------------------------------------------------------------------
   getContextPromptState() {
-    if (this.controlMode === 'yacht') {
-      return { action: 'disembark', key: 'E', label: 'Cập Bến Du Thuyền' };
+    if (this.vehicleHome) {
+      return { action: 'disembark', key: 'E', label: this.getParkingStatus().label };
     }
-    if (this.controlMode === 'plane') {
-      return { action: 'disembark', key: 'E', label: 'Hạ cánh về Đường băng' };
-    }
-    if (this.controlMode === 'heli') {
-      return { action: 'disembark', key: 'E', label: 'Đáp Trực Thăng về Sân H' };
+
+    const station = findRegionalStation(this.playerPos);
+    if (station) {
+      const labels = { land: 'xe', yacht: 'du thuyền', plane: 'máy bay', heli: 'trực thăng' };
+      return { action: 'regional_vehicle', key: 'E', label: 'Nhận ' + labels[station.mode] + ' tại ' + station.name, station };
     }
 
     const distToHarbor = this.playerPos.distanceTo(ZONES.harborExport);
@@ -1326,7 +1339,16 @@ class TimberPortEngine {
       if (this.inVehicle && !preferSpace) this.toggleVehicle();
       return;
     }
-    if (prompt.action === 'disembark') this.disembarkFleet();
+    if (prompt.action === 'disembark') {
+      if (!preferSpace) this.disembarkFleet();
+    } else if (prompt.action === 'regional_vehicle') {
+      if (preferSpace) return;
+      const station = prompt.station;
+      if (station.mode === 'land') this.toggleVehicle(station);
+      else if (station.mode === 'yacht') this.boardYacht(station);
+      else if (station.mode === 'plane') this.boardPlane(station);
+      else this.boardHeli(station);
+    }
     else if (prompt.action === 'board_yacht') this.boardYacht();
     else if (prompt.action === 'board_plane') this.boardPlane();
     else if (prompt.action === 'board_heli') this.boardHeli();
@@ -1338,19 +1360,46 @@ class TimberPortEngine {
     else if (prompt.action === 'sell_furniture') this.sellAllFurniture();
   }
 
-  boardYacht() {
+  getParkingStatus() {
+    return parkingStatus(this.vehicleHome, this.playerPos, this.vehicleSpeed);
+  }
+
+  selectVehicleHome(mode, station, defaultStation) {
+    if (this.controlMode !== 'foot') {
+      this.ui.toast(this.getParkingStatus().label);
+      return null;
+    }
+    const home = station || findRegionalStation(this.playerPos, mode) || defaultStation;
+    if (Math.hypot(this.playerPos.x - home.x, this.playerPos.z - home.z) > 4.5) {
+      this.ui.toast('Hãy đến điểm nhận phương tiện để lên lái.');
+      return null;
+    }
+    return home;
+  }
+
+  updateCheckpoint() {
+    if (this.controlMode !== 'foot' || this.archipelago.dialog.open) return;
+    const district = findCheckpoint(this.playerPos);
+    if (!district) return;
+    const current = gameState.checkpoint;
+    if (current?.row === district.row && current.column === district.column) return;
+    gameState.checkpoint = { row: district.row, column: district.column };
+    saveGameServer();
+    this.ui.toast('Đã lưu vị trí tại ' + district.name);
+  }
+
+  boardYacht(station) {
     if ((gameState.yachtTier || 0) <= 0) {
       this.ui.openHub('locker');
       this.ui.toast('🚤 Hãy mở khóa Bến Du Thuyền VIP Cấp 1 trong Showroom Hạm đội!');
       return;
     }
-    if (this.controlMode === 'yacht') return;
-    if (this.inVehicle) this.toggleVehicle();
-    if (this.controlMode === 'plane' || this.controlMode === 'heli') this.disembarkFleet();
-
+    const home = this.selectVehicleHome('yacht', station, { mode: 'yacht', x: ZONES.yachtBerth.x, z: ZONES.yachtBerth.z, y: 0.05, parkZ: 31 });
+    if (!home) return;
+    this.vehicleHome = home;
     this.controlMode = 'yacht';
     this.vehicleSpeed = 0;
-    this.playerPos.set(20, 0.05, 34);
+    this.playerPos.set(home.x, home.y, home.parkZ);
     this.playerYaw = 0.25;
     this.playerModel.visible = false;
     if (this.petModel) this.petModel.visible = false;
@@ -1365,22 +1414,21 @@ class TimberPortEngine {
     this.ui.toast('🚤 Đã rời bến! Săn Kho Báu Vàng & Giao đơn Hàng Hải!');
   }
 
-  boardPlane() {
+  boardPlane(station) {
     const hasPlane = (gameState.airportTier || 0) >= 1 && (gameState.unlockedPlanes?.length || 0) > 0;
     if (!hasPlane) {
       this.ui.openHub('locker');
       this.ui.toast('✈️ Cần xây Đường Băng Cấp 1 & mua 1 Máy Bay trong Showroom!');
       return;
     }
-    if (this.controlMode === 'plane') return;
-    if (this.inVehicle) this.toggleVehicle();
-    if (this.controlMode === 'yacht' || this.controlMode === 'heli') this.disembarkFleet();
-
+    const home = this.selectVehicleHome('plane', station, { mode: 'plane', x: ZONES.runwayStart.x, z: ZONES.runwayStart.z, y: 0.25 });
+    if (!home) return;
+    this.vehicleHome = home;
     this.controlMode = 'plane';
     this.vehicleSpeed = 0;
     this.planePitch = 0;
     this.planeBank = 0;
-    this.playerPos.set(30, 0.25, 13);
+    this.playerPos.set(home.x, home.y, home.z);
     this.playerYaw = Math.PI;
     this.camYaw = 0;
     this.playerModel.visible = false;
@@ -1395,22 +1443,21 @@ class TimberPortEngine {
     this.ui.toast('✈️ Đã lên buồng lái! W/Joystick tăng ga · Space / ▲ Lên để bay!');
   }
 
-  boardHeli() {
+  boardHeli(station) {
     if ((gameState.heliTier || 0) <= 0) {
       this.ui.openHub('locker');
       this.ui.toast('🚁 Hãy mở khóa Bãi Đáp & Trực Thăng VIP Cấp 1 trong Showroom Hạm đội!');
       return;
     }
-    if (this.controlMode === 'heli') return;
-    if (this.inVehicle) this.toggleVehicle();
-    if (this.controlMode === 'yacht' || this.controlMode === 'plane') this.disembarkFleet();
-
+    const home = this.selectVehicleHome('heli', station, { mode: 'heli', x: ZONES.helipad.x, z: ZONES.helipad.z, y: 0.35 });
+    if (!home) return;
+    this.vehicleHome = home;
     this.controlMode = 'heli';
     this.cameraMode = 'follow';
     this.vehicleSpeed = 0;
     this.heliPitch = 0;
     this.heliBank = 0;
-    this.playerPos.set(19.5, 2.2, 15.5);
+    this.playerPos.set(home.x, home.y, home.z);
     this.playerYaw = -Math.PI * 0.25;
     this.playerModel.visible = false;
     if (this.petModel) this.petModel.visible = false;
@@ -1488,77 +1535,64 @@ class TimberPortEngine {
   }
 
   disembarkFleet() {
-    if (this.inVehicle) {
-      this.toggleVehicle();
+    const home = this.vehicleHome;
+    if (!home) return;
+    const parking = this.getParkingStatus();
+    if (!parking.ready) {
+      this.ui.toast(parking.label);
       return;
     }
-    if (this.controlMode === 'yacht') {
-      this.controlMode = 'foot';
-      this.vehicleSpeed = 0;
-      if (this.drivableYacht) this.drivableYacht.visible = false;
-      this.world.syncYachtTier(gameState.yachtTier || 0);
-      this.playerPos.set(14.5, 0.5, 29);
-      this.playerYaw = Math.PI;
-      this.playerModel.visible = true;
-      if (this.petModel) this.petModel.visible = true;
-      sound.playSplash();
-      this.ui.toast('⚓ Đã cập Bến Du Thuyền VIP');
-    } else if (this.controlMode === 'plane') {
-      this.controlMode = 'foot';
-      this.vehicleSpeed = 0;
-      if (this.drivablePlane) {
-        this.drivablePlane.position.set(30, 0.14, 13);
-        this.drivablePlane.rotation.set(0, Math.PI, 0);
-      }
-      this.playerPos.set(25.2, 0, 13);
-      this.playerYaw = -Math.PI * 0.5;
-      this.playerModel.visible = true;
-      if (this.petModel) this.petModel.visible = true;
-      sound.playChop(1.1);
-      this.ui.toast('🛬 Đã hạ cánh an toàn về Đường Băng');
-    } else if (this.controlMode === 'heli') {
-      this.controlMode = 'foot';
-      this.vehicleSpeed = 0;
-      this.heliPitch = 0;
-      this.heliBank = 0;
-      if (this.drivableHeli) {
-        this.drivableHeli.position.set(19.5, 0.25, 15.5);
-        this.drivableHeli.rotation.set(0, -Math.PI * 0.25, 0);
-      }
-      this.playerPos.set(16.8, 0, 15.5);
-      this.playerYaw = -Math.PI * 0.5;
-      this.playerModel.visible = true;
-      if (this.petModel) this.petModel.visible = true;
-      sound.playHeliRotor();
-      this.ui.toast('🚁 Đã đáp Chuyên cơ Trực thăng về Sân đáp H');
-    }
-    this.ui.updateVehicleHud({ mode: 'foot' });
-  }
 
-  toggleVehicle() {
-    if (this.inVehicle) {
-      this.inVehicle = false;
-      this.controlMode = 'foot';
-      this.vehiclePos.copy(this.playerPos);
+    if (home.mode === 'land') {
+      this.vehiclePos.set(home.name ? ZONES.vehicleSpawn.x : home.x, 0, home.name ? ZONES.vehicleSpawn.z : home.z);
       this.vehicleYaw = this.playerYaw;
       this.parkedVehicle.position.copy(this.vehiclePos);
       this.parkedVehicle.rotation.y = this.vehicleYaw;
-      this.parkedVehicle.visible = true;
-      this.playerModel.visible = true;
-      this.playerPos.x += 1.6;
-      sound.playChop(1.2);
-      this.ui.toast('Đã xuống xe');
+      this.inVehicle = false;
+    } else if (home.mode === 'yacht') {
+      if (this.drivableYacht) this.drivableYacht.visible = false;
+      this.world.syncYachtTier(gameState.yachtTier || 0);
+      this.playerPos.set(home.x, home.z > LAND_EDGE_Z ? 0.5 : 0, home.z);
+      sound.playSplash();
     } else {
-      this.inVehicle = true;
-      this.controlMode = 'land';
-      this.playerPos.copy(this.vehiclePos);
-      this.playerYaw = this.vehicleYaw;
-      this.playerModel.visible = false;
-      this.parkedVehicle.visible = true;
-      sound.playUpgrade();
-      const veh = VEHICLES.find((v) => v.id === (gameState.equippedVehicle || 'forklift')) || VEHICLES[0];
-      this.ui.toast(`🚘 Đang lái ${veh.name}`);
+      const aircraft = home.mode === 'heli' ? this.drivableHeli : this.drivablePlane;
+      if (aircraft) {
+        if (home.name) {
+          const hangar = home.mode === 'heli' ? ZONES.helipad : ZONES.runwayStart;
+          aircraft.position.copy(hangar);
+        }
+        aircraft.rotation.set(0, this.playerYaw, 0);
+      }
     }
+    if (home.mode !== 'yacht') this.playerPos.y = 0;
+    this.controlMode = 'foot';
+    this.vehicleHome = null;
+    this.vehicleSpeed = 0;
+    this.playerModel.position.copy(this.playerPos);
+    this.playerModel.visible = true;
+    if (this.petModel) this.petModel.visible = true;
+    this.ui.toast('Đã đỗ và rời phương tiện');
+    this.ui.updateVehicleHud({ mode: 'foot' });
+  }
+
+  toggleVehicle(station) {
+    if (this.inVehicle) {
+      this.disembarkFleet();
+      return;
+    }
+    const home = this.selectVehicleHome('land', station, { mode: 'land', x: this.vehiclePos.x, z: this.vehiclePos.z, y: 0 });
+    if (!home) return;
+    this.vehicleHome = home;
+    this.inVehicle = true;
+    this.controlMode = 'land';
+    this.playerPos.set(home.x, 0, home.z);
+    this.playerYaw = this.vehicleYaw;
+    this.playerModel.visible = false;
+    this.parkedVehicle.position.copy(this.playerPos);
+    this.parkedVehicle.visible = true;
+    sound.playUpgrade();
+    const veh = VEHICLES.find(v => v.id === (gameState.equippedVehicle || 'forklift')) || VEHICLES[0];
+    this.ui.toast('Đang lái ' + veh.name);
   }
 
   sellAllAtSawmill() {
@@ -1839,12 +1873,13 @@ class TimberPortEngine {
 
     this.updateTimers(dt);
     this.updatePlayerMovement(dt);
+    this.updateCheckpoint();
     this.updateChoppingAndHopper(dt);
     this.updateSawmillAndCannery(dt);
     this.updateArcadePads(dt);
     this.updateWorkforceAI(dt);
     this.updateCitizensAI(dt);
-    this.world.regionalLife.update(this.playerPos, this.elapsed, this.activeProfile === 'low');
+    this.world.regionalLife.update(this.playerPos, this.elapsed, this.activeProfile === 'low', this.vehicleHome);
     this.updatePet(dt);
     this.updateRemotePlayers(dt);
     this.updateCamera(dt);
@@ -1875,7 +1910,8 @@ class TimberPortEngine {
           controlMode: this.controlMode,
           fleetMissionState,
           citizens: this.aiCitizens,
-          regionalCitizens: this.world.regionalLife.people
+          regionalCitizens: this.world.regionalLife.people,
+          vehicleHome: this.vehicleHome
         }
       );
     }
@@ -2251,6 +2287,7 @@ class TimberPortEngine {
       const sm = fleetMissionState.sea;
       const dist = sm ? Math.round(Math.hypot(sm.targetX - this.playerPos.x, sm.targetZ - this.playerPos.z)) : 0;
       return {
+        parkingLabel: this.getParkingStatus().label,
         mode: 'yacht',
         title: `🚤 ${yDef.name}`,
         speedDisplay: `${Math.round(this.vehicleSpeed * 1.94)} kts`,
@@ -2265,6 +2302,7 @@ class TimberPortEngine {
         ? Math.round(Math.hypot(am.targetX - this.playerPos.x, am.targetY - this.playerPos.y, am.targetZ - this.playerPos.z))
         : 0;
       return {
+        parkingLabel: this.getParkingStatus().label,
         mode: 'plane',
         title: `✈️ ${pDef.name}`,
         speedDisplay: `${Math.round(this.vehicleSpeed * 12)} km/h`,
@@ -2279,6 +2317,7 @@ class TimberPortEngine {
         ? Math.round(Math.hypot(am.targetX - this.playerPos.x, am.targetY - this.playerPos.y, am.targetZ - this.playerPos.z))
         : 0;
       return {
+        parkingLabel: this.getParkingStatus().label,
         mode: 'heli',
         title: `🚁 ${hDef.name}`,
         speedDisplay: `${Math.round(this.vehicleSpeed * 11)} km/h`,

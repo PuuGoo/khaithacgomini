@@ -1,5 +1,5 @@
 import { HIGHLAND_LANDMARKS, HIGHLAND_TRAILS } from './world.js';
-import { DISTRICTS, LAND_EDGE_Z, MINIMAP_BOUNDS, REGIONAL_ROADS } from './regions.js';
+import { CONNECTOR_ROADS, DISTRICTS, districtIndex, districtRoads, LAND_EDGE_Z, MINIMAP_BOUNDS, nearbyDistricts } from './regions.js';
 import { FISHERY_LOCATION } from './island-route.js';
 /**
  * TimberPort 3D — Lightweight Cross-Platform HUD & Unified Commercial Empire Hub
@@ -573,15 +573,31 @@ export class UIManager {
     ctx.strokeStyle = '#868578';
     ctx.lineWidth = this.minimapOverview ? 0.65 : 1.5;
     ctx.beginPath();
-    for (const [[x1, z1], [x2, z2]] of REGIONAL_ROADS) {
+    const { row, column } = districtIndex(playerPos.x, playerPos.z);
+    const districts = nearbyDistricts(row, column, 2);
+    const roads = this.minimapOverview ? CONNECTOR_ROADS : [...districtRoads(districts), ...CONNECTOR_ROADS];
+    for (const [[x1, z1], [x2, z2]] of roads) {
       ctx.moveTo(toMapX(x1), toMapY(z1));
       ctx.lineTo(toMapX(x2), toMapY(z2));
     }
     ctx.stroke();
     ctx.fillStyle = '#f2cf9b';
-    for (const line of DISTRICTS) {
-      for (const district of line) {
-        if (district.developed) ctx.fillRect(toMapX(district.x) - 1, toMapY(district.z) - 1, 2, 2);
+    if (this.minimapOverview) {
+      for (let iz = 4; iz < DISTRICTS.length; iz += 10) {
+        for (let ix = 4; ix < DISTRICTS[iz].length; ix += 10) {
+          const district = DISTRICTS[iz][ix];
+          ctx.fillRect(toMapX(district.x), toMapY(district.z), 1, 1);
+        }
+      }
+    } else {
+      for (const district of districts) {
+        if (!district.developed) continue;
+        ctx.fillStyle = '#54e1b8';
+        ctx.fillRect(toMapX(district.x) - 1, toMapY(district.z) - 1, 2, 2);
+        ctx.fillStyle = '#edc780';
+        for (const station of district.stations) {
+          ctx.fillRect(toMapX(station.x), toMapY(station.z), 1.5, 1.5);
+        }
       }
     }
     if (!this.minimapOverview) {
@@ -798,6 +814,13 @@ export class UIManager {
       ctx.stroke();
     }
 
+    if (extras.vehicleHome) {
+      const home = extras.vehicleHome;
+      ctx.strokeStyle = '#fbbf24';
+      ctx.lineWidth = 2;
+      ctx.strokeRect(toMapX(home.x) - 3, toMapY(home.parkZ ?? home.z) - 3, 6, 6);
+    }
+
     // Player / Yacht / Airplane directional cursor
     if (playerPos) {
       const px = toMapX(playerPos.x);
@@ -957,6 +980,7 @@ export class UIManager {
     if (this.els.vhudSpeed) this.els.vhudSpeed.textContent = telemetry.speedDisplay || '0';
     if (this.els.vhudAlt) this.els.vhudAlt.textContent = telemetry.altDisplay || '0.0 m';
     if (this.els.vhudMission) this.els.vhudMission.textContent = telemetry.missionText || 'Tự do khám phá';
+    if (this.els.btnVehicleExit) this.els.btnVehicleExit.title = telemetry.parkingLabel || '';
     if (this.els.btnPlaneUp) this.els.btnPlaneUp.hidden = !isAir;
     if (this.els.btnPlaneDown) this.els.btnPlaneDown.hidden = !isAir;
   }
@@ -4835,6 +4859,7 @@ export class UIManager {
       this.renderHub();
     });
     presSec.querySelector('#btn-prestige-confirm')?.addEventListener('click', () => {
+      if (this.cb.canResetPrestige && !this.cb.canResetPrestige()) return;
       const gained = performPrestige();
       if (!gained) return;
       this.prestigeConfirmOpen = false;
@@ -5197,7 +5222,7 @@ export class UIManager {
       gameState.empireName = res.user.empireName;
       gameState.playerId = res.user.username;
       if (res.empireData && res.empireData.timberportState) {
-        Object.assign(gameState, { islandRoute: null }, res.empireData.timberportState);
+        Object.assign(gameState, { islandRoute: null, checkpoint: null }, res.empireData.timberportState);
         hydrateLoadedState();
         if (this.cb.onUpgrade) this.cb.onUpgrade('lumberjacks');
         if (this.cb.onSkinChange) this.cb.onSkinChange();

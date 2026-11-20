@@ -1,3 +1,4 @@
+import { restoreCheckpoint } from './regions.js';
 import { createIslandRoute, restoreIslandRoute } from './island-route.js';
 
 /**
@@ -935,6 +936,7 @@ export function createDefaultState() {
     vipLevel: 0,
 
     islandRoute: createIslandRoute(),
+    checkpoint: null,
 
     // Supply chain inventory
     logs: 0,
@@ -1551,6 +1553,7 @@ export function performPrestige() {
   gameState.freshFish = 0;
   const regatta = gameState.islandRoute.regatta;
   gameState.islandRoute = { ...createIslandRoute(), regatta };
+  gameState.checkpoint = null;
   gameState.cannedFish = 0;
 
   gameState.axeTier = 1;
@@ -2290,6 +2293,7 @@ export function resetShiftSession(commitRecords = true) {
 }
 
 export function hydrateLoadedState() {
+  gameState.checkpoint = restoreCheckpoint(gameState.checkpoint);
   gameState.islandRoute = restoreIslandRoute(gameState.islandRoute);
   if (!gameState.revenueStats) {
     gameState.revenueStats = { sawmill: 0, contracts: 0, fishery: 0, market: 0, offline: 0, stocks: 0, resort: 0 };
