@@ -2288,7 +2288,7 @@ class TimberPortEngine {
   }
 
   updatePlayerMovement(dt) {
-    if (this.ui.isAnyModalOpen()) return;
+    if (this.ui.isAnyModalOpen() || this.archipelago.dialog.open) return;
 
     let ix = this.joyVec.x;
     let iy = this.joyVec.y;
@@ -2296,6 +2296,20 @@ class TimberPortEngine {
     if (this.keys.has('KeyS') || this.keys.has('ArrowDown')) iy += 1;
     if (this.keys.has('KeyA') || this.keys.has('ArrowLeft')) ix -= 1;
     if (this.keys.has('KeyD') || this.keys.has('ArrowRight')) ix += 1;
+
+    if (this.walkToFerry) {
+      if (this.controlMode !== 'foot' || Math.hypot(ix, iy) > 0.08) {
+        this.walkToFerry = false;
+      } else if (this.archipelago.atPier) {
+        this.walkToFerry = false;
+        this.archipelago.open();
+        return;
+      } else {
+        this._tmpVec.subVectors(ZONES.ferryPier, this.playerPos).setY(0).normalize();
+        ix = this._tmpVec.x * Math.cos(this.camYaw) - this._tmpVec.z * Math.sin(this.camYaw);
+        iy = this._tmpVec.x * Math.sin(this.camYaw) + this._tmpVec.z * Math.cos(this.camYaw);
+      }
+    }
 
     if (this.controlMode === 'yacht') {
       this.updateYachtControl(dt, ix, iy);

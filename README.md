@@ -21,7 +21,7 @@ hoặc:
 node server.js
 ```
 
-> - Máy chủ Node.js Express sẽ tự động khởi động tại `http://127.0.0.1:8000/index.html`.
+> - Máy chủ Node.js Express sẽ tự động khởi động tại `http://127.0.0.1:3000/`.
 > - Tự động nạp cấu hình cụm đám mây từ tệp `.env` (`MONGODB_URI`).
 > - Tự động mở trình duyệt web để bắt đầu trải nghiệm trò chơi.
 
@@ -34,7 +34,6 @@ game_khaithacgo/
 ├── .env                        # Cấu hình chuỗi kết nối MongoDB Atlas & Cổng máy chủ
 ├── package.json                # Quản lý dependencies (Express, MongoDB, Dotenv, Cors)
 ├── server.js                   # Node.js Express Backend & MongoDB Atlas REST API
-├── index.html                  # Giao diện chính tương thích chạy ngoại tuyến (Offline)
 ├── README.md                   # Tài liệu hướng dẫn dự án
 ├── public/                     # Thư mục tài nguyên tĩnh phục vụ Web
 │   ├── index.html              # HTML giao diện game chuẩn hóa

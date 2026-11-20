@@ -10,7 +10,7 @@
   <link rel="preconnect" href="https://fonts.googleapis.com">
   <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
   <link href="https://fonts.googleapis.com/css2?family=JetBrains+Mono:wght@500;600;700&family=Outfit:wght@600;700&family=Plus+Jakarta+Sans:wght@400;500;600;700&display=swap" rel="stylesheet">
-  <link rel="stylesheet" href="/css/style.css?v=2.13.0">
+  <link rel="stylesheet" href="/css/style.css?v=2.14.0">
   <link rel="icon" href="data:image/svg+xml,<svg xmlns=%22http://www.w3.org/2000/svg%22 viewBox=%220 0 100 100%22><text y=%22.9em%22 font-size=%2290%22>🪵</text></svg>">
   <script type="importmap">
   {
@@ -89,7 +89,7 @@
     <div class="top-zone-actions">
       <button type="button" id="btn-archipelago" class="top-btn" aria-label="Bản đồ quần đảo">
         <span aria-hidden="true">🗺️</span>
-        <span class="hide-sm">Quần đảo</span>
+        <span class="archipelago-label">Quần đảo</span>
       </button>
       <button type="button" id="btn-weather-cycle" class="top-btn tabular-nums" title="Chu kỳ Ngày-Đêm 24h &amp; Thời tiết 3D (Bấm để đổi Nắng/Hoàng hôn/Đêm/Bão)">
         <span id="hud-weather-icon">☀️</span>
@@ -224,7 +224,8 @@
       <button type="button" id="btn-toggle-minimap" class="minimap-toggle" title="Thu gọn hoặc mở rộng bản đồ">▾</button>
     </div>
     <div class="minimap-body">
-      <canvas id="minimap-canvas" width="148" height="148"></canvas>
+      <canvas id="minimap-canvas" width="148" height="148" aria-label="Bản đồ TimberPort, Bến Liên Đảo và Ngư Trường"></canvas>
+      <button type="button" id="btn-archipelago-minimap" class="top-btn">Mở bản đồ quần đảo</button>
       <div class="minimap-legend">
         <span>🌲 Rừng</span>
         <span class="meta-sep" aria-hidden="true">·</span>
@@ -433,9 +434,17 @@
   <dialog id="island-dialog" aria-labelledby="island-title">
     <h2 id="island-title" tabindex="-1">TimberPort</h2>
     <div class="island-route" aria-label="Tuyến tàu liên đảo">
-      <span data-route-stop="timberport">TimberPort</span>
-      <span aria-hidden="true">↔</span>
-      <span data-route-stop="fishery">Đảo Ngư Trường</span>
+      <div class="island-stop island-stop-home" data-route-stop="timberport">
+        <span class="island-landform" aria-hidden="true">🌲</span>
+        <strong>TimberPort</strong>
+        <small>Bến Liên Đảo · Kho ván</small>
+      </div>
+      <div class="island-lane"><span>3,5 giây</span></div>
+      <div class="island-stop island-stop-fishery" data-route-stop="fishery">
+        <span class="island-landform" aria-hidden="true">🐟</span>
+        <strong>Đảo Ngư Trường</strong>
+        <small id="fishery-access"></small>
+      </div>
     </div>
     <p id="island-status" role="status"></p>
     <progress id="island-crossing" max="100" aria-label="Tiến độ vượt biển" hidden></progress>
@@ -443,6 +452,7 @@
     <p id="island-market" hidden></p>
     <div id="island-receipt" role="status"></div>
     <div class="island-actions">
+      <button type="button" id="btn-guide-ferry" class="top-btn top-btn-accent" hidden>Đi đến Bến Liên Đảo</button>
       <button type="button" class="top-btn" data-island-action="load-planks">Xếp 6 ván</button>
       <button type="button" class="top-btn" data-island-action="accept-plank-order" hidden>Nhận và xếp đơn ván</button>
       <button type="button" class="top-btn" data-island-action="return-planks" hidden>Trả ván về kho TimberPort</button>
@@ -461,6 +471,6 @@
       <p id="island-regatta-rival"></p>
     </details>
   </dialog>
-  <script type="module" src="/js/engine.js?v=2.13.0"></script>
+  <script type="module" src="/js/engine.js?v=2.14.0"></script>
 </body>
 </html>

@@ -42,9 +42,12 @@ import {
   createHelipadModel,
   createCivicPromenadeModel,
   syncBuildingEvolution,
+  createFisheryIslandModel,
   disposeObject3D
 } from './models.js';
 import { gameState, fleetMissionState, stormState, getUpgradeCost, UPGRADE_CATALOG } from './state.js';
+
+import { FISHERY_LOCATION } from './island-route.js';
 
 export const WORLD_BOUNDS = { minX: -42, maxX: 42, minZ: -38, maxZ: 34 };
 export const SEA_BOUNDS = { minX: -115, maxX: 115, minZ: 27.5, maxZ: 145 };
@@ -194,6 +197,12 @@ export class WorldManager {
     ocean.position.set(0, -0.45, 130);
     ocean.receiveShadow = false;
     this.worldGroup.add(ocean);
+
+    this.fisheryIsland = createFisheryIslandModel();
+    this.fisheryIsland.rotation.y = Math.PI;
+    this.fisheryIsland.position.set(FISHERY_LOCATION.x, 0, FISHERY_LOCATION.z);
+    this.fisheryIsland.userData.pier.visible = gameState.islandRoute.pierBuilt;
+    this.worldGroup.add(this.fisheryIsland);
 
     this.worldGroup.add(this.landDetailGroup);
 
@@ -1710,6 +1719,7 @@ export class WorldManager {
   }
 
   update(dt, elapsed, sawmillWorking) {
+    this.fisheryIsland.userData.pier.visible = gameState.islandRoute.pierBuilt;
     if (this.waterTex) {
       this.waterTex.offset.x = (elapsed * 0.025) % 1;
       this.waterTex.offset.y = (elapsed * 0.018) % 1;

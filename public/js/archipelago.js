@@ -1,5 +1,5 @@
 import * as THREE from 'three';
-import { createFishingBoatModel, disposeObject3D } from './models.js';
+import { createFishingBoatModel, createFisheryIslandModel, disposeObject3D } from './models.js';
 import { sound } from './audio.js';
 import { gameState, logTransaction, recordRevenue, saveGameServer } from './state.js';
 import { getFishStock, getPlankMarket, HOLD_CAPACITY, performIslandAction, PIER_COST, SAIL_MS } from './island-route.js';
@@ -30,6 +30,12 @@ export class Archipelago {
     );
 
     document.getElementById('btn-archipelago').addEventListener('click', () => this.open());
+    document.getElementById('btn-archipelago-minimap').addEventListener('click', () => this.open());
+    document.getElementById('btn-guide-ferry').addEventListener('click', () => {
+      if (engine.controlMode !== 'foot' || this.required) return;
+      engine.walkToFerry = true;
+      this.dialog.close();
+    });
     this.dialog.addEventListener('cancel', event => {
       if (this.required) event.preventDefault();
     });
@@ -120,7 +126,9 @@ export class Archipelago {
         ? 'Kho Ngư Trường còn ' + stock + ' cá tươi. Kho bổ sung 1 cá mỗi 5 giây.'
         : 'Dùng ' + PIER_COST + ' ván trên tàu để xây cầu cảng.';
     } else if (!this.atPier) {
-      status = 'Đi bộ đến lối đi ven biển trước Cầu Tàu Xuất Khẩu để lên tàu.';
+      status = this.engine.controlMode === 'foot'
+        ? 'Bến Liên Đảo cách ' + Math.ceil(this.engine.playerPos.distanceTo(ZONES.ferryPier)) + ' m.'
+        : 'Rời phương tiện trước khi đi đến Bến Liên Đảo.';
     } else {
       status = route.pierBuilt
         ? 'Tuyến Ngư Trường đang hoạt động. Dỡ cá để chuyển vào nhà máy đóng hộp.'
@@ -130,6 +138,8 @@ export class Archipelago {
     this.title.textContent = seconds ? 'Trên biển' : destination;
     this.crossing.hidden = seconds === 0;
     this.crossing.value = Math.max(0, 100 * (1 - (route.arrivalAt - now) / SAIL_MS));
+    document.getElementById('fishery-access').textContent = route.pierBuilt
+      ? 'Cầu cảng đã mở' : 'Cần 6 ván để xây cầu cảng';
     for (const stop of this.stops) {
       stop.setAttribute('aria-current', !seconds && stop.dataset.routeStop === route.island ? 'location' : 'false');
     }
@@ -141,6 +151,9 @@ export class Archipelago {
       button.hidden = !visible;
       button.disabled = !enabled;
     };
+    const guide = document.getElementById('btn-guide-ferry');
+    guide.hidden = !atHome || seconds > 0 || this.atPier;
+    guide.disabled = this.engine.controlMode !== 'foot';
     show('close', atHome && !seconds);
     show('load-planks', atHome && !seconds && !route.pierBuilt && !route.planks,
       this.atPier && gameState.planks >= PIER_COST);
@@ -215,28 +228,15 @@ export class Archipelago {
     this.camera.position.set(15, 16, 25);
     this.camera.lookAt(0, 0, 1);
 
-    const mesh = (parent, geometry, color, x, y, z) => {
-      const object = new THREE.Mesh(geometry, new THREE.MeshStandardMaterial({ color }));
-      object.position.set(x, y, z);
-      parent.add(object);
-      return object;
-    };
-    mesh(this.scene, new THREE.BoxGeometry(200, 0.3, 200), '#187f9f', 0, -0.55, 0);
-    this.land = new THREE.Group();
+    const sea = new THREE.Mesh(
+      new THREE.BoxGeometry(200, 0.3, 200),
+      new THREE.MeshStandardMaterial({ color: '#187f9f' })
+    );
+    sea.position.y = -0.55;
+    this.scene.add(sea);
+    this.land = createFisheryIslandModel();
+    this.pier = this.land.userData.pier;
     this.scene.add(this.land);
-    mesh(this.land, new THREE.CylinderGeometry(7.5, 8.5, 1.15, 12), '#e6c785', 0, -0.12, -3);
-    mesh(this.land, new THREE.CylinderGeometry(6, 7, 0.5, 12), '#80ad65', 0, 0.44, -3);
-    mesh(this.land, new THREE.BoxGeometry(3.8, 2, 2.8), '#f4e4c0', -2, 1.7, -3);
-    const roof = mesh(this.land, new THREE.ConeGeometry(3, 1.3, 4), '#ab4d34', -2, 3.3, -3);
-    roof.rotation.y = Math.PI / 4;
-    this.pier = new THREE.Group();
-    this.land.add(this.pier);
-    mesh(this.pier, new THREE.BoxGeometry(3, 0.25, 6), '#97704a', 2, 0.35, 5);
-    for (const x of [0.75, 3.25]) {
-      for (const z of [3, 5, 7]) {
-        mesh(this.pier, new THREE.CylinderGeometry(0.13, 0.13, 1.4, 8), '#59402b', x, 0.12, z);
-      }
-    }
     this.boat = createFishingBoatModel();
     this.scene.add(this.boat);
     this.rivalBoat = createFishingBoatModel(1);

@@ -3004,14 +3004,6 @@ body.zen-hud #btn-notifications {
   display: none;
 }
 
-.island-route {
-  display: flex;
-  flex-wrap: wrap;
-  align-items: center;
-  gap: 0.75rem;
-  color: #b6c9d5;
-}
-
 .island-route [aria-current="location"] {
   color: #7dd3fc;
   font-weight: 700;
@@ -3047,4 +3039,76 @@ body.zen-hud #btn-notifications {
 #island-regatta summary {
   cursor: pointer;
   color: #bae6fd;
+}
+
+#btn-archipelago {
+  color: #a5f3fc;
+  border-color: #4897a7;
+}
+
+#btn-archipelago-minimap {
+  width: 100%;
+  white-space: normal;
+}
+
+.island-route {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) auto minmax(0, 1fr);
+  gap: clamp(0.25rem, 2vw, 0.75rem);
+  padding: 0.65rem;
+  border: 1px solid #397984;
+  border-radius: 0.8rem;
+  background: radial-gradient(ellipse at 50% 10%, #246b7c, #104056 75%);
+  text-align: center;
+}
+
+.island-stop {
+  display: grid;
+  justify-items: center;
+  gap: 0.2rem;
+}
+
+.island-stop small {
+  color: #c7dee8;
+  font-weight: 500;
+}
+
+.island-landform {
+  display: grid;
+  place-items: center;
+  width: min(4.5rem, 100%);
+  aspect-ratio: 1.55;
+  border-radius: 47% 53% 39% 61% / 61% 55% 45% 39%;
+  background: #507f46;
+  border: 4px solid #dabe7f;
+  box-shadow: 0 0 0 4px #53b1b866;
+}
+
+.island-stop-fishery .island-landform {
+  transform: rotate(-8deg);
+  background: #308b72;
+}
+
+.island-stop[aria-current="location"] .island-landform {
+  box-shadow: 0 0 0 4px #7dd3fc;
+}
+
+.island-lane {
+  display: grid;
+  gap: 0.25rem;
+  color: #dbf5ff;
+  font-size: 0.7rem;
+  white-space: nowrap;
+}
+
+.island-lane::after {
+  content: '';
+  width: 100%;
+  border-bottom: 2px dashed #85d1e3;
+}
+
+@media (max-width: 650px) {
+  #btn-archipelago .archipelago-label {
+    display: none;
+  }
 }

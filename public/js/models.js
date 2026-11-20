@@ -880,6 +880,32 @@ export function syncBuildingEvolution(sawmill, harbor, sawTier, harborTier) {
   if (harbor?.userData?.tier3Group) harbor.userData.tier3Group.visible = harborTier >= 3;
 }
 
+export function createFisheryIslandModel() {
+  const land = new THREE.Group();
+  const mesh = (parent, geometry, color, x, y, z) => {
+    const object = new THREE.Mesh(geometry, new THREE.MeshStandardMaterial({ color }));
+    object.position.set(x, y, z);
+    parent.add(object);
+    return object;
+  };
+  mesh(land, new THREE.CylinderGeometry(7.5, 8.5, 1.15, 12), '#e6c785', 0, -0.12, -3);
+  mesh(land, new THREE.CylinderGeometry(6, 7, 0.5, 12), '#559578', 0, 0.44, -3);
+  mesh(land, new THREE.BoxGeometry(3.8, 2, 2.8), '#f4e4c0', -2, 1.7, -3);
+  const roof = mesh(land, new THREE.ConeGeometry(3, 1.3, 4), '#ab4d34', -2, 3.3, -3);
+  roof.rotation.y = Math.PI / 4;
+
+  const pier = new THREE.Group();
+  land.add(pier);
+  land.userData.pier = pier;
+  mesh(pier, new THREE.BoxGeometry(3, 0.25, 6), '#97704a', 2, 0.35, 5);
+  for (const x of [0.75, 3.25]) {
+    for (const z of [3, 5, 7]) {
+      mesh(pier, new THREE.CylinderGeometry(0.13, 0.13, 1.4, 8), '#59402b', x, 0.12, z);
+    }
+  }
+  return land;
+}
+
 export function createFishingBoatModel(index = 0) {
   const g = new THREE.Group();
   const hullColor = index % 2 === 0 ? 0xf8fafc : 0x0ea5e9;

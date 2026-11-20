@@ -1,3 +1,4 @@
+import { FISHERY_LOCATION } from './island-route.js';
 /**
  * TimberPort 3D — Lightweight Cross-Platform HUD & Unified Commercial Empire Hub
  * 3-Zone Top Bar, Collapsible Bottom Dock, Virtual Joystick & 5-Tab Hub Modal
@@ -579,6 +580,30 @@ export class UIManager {
     ctx.stroke();
     ctx.restore();
 
+    // Fishery Island lies west of the offshore outpost.
+    const fisheryX = toMapX(FISHERY_LOCATION.x);
+    const fisheryY = toMapY(FISHERY_LOCATION.z);
+    ctx.save();
+    ctx.setLineDash([2, 2]);
+    ctx.strokeStyle = '#67e8f9';
+    ctx.beginPath();
+    ctx.moveTo(toMapX(2), toMapY(22.6));
+    ctx.lineTo(fisheryX, fisheryY);
+    ctx.stroke();
+    ctx.setLineDash([]);
+    ctx.fillStyle = '#4b936f';
+    ctx.strokeStyle = '#f6d289';
+    ctx.lineWidth = 1.5;
+    ctx.beginPath();
+    ctx.ellipse(fisheryX, fisheryY, 8, 5.5, -0.3, 0, Math.PI * 2);
+    ctx.fill();
+    ctx.stroke();
+    ctx.fillStyle = '#e0f2fe';
+    ctx.font = 'bold 8px sans-serif';
+    ctx.textAlign = 'center';
+    ctx.fillText('Ngư Trường', fisheryX + 4, fisheryY + 16);
+    ctx.restore();
+
     // Asphalt roads
     ctx.fillStyle = '#334155';
     ctx.fillRect(toMapX(-25), toMapY(-6.5), toMapX(21) - toMapX(-25), 5);
@@ -657,6 +682,9 @@ export class UIManager {
         ctx.fillRect(toMapX(t.pos.x) - 1.2, toMapY(t.pos.z) - 1.2, 2.4, 2.4);
       }
     }
+
+    ctx.fillStyle = '#cffafe';
+    ctx.fillRect(toMapX(2) - 2, toMapY(22.6) - 2, 4, 4);
 
     // Floating Sea Treasures (gold dots)
     if (extras.treasures && extras.treasures.length) {

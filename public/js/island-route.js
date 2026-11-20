@@ -1,5 +1,6 @@
 import { readRegatta, scoreRegatta } from './island-regatta.js';
 
+export const FISHERY_LOCATION = { x: -30, z: 58 };
 export const PIER_COST = 6;
 export const HOLD_CAPACITY = 12;
 export const SAIL_MS = 3500;
