@@ -113,7 +113,7 @@ import {
   applyLiveryToModel,
   disposeObject3D
 } from './models.js';
-import { WorldManager, WORLD_BOUNDS, SEA_BOUNDS, AIR_BOUNDS, ZONES } from './world.js';
+import { WorldManager, WORLD_BOUNDS, LAND_EDGE_Z, SEA_BOUNDS, AIR_BOUNDS, ZONES } from './world.js';
 import { UIManager } from './ui.js';
 
 // ---------------------------------------------------------------------------
@@ -2357,8 +2357,8 @@ class TimberPortEngine {
       this.playerPos.z = THREE.MathUtils.clamp(this.playerPos.z, WORLD_BOUNDS.minZ, WORLD_BOUNDS.maxZ);
 
       const onPier = this.playerPos.z > 24.5 && Math.abs(this.playerPos.x - 2) < 13.5;
-      if (!onPier && this.playerPos.z > 25) {
-        this.playerPos.z = 25;
+      if (!onPier && this.playerPos.z > LAND_EDGE_Z) {
+        this.playerPos.z = LAND_EDGE_Z;
       }
       this.playerPos.y = onPier ? 0.72 : 0;
 
@@ -3881,7 +3881,7 @@ class TimberPortEngine {
 
     if (this.cameraMode === 'tactical' && this.controlMode === 'foot') {
       // High-altitude RTS overview of Sawmill, Railway, Helipad & Harbor
-      this._camDesired.set(this.playerPos.x + 12, 34, this.playerPos.z + 24);
+      this._camDesired.set(this.playerPos.x + 17, 50, this.playerPos.z + 31);
       this._camLook.set(this.playerPos.x, 0.8, this.playerPos.z + 2);
     } else if (this.cameraMode === 'orbit' && this.controlMode === 'foot') {
       // Smooth 360-degree cinematic showcase around the Empire center

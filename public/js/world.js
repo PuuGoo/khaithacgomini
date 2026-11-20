@@ -49,9 +49,23 @@ import { gameState, fleetMissionState, stormState, getUpgradeCost, UPGRADE_CATAL
 
 import { FISHERY_LOCATION } from './island-route.js';
 
-export const WORLD_BOUNDS = { minX: -42, maxX: 42, minZ: -38, maxZ: 34 };
+export const WORLD_BOUNDS = { minX: -100, maxX: 88, minZ: -100, maxZ: 34 };
+export const LAND_EDGE_Z = 25;
+export const MINIMAP_BOUNDS = {
+  minX: WORLD_BOUNDS.minX - 8, maxX: WORLD_BOUNDS.maxX + 8,
+  minZ: WORLD_BOUNDS.minZ - 8, maxZ: 116
+};
+export const HIGHLAND_TRAILS = [
+  [[-25, -4], [-66, -4]],
+  [[-66, -4], [-66, -76]],
+  [[-66, -76], [46, -76]]
+];
+export const HIGHLAND_LANDMARKS = [
+  { x: -66, z: -47, name: 'Rừng Tây', color: '#a7f3d0' },
+  { x: 46, z: -76, name: 'Đồi Bắc', color: '#fde68a' }
+];
 export const SEA_BOUNDS = { minX: -115, maxX: 115, minZ: 27.5, maxZ: 145 };
-export const AIR_BOUNDS = { minX: -135, maxX: 135, minZ: -65, maxZ: 155, minY: 0.25, maxY: 34 };
+export const AIR_BOUNDS = { minX: -135, maxX: 135, minZ: -118, maxZ: 155, minY: 0.25, maxY: 34 };
 
 export const ZONES = {
   hopper: new THREE.Vector3(-4, 0, -14),
@@ -133,6 +147,7 @@ export class WorldManager {
     this.currentQuestTarget = ZONES.hopper;
 
     this.buildTerrainAndOcean();
+    this.buildHighlandTrails();
     this.buildLuxuryBoulevardsAndParking();
     this.buildExecutivePlazaAndFountain();
     this.buildCoastalPromenadeAndFishery();
@@ -156,8 +171,9 @@ export class WorldManager {
       roughness: 0.9,
       metalness: 0.02
     });
-    const land = new THREE.Mesh(new THREE.BoxGeometry(240, 2, 110), this.groundMat);
-    land.position.set(0, -1.0, -31);
+    const northEdge = WORLD_BOUNDS.minZ - 16;
+    const land = new THREE.Mesh(new THREE.BoxGeometry(240, 2, LAND_EDGE_Z - northEdge), this.groundMat);
+    land.position.set(0, -1, (LAND_EDGE_Z + northEdge) / 2);
     land.receiveShadow = !this.lowSpec;
     this.worldGroup.add(land);
 
@@ -219,6 +235,33 @@ export class WorldManager {
     this.addFloorMarker(ZONES.deepPort, 2.5, '#0ea5e9', 'CẢNG CONTAINER', '🚢 Siêu cảng Nước Sâu');
     this.addFloorMarker(ZONES.railDepot, 2.3, '#f59e0b', 'GA ĐƯỜNG SẮT', '🚂 Tàu Hỏa Logistics');
     this.addFloorMarker(ZONES.helipad, 2.5, '#38bdf8', 'BÃI TRỰC THĂNG VIP', '🚁 Cất cánh [E]');
+  }
+
+  buildHighlandTrails() {
+    const pathMaterial = new THREE.MeshStandardMaterial({ color: '#a48b63', roughness: 1 });
+    for (const [[startX, startZ], [endX, endZ]] of HIGHLAND_TRAILS) {
+      const width = Math.abs(endX - startX) + 3;
+      const depth = Math.abs(endZ - startZ) + 3;
+      const path = new THREE.Mesh(new THREE.PlaneGeometry(width, depth), pathMaterial);
+      path.rotation.x = -Math.PI / 2;
+      path.position.set((startX + endX) / 2, 0.028, (startZ + endZ) / 2);
+      path.receiveShadow = !this.lowSpec;
+      this.worldGroup.add(path);
+    }
+
+    for (const landmark of HIGHLAND_LANDMARKS) {
+      const point = new THREE.Vector3(landmark.x, 0, landmark.z);
+      this.addFloorMarker(point, 2.7, landmark.color, landmark.name, 'Đường mòn cao nguyên');
+    }
+
+    const lookout = HIGHLAND_LANDMARKS[1];
+    const stone = new THREE.MeshStandardMaterial({ color: '#77777f', roughness: 0.96 });
+    const wood = new THREE.MeshStandardMaterial({ color: '#865836', roughness: 0.84 });
+    const platform = new THREE.Mesh(new THREE.BoxGeometry(8, 0.44, 5), stone);
+    platform.position.set(lookout.x, 0.18, lookout.z - 5);
+    const railing = new THREE.Mesh(new THREE.BoxGeometry(8, 0.65, 0.3), wood);
+    railing.position.set(lookout.x, 0.7, lookout.z - 7.35);
+    this.worldGroup.add(platform, railing);
   }
 
   addFloorMarker(pos, radius, colorHex, title, sub) {
@@ -1075,7 +1118,10 @@ export class WorldManager {
     ];
     const mountains = new THREE.InstancedMesh(mtnGeo, mtnMat, mtnSpots.length);
     mtnSpots.forEach(([mx, mz, sx, sy], i) => {
-      dummy.position.set(mx, -0.4, mz);
+      // Frame the outer edge so the former horizon opens into walkable land.
+      const edgeX = mz > -49 ? mx + Math.sign(mx) * 55 : mx * 1.25;
+      const edgeZ = mz > -49 ? mz : mz - 57;
+      dummy.position.set(edgeX, -0.4, edgeZ);
       dummy.rotation.set(0, i * 0.8, 0);
       dummy.scale.set(sx, sy, sx * 0.9);
       dummy.updateMatrix();
@@ -1490,6 +1536,14 @@ export class WorldManager {
           x: -37 + col * 4.4 + (Math.random() - 0.5) * 1.1,
           z: -33 + row * 5.2 + (Math.random() - 0.5) * 1.1
         });
+      }
+    }
+
+    for (const [originX, originZ] of [[-91, -56], [-59, -65], [16, -91]]) {
+      for (let row = 0; row < 2; row++) {
+        for (let col = 0; col < 4; col++) {
+          spots.push({ x: originX + col * 5, z: originZ + row * 5.5 });
+        }
       }
     }
 

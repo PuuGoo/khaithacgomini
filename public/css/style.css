@@ -973,7 +973,7 @@ html, body {
   bottom: 16px;
   left: 16px;
   z-index: 30;
-  width: 164px;
+  width: 192px;
   background: var(--bg-surface);
   border: 1px solid var(--border-hairline);
   border-radius: var(--radius-md);
@@ -1019,8 +1019,8 @@ html, body {
   display: none;
 }
 #minimap-canvas {
-  width: 148px;
-  height: 148px;
+  width: 176px;
+  height: 176px;
   border-radius: var(--radius-sm);
   background: #0b1120;
   border: 1px solid var(--border-hairline);

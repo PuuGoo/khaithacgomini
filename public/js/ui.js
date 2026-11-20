@@ -1,3 +1,4 @@
+import { HIGHLAND_LANDMARKS, HIGHLAND_TRAILS, LAND_EDGE_Z, MINIMAP_BOUNDS } from './world.js';
 import { FISHERY_LOCATION } from './island-route.js';
 /**
  * TimberPort 3D — Lightweight Cross-Platform HUD & Unified Commercial Empire Hub
@@ -530,26 +531,28 @@ export class UIManager {
     const ctx = this.els.minimapCtx;
     if (!ctx || this.minimapCollapsed || this.dockCollapsed) return;
 
-    const w = 148;
-    const h = 148;
-    // Expanded Radar coordinates covering Forest, Airport East Peninsula, Bay & Offshore Island
-    const minX = -54;
-    const spanX = 140; // -54 .. +86
-    const minZ = -44;
-    const spanZ = 160; // -44 .. +116
-    const toMapX = (wx) => ((wx - minX) / spanX) * w;
-    const toMapY = (wz) => ((wz - minZ) / spanZ) * h;
-
-    // Terrain & Ocean
-    ctx.fillStyle = '#183624';
-    ctx.fillRect(0, 0, w, h);
-
-    const beachY = toMapY(22);
-    ctx.fillStyle = '#a38954';
-    ctx.fillRect(0, beachY, w, toMapY(26.5) - beachY);
+    const { width: w, height: h } = ctx.canvas;
+    const { minX, maxX, minZ, maxZ } = MINIMAP_BOUNDS;
+    const toMapX = (wx) => ((wx - minX) / (maxX - minX)) * w;
+    const toMapY = (wz) => ((wz - minZ) / (maxZ - minZ)) * h;
 
     ctx.fillStyle = '#0c4a6e';
-    ctx.fillRect(0, toMapY(26.5), w, h - toMapY(26.5));
+    ctx.fillRect(0, 0, w, h);
+    ctx.fillStyle = '#183624';
+    ctx.fillRect(0, 0, w, toMapY(LAND_EDGE_Z - 3));
+    ctx.fillStyle = '#a38954';
+    ctx.fillRect(0, toMapY(LAND_EDGE_Z - 3), w, toMapY(LAND_EDGE_Z + 2) - toMapY(LAND_EDGE_Z - 3));
+
+    ctx.save();
+    ctx.strokeStyle = '#ae9875';
+    ctx.lineWidth = 2;
+    ctx.beginPath();
+    for (const [[startX, startZ], [endX, endZ]] of HIGHLAND_TRAILS) {
+      ctx.moveTo(toMapX(startX), toMapY(startZ));
+      ctx.lineTo(toMapX(endX), toMapY(endZ));
+    }
+    ctx.stroke();
+    ctx.restore();
 
     // Offshore Outpost Island (52, 92)
     const islX = toMapX(52);
@@ -685,6 +688,16 @@ export class UIManager {
 
     ctx.fillStyle = '#cffafe';
     ctx.fillRect(toMapX(2) - 2, toMapY(22.6) - 2, 4, 4);
+
+    ctx.save();
+    ctx.font = 'bold 9px sans-serif';
+    ctx.textAlign = 'center';
+    for (const { x, z, name, color } of HIGHLAND_LANDMARKS) {
+      ctx.fillStyle = color;
+      ctx.fillRect(toMapX(x) - 2, toMapY(z) - 2, 4, 4);
+      ctx.fillText(name, toMapX(x), toMapY(z) - 6);
+    }
+    ctx.restore();
 
     // Floating Sea Treasures (gold dots)
     if (extras.treasures && extras.treasures.length) {
