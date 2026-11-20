@@ -90,6 +90,7 @@ import {
   loadGameLocal
 } from './state.js';
 import { sound } from './audio.js';
+import { Archipelago } from './archipelago.js';
 import {
   setTextureAnisotropy,
   makeWorldBadgeSprite,
@@ -599,6 +600,11 @@ class TimberPortEngine {
       onFlushGpu: () => this.flushGpuCaches()
     });
 
+    this.archipelago = new Archipelago(this);
+    if (gameState.islandRoute.arrivalAt || gameState.islandRoute.fish) {
+      this.playerPos.copy(ZONES.ferryPier);
+      this.playerModel.position.copy(this.playerPos);
+    }
     this.bindInputs();
     this.bindLifecycle();
     this.connectMultiplayer();
@@ -841,6 +847,7 @@ class TimberPortEngine {
 
     try { this.ws?.close(); } catch (e) {}
 
+    this.archipelago?.dispose();
     if (this.world) this.world.dispose();
     disposeObject3D(this.playerModel);
     disposeObject3D(this.petModel);
@@ -1106,6 +1113,7 @@ class TimberPortEngine {
   // -------------------------------------------------------------------------
   bindInputs() {
     window.addEventListener('keydown', (e) => {
+      if (this.archipelago.dialog.open) return;
       if (e.target && (e.target.tagName === 'INPUT' || e.target.tagName === 'TEXTAREA' || e.target.tagName === 'SELECT')) return;
       const code = e.code;
       this.keys.add(code);
@@ -1808,6 +1816,18 @@ class TimberPortEngine {
     this.lastTime = now;
     this.lastRenderTime = now;
     this.elapsed += dt;
+
+    if (this.archipelago.required || gameState.islandRoute.arrivalAt) {
+      this.archipelago.open();
+      this.archipelago.update(now);
+      if (this.archipelago.required) {
+        this.archipelago.render(this.elapsed);
+        this.scheduleNextTick();
+        return;
+      }
+    } else if (this.archipelago.dialog.open) {
+      this.archipelago.update(now);
+    }
 
     this.fpsSamples++;
     this.fpsAccum += dt;
@@ -2842,7 +2862,7 @@ class TimberPortEngine {
     const fishInterval = Math.max(1.2, 4.2 / boatCount);
     if (this.fishTimer >= fishInterval) {
       this.fishTimer = 0;
-      gameState.freshFish += 1;
+      if (gameState.freshFish < 2) gameState.freshFish += 1;
       if (gameState.freshFish >= 2) {
         gameState.freshFish -= 2;
         gameState.cannedFish += 1;

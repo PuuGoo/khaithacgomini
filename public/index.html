@@ -10,7 +10,7 @@
   <link rel="preconnect" href="https://fonts.googleapis.com">
   <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
   <link href="https://fonts.googleapis.com/css2?family=JetBrains+Mono:wght@500;600;700&family=Outfit:wght@600;700&family=Plus+Jakarta+Sans:wght@400;500;600;700&display=swap" rel="stylesheet">
-  <link rel="stylesheet" href="/css/style.css?v=2.10.0">
+  <link rel="stylesheet" href="/css/style.css?v=2.13.0">
   <link rel="icon" href="data:image/svg+xml,<svg xmlns=%22http://www.w3.org/2000/svg%22 viewBox=%220 0 100 100%22><text y=%22.9em%22 font-size=%2290%22>🪵</text></svg>">
   <script type="importmap">
   {
@@ -87,6 +87,10 @@
 
     <!-- Zone 3: Primary System Actions -->
     <div class="top-zone-actions">
+      <button type="button" id="btn-archipelago" class="top-btn" aria-label="Bản đồ quần đảo">
+        <span aria-hidden="true">🗺️</span>
+        <span class="hide-sm">Quần đảo</span>
+      </button>
       <button type="button" id="btn-weather-cycle" class="top-btn tabular-nums" title="Chu kỳ Ngày-Đêm 24h &amp; Thời tiết 3D (Bấm để đổi Nắng/Hoàng hôn/Đêm/Bão)">
         <span id="hud-weather-icon">☀️</span>
         <span id="hud-clock-time" class="hide-xs">10:30</span>
@@ -426,6 +430,37 @@
   <div id="toast-container" class="toast-container" aria-live="polite"></div>
 
   <!-- Application Entry Point (Modern ES Modules) -->
-  <script type="module" src="/js/engine.js?v=2.10.0"></script>
+  <dialog id="island-dialog" aria-labelledby="island-title">
+    <h2 id="island-title" tabindex="-1">TimberPort</h2>
+    <div class="island-route" aria-label="Tuyến tàu liên đảo">
+      <span data-route-stop="timberport">TimberPort</span>
+      <span aria-hidden="true">↔</span>
+      <span data-route-stop="fishery">Đảo Ngư Trường</span>
+    </div>
+    <p id="island-status" role="status"></p>
+    <progress id="island-crossing" max="100" aria-label="Tiến độ vượt biển" hidden></progress>
+    <p id="island-cargo"></p>
+    <p id="island-market" hidden></p>
+    <div id="island-receipt" role="status"></div>
+    <div class="island-actions">
+      <button type="button" class="top-btn" data-island-action="load-planks">Xếp 6 ván</button>
+      <button type="button" class="top-btn" data-island-action="accept-plank-order" hidden>Nhận và xếp đơn ván</button>
+      <button type="button" class="top-btn" data-island-action="return-planks" hidden>Trả ván về kho TimberPort</button>
+      <button type="button" class="top-btn" data-island-action="deliver-planks" hidden>Giao ván theo đơn</button>
+      <button type="button" class="top-btn" data-island-action="sail">Đi Ngư Trường</button>
+      <button type="button" class="top-btn" data-island-action="build-pier">Xây cầu cảng</button>
+      <button type="button" class="top-btn" data-island-action="load-fish">Xếp cá lên tàu</button>
+      <button type="button" class="top-btn" data-island-action="unload-fish">Dỡ cá vào nhà máy</button>
+      <button type="button" class="top-btn" data-island-action="close">Đóng</button>
+    </div>
+    <details id="island-regatta" hidden>
+      <summary>Đua Vận Tải Hàng Tuần</summary>
+      <p id="island-regatta-rules"></p>
+      <p id="island-regatta-score"></p>
+      <progress id="island-regatta-progress" aria-label="Tiến độ mục tiêu đua tuần"></progress>
+      <p id="island-regatta-rival"></p>
+    </details>
+  </dialog>
+  <script type="module" src="/js/engine.js?v=2.13.0"></script>
 </body>
 </html>

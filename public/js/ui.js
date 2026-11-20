@@ -5116,7 +5116,7 @@ export class UIManager {
       gameState.empireName = res.user.empireName;
       gameState.playerId = res.user.username;
       if (res.empireData && res.empireData.timberportState) {
-        Object.assign(gameState, res.empireData.timberportState);
+        Object.assign(gameState, { islandRoute: null }, res.empireData.timberportState);
         hydrateLoadedState();
         if (this.cb.onUpgrade) this.cb.onUpgrade('lumberjacks');
         if (this.cb.onSkinChange) this.cb.onSkinChange();

@@ -2968,3 +2968,83 @@ body.zen-hud #btn-notifications {
   border-color: var(--accent-sky);
 }
 
+
+#island-dialog {
+  position: fixed;
+  inset: auto 0 max(1rem, env(safe-area-inset-bottom));
+  box-sizing: border-box;
+  width: min(36rem, calc(100% - 2rem));
+  max-height: calc(100dvh - 2rem);
+  overflow: auto;
+  margin: 0 auto;
+  padding: 1rem;
+  color: #f1f5f9;
+  background: linear-gradient(155deg, #17394a, #0c1e2c 70%);
+  box-shadow: 0 0.75rem 3rem #05141f99;
+  border: 1px solid #3b6273;
+  border-radius: 1rem;
+}
+
+#island-dialog::backdrop {
+  background: rgb(5 20 35 / 18%);
+}
+
+#island-dialog p {
+  margin-block: 0.5rem;
+}
+
+.island-actions {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 0.5rem;
+  margin-top: 0.75rem;
+}
+
+#island-dialog [hidden] {
+  display: none;
+}
+
+.island-route {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 0.75rem;
+  color: #b6c9d5;
+}
+
+.island-route [aria-current="location"] {
+  color: #7dd3fc;
+  font-weight: 700;
+}
+
+
+#island-receipt {
+  color: #86efac;
+}
+
+#island-dialog h2 {
+  margin: 0 0 0.4rem;
+}
+
+#island-dialog progress {
+  width: 100%;
+  height: 0.65rem;
+  accent-color: #67e8f9;
+}
+
+#island-dialog button:focus-visible,
+#island-dialog summary:focus-visible {
+  outline: 2px solid #67e8f9;
+  outline-offset: 3px;
+}
+
+#island-regatta {
+  margin-top: 0.8rem;
+  padding-top: 0.65rem;
+  border-top: 1px solid #466576;
+}
+
+#island-regatta summary {
+  cursor: pointer;
+  color: #bae6fd;
+}

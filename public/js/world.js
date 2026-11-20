@@ -54,6 +54,7 @@ export const ZONES = {
   hopper: new THREE.Vector3(-4, 0, -14),
   sawOutput: new THREE.Vector3(8, 0, -14),
   vehicleSpawn: new THREE.Vector3(-10, 0, 4),
+  ferryPier: new THREE.Vector3(2, 0, 22.6),
   harborExport: new THREE.Vector3(8.5, 0.5, 31),
   canneryDock: new THREE.Vector3(-6.5, 0.5, 29),
   yachtBerth: new THREE.Vector3(14.5, 0.5, 29),
@@ -199,6 +200,7 @@ export class WorldManager {
     this.addFloorMarker(ZONES.hopper, 2.4, '#0ea5e9', 'NẠP GỖ VÀO MÁY', '🪵 Tự động hút');
     this.addFloorMarker(ZONES.sawOutput, 2.4, '#10b981', 'KHO VÁN & BÁN', '📦 Nhận hàng');
     this.addFloorMarker(ZONES.vehicleSpawn, 2.6, '#f59e0b', 'BÃI XE THƯƠNG MẠI', '🚘 Nhấn [E]');
+    this.addFloorMarker(ZONES.ferryPier, 2.1, '#38bdf8', 'BẾN LIÊN ĐẢO', 'Mở Quần đảo');
     this.addFloorMarker(ZONES.harborExport, 2.6, '#10b981', 'CẨU XUẤT CẢNG', '🚢 Giao hợp đồng');
     this.addFloorMarker(ZONES.canneryDock, 2.3, '#38bdf8', 'CẢNG CÁ HỘP', '🐟 Thu hoạch cá');
     this.addFloorMarker(ZONES.yachtBerth, 2.4, '#06b6d4', 'BẾN DU THUYỀN VIP', '🚤 Lái ra khơi [E]');

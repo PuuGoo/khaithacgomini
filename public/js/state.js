@@ -1,3 +1,5 @@
+import { createIslandRoute, restoreIslandRoute } from './island-route.js';
+
 /**
  * TimberPort 3D — Commercial Game State, Market Economy, Retention & Persistence
  * Zero external dependencies, unified supply chain + 7-day streak + offline income + market + achievements
@@ -932,6 +934,8 @@ export function createDefaultState() {
     vipXp: 0,
     vipLevel: 0,
 
+    islandRoute: createIslandRoute(),
+
     // Supply chain inventory
     logs: 0,
     sawmillBuffer: 0,
@@ -1545,6 +1549,8 @@ export function performPrestige() {
   gameState.planks = 0;
   gameState.pallets = 0;
   gameState.freshFish = 0;
+  const regatta = gameState.islandRoute.regatta;
+  gameState.islandRoute = { ...createIslandRoute(), regatta };
   gameState.cannedFish = 0;
 
   gameState.axeTier = 1;
@@ -2284,6 +2290,7 @@ export function resetShiftSession(commitRecords = true) {
 }
 
 export function hydrateLoadedState() {
+  gameState.islandRoute = restoreIslandRoute(gameState.islandRoute);
   if (!gameState.revenueStats) {
     gameState.revenueStats = { sawmill: 0, contracts: 0, fishery: 0, market: 0, offline: 0, stocks: 0, resort: 0 };
   }
