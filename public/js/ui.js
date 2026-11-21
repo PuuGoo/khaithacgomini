@@ -4544,7 +4544,10 @@ export class UIManager {
     planeSec.appendChild(planeGrid);
     root.appendChild(planeSec);
 
-    // 5. Skins, Pets & Land Vehicles
+    // 5. Main Character 3D GLB Model (lumberjack.glb)
+    this.renderPlayerGlbSection(root);
+
+    // 6. Skins, Pets & Land Vehicles
     this.renderCosmeticSection(root, 'Trang phục Nhân vật (Skins)', SKINS, 'unlockedSkins', 'equippedSkin', (item) => {
       if (this.cb.onSkinChange) this.cb.onSkinChange(item);
     });
@@ -4554,6 +4557,110 @@ export class UIManager {
     this.renderCosmeticSection(root, 'Siêu xe & Phương tiện Đường Bộ', VEHICLES, 'unlockedVehicles', 'equippedVehicle', (item) => {
       if (this.cb.onVehicleChange) this.cb.onVehicleChange(item.id);
     });
+  }
+
+  renderPlayerGlbSection(root) {
+    const info = this.cb.getPlayerGlbInfo ? this.cb.getPlayerGlbInfo() : {
+      exists: false,
+      loaded: false,
+      loading: false,
+      sizeBytes: 0,
+      meshCount: 0,
+      clipNames: [],
+      useGlbPlayer: true,
+      glbActive: false,
+      yawOffset: 0,
+      error: null
+    };
+
+    const sec = document.createElement('section');
+    const sizeText = info.sizeBytes >= 1024 * 1024
+      ? `${(info.sizeBytes / (1024 * 1024)).toFixed(1)} MB`
+      : info.sizeBytes > 0
+        ? `${(info.sizeBytes / 1024).toFixed(0)} KB`
+        : '';
+    const deg = Math.round(((info.yawOffset || 0) * 180) / Math.PI) % 360;
+
+    let statusLine = 'Chưa có file lumberjack.glb trên máy chủ · Đang dùng nhân vật mặc định';
+    if (info.loading) {
+      const pct = info.progress > 0 ? ` (${info.progress}%)` : '';
+      statusLine = `Đang nạp & chuẩn hóa mô hình 3D lumberjack.glb${pct}...`;
+    } else if (info.loaded) {
+      const animLabel = info.clipNames?.length > 0
+        ? `${info.clipNames.length} clip animation`
+        : info.autoRigged
+          ? 'Khung xương 13 khớp tự động'
+          : 'Chuyển động mô phỏng tự động';
+      statusLine = `Đã nạp lumberjack.glb (${info.meshCount} meshes · ${animLabel}${sizeText ? ` · ${sizeText}` : ''})`;
+    } else if (info.error) {
+      statusLine = `Lỗi nạp mô hình: ${info.error}`;
+    }
+
+    sec.innerHTML = `<div class="section-heading"><h3>Mô hình Nhân vật Chính 3D (lumberjack.glb)</h3><span>Lưu cố định tại /models/lumberjack.glb · Giữ nguyên balo gỗ & chỉ số Skin</span></div>`;
+
+    const card = document.createElement('div');
+    card.className = `hub-card ${info.glbActive ? 'is-equipped' : ''}`;
+    card.innerHTML = `
+      <div>
+        <div class="card-title">🪵 Nhân vật 3D GLB (lumberjack.glb)</div>
+        <div class="card-meta" data-glb-status></div>
+        <p class="card-desc" style="margin-top:6px;">
+          Chọn hoặc kéo thả file <strong>lumberjack.glb</strong> từ máy tính để tải lên máy chủ và thay thế trực tiếp mô hình nhân vật chính. Tự động chuẩn hóa chiều cao, tiếp đất và đổ bóng PBR.
+        </p>
+      </div>
+      <div style="display:flex; flex-wrap:wrap; gap:8px; margin-top:10px;">
+        <button type="button" class="btn-primary" data-glb-upload ${info.loading ? 'disabled' : ''}>
+          ${info.loading ? 'Đang xử lý...' : info.loaded ? '📤 Thay file lumberjack.glb' : '📤 Tải lên lumberjack.glb'}
+        </button>
+        <button type="button" class="${info.glbActive ? 'btn-gem' : 'btn-secondary'}" data-glb-toggle ${!info.loaded || info.loading ? 'disabled' : ''}>
+          ${info.glbActive ? '✓ Đang dùng GLB (Đổi về cũ)' : 'Bật mô hình GLB'}
+        </button>
+        <button type="button" class="btn-secondary" data-glb-rotate ${!info.loaded || info.loading ? 'disabled' : ''}>
+          🧭 Xoay hướng mặt (${deg}°)
+        </button>
+      </div>
+      <input type="file" accept=".glb" data-glb-input hidden>
+    `;
+
+    const statusEl = card.querySelector('[data-glb-status]');
+    if (statusEl) statusEl.textContent = statusLine;
+
+    const fileInput = card.querySelector('[data-glb-input]');
+    const uploadBtn = card.querySelector('[data-glb-upload]');
+    const toggleBtn = card.querySelector('[data-glb-toggle]');
+    const rotateBtn = card.querySelector('[data-glb-rotate]');
+
+    uploadBtn?.addEventListener('click', () => fileInput?.click());
+    fileInput?.addEventListener('change', (e) => {
+      const file = e.target.files?.[0];
+      if (file) this.cb.onUploadPlayerGlb?.(file);
+      e.target.value = '';
+    });
+
+    card.addEventListener('dragover', (e) => {
+      e.preventDefault();
+      card.style.outline = '2px dashed #38bdf8';
+    });
+    card.addEventListener('dragleave', () => {
+      card.style.outline = '';
+    });
+    card.addEventListener('drop', (e) => {
+      e.preventDefault();
+      card.style.outline = '';
+      const file = e.dataTransfer?.files?.[0];
+      if (file) this.cb.onUploadPlayerGlb?.(file);
+    });
+
+    toggleBtn?.addEventListener('click', () => {
+      this.cb.onTogglePlayerGlb?.(!info.glbActive);
+    });
+
+    rotateBtn?.addEventListener('click', () => {
+      this.cb.onRotatePlayerGlb?.();
+    });
+
+    sec.appendChild(card);
+    root.appendChild(sec);
   }
 
   renderCosmeticSection(root, title, catalog, unlockedKey, equippedKey, onEquip) {

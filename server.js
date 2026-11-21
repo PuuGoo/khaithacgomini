@@ -747,6 +747,87 @@ app.post('/api/city-state/deposit-food', (req, res) => {
 });
 
 // -----------------------------------------------------------------------------
+// API QUẢN LÝ MÔ HÌNH 3D NHÂN VẬT CHÍNH (public/models/lumberjack.glb)
+// -----------------------------------------------------------------------------
+const MODELS_DIR = path.join(__dirname, 'public', 'models');
+const LUMBERJACK_GLB_PATH = path.join(MODELS_DIR, 'lumberjack.glb');
+
+app.get('/api/models/lumberjack/status', (req, res) => {
+  try {
+    if (fs.existsSync(LUMBERJACK_GLB_PATH)) {
+      const stat = fs.statSync(LUMBERJACK_GLB_PATH);
+      if (stat.isFile() && stat.size >= 12) {
+        return res.json({
+          status: 'success',
+          exists: true,
+          sizeBytes: stat.size,
+          updatedAt: stat.mtime.toISOString(),
+          url: `/models/lumberjack.glb?v=${Math.floor(stat.mtimeMs)}`
+        });
+      }
+    }
+    return res.json({
+      status: 'success',
+      exists: false,
+      sizeBytes: 0,
+      updatedAt: null,
+      url: '/models/lumberjack.glb'
+    });
+  } catch (err) {
+    return res.status(500).json({ status: 'error', exists: false, message: err.message });
+  }
+});
+
+app.post(
+  '/api/models/lumberjack',
+  express.raw({
+    type: ['model/gltf-binary', 'application/octet-stream'],
+    limit: '80mb'
+  }),
+  (req, res) => {
+    try {
+      const buf = req.body;
+      if (!Buffer.isBuffer(buf) || buf.length < 12) {
+        return res.status(400).json({
+          status: 'error',
+          message: 'Dữ liệu file không hợp lệ hoặc quá nhỏ để là file .glb!'
+        });
+      }
+
+      // Kiểm tra 4 byte magic header chuẩn GLB v2 ("glTF" = 0x67 0x6C 0x54 0x46)
+      const magic = buf.subarray(0, 4).toString('ascii');
+      if (magic !== 'glTF') {
+        return res.status(400).json({
+          status: 'error',
+          message: 'File không đúng định dạng nhị phân GLB (thiếu header glTF).'
+        });
+      }
+
+      fs.mkdirSync(MODELS_DIR, { recursive: true });
+      const tmpPath = path.join(MODELS_DIR, `.lumberjack_${Date.now()}.glb.tmp`);
+      fs.writeFileSync(tmpPath, buf);
+      fs.renameSync(tmpPath, LUMBERJACK_GLB_PATH);
+
+      const stat = fs.statSync(LUMBERJACK_GLB_PATH);
+      console.log(`[+] Đã lưu mô hình nhân vật chính lumberjack.glb (${(stat.size / 1024).toFixed(1)} KB)`);
+      return res.json({
+        status: 'success',
+        exists: true,
+        sizeBytes: stat.size,
+        updatedAt: stat.mtime.toISOString(),
+        url: `/models/lumberjack.glb?v=${Math.floor(stat.mtimeMs)}`
+      });
+    } catch (err) {
+      console.error('[!] Lỗi lưu lumberjack.glb:', err);
+      return res.status(500).json({
+        status: 'error',
+        message: 'Không thể lưu file lumberjack.glb lên máy chủ: ' + err.message
+      });
+    }
+  }
+);
+
+// -----------------------------------------------------------------------------
 // PHỤC VỤ FILE TĨNH GIAO DIỆN (STATIC FILES)
 // -----------------------------------------------------------------------------
 const publicDir = path.join(__dirname, 'public');
@@ -754,12 +835,15 @@ const staticOptions = {
   etag: false,
   maxAge: 0,
   setHeaders: (res, filePath) => {
+    if (filePath && filePath.endsWith('.glb')) {
+      res.setHeader('Content-Type', 'model/gltf-binary');
+      res.setHeader('Cache-Control', 'public, max-age=86400');
+      return;
+    }
     res.setHeader('Cache-Control', 'no-cache, no-store, must-revalidate');
     res.setHeader('Pragma', 'no-cache');
     res.setHeader('Expires', '0');
-    if (filePath && filePath.endsWith('.glb')) {
-      res.setHeader('Content-Type', 'model/gltf-binary');
-    } else if (filePath && filePath.endsWith('.gltf')) {
+    if (filePath && filePath.endsWith('.gltf')) {
       res.setHeader('Content-Type', 'model/gltf+json');
     }
   }

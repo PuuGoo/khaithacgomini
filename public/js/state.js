@@ -1147,6 +1147,8 @@ export function createDefaultState() {
     // Cosmetics & Fleet
     equippedSkin: 'classic',
     unlockedSkins: ['classic'],
+    useGlbPlayer: true,
+    glbPlayerYawOffset: 0,
     equippedPet: 'none',
     unlockedPets: ['none'],
     equippedVehicle: 'forklift',

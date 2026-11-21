@@ -104,6 +104,11 @@ import {
   createPlayerModel,
   updatePlayerModelSkin,
   syncPlayerBackLogs,
+  attachGlbToPlayerModel,
+  setPlayerGlbActive,
+  setPlayerGlbYawOffset,
+  setPlayerGlbShadows,
+  updatePlayerModelAnimation,
   createPetModel,
   createVehicleModel,
   createFishingBoatModel,
@@ -427,6 +432,9 @@ class TimberPortEngine {
     this.lastVisualPlanks = -1;
     this.lastVisualPallets = -1;
     this.walkPhase = 0;
+    this.playerMoving = false;
+    this.chopTargetYaw = null;
+    this._playerAnimOpts = { carryRatio: 0, speedMult: 1 };
 
     // Camera Orbit & Choreography state
     this.camYaw = 0.42;
@@ -442,6 +450,15 @@ class TimberPortEngine {
     this.playerModel.position.copy(this.playerPos);
     this.scene.add(this.playerModel);
     syncPlayerBackLogs(this.playerModel, gameState.logs);
+    this.playerGlbStatus = {
+      exists: false,
+      loaded: false,
+      loading: false,
+      sizeBytes: 0,
+      meshCount: 0,
+      clipNames: [],
+      error: null
+    };
 
     this.petModel = null;
     this.petPos = new THREE.Vector3(-1.4, 0, 2.8);
@@ -604,6 +621,15 @@ class TimberPortEngine {
       onSkinChange: () => {
         updatePlayerModelSkin(this.playerModel, getSkinData(), gameState.vipLevel);
       },
+      getPlayerGlbInfo: () => ({
+        ...this.playerGlbStatus,
+        useGlbPlayer: gameState.useGlbPlayer !== false,
+        glbActive: Boolean(this.playerModel?.userData?.glbActive),
+        yawOffset: Number(gameState.glbPlayerYawOffset || 0)
+      }),
+      onUploadPlayerGlb: (file) => this.uploadPlayerGlb(file),
+      onTogglePlayerGlb: (enabled) => this.togglePlayerGlb(enabled),
+      onRotatePlayerGlb: () => this.rotatePlayerGlb(),
       onPetChange: () => this.rebuildPet(),
       onVehicleChange: () => this.rebuildVehicle(),
       getOnlineCount: () => 1 + this.remotePlayers.size,
@@ -612,6 +638,8 @@ class TimberPortEngine {
       onGraphicsChange: (mode) => this.setGraphicsQuality(mode),
       onFlushGpu: () => this.flushGpuCaches()
     });
+
+    this.initPlayerGlbModel();
 
     this.archipelago = new Archipelago(this);
     if (gameState.islandRoute.arrivalAt || (!gameState.checkpoint && gameState.islandRoute.fish)) {
@@ -812,11 +840,158 @@ class TimberPortEngine {
     this.activeProfile = this.resolveProfile(mode);
     this.applyGraphicsSettings();
     this.world?.setLowSpec(this.activeProfile === 'low');
+    setPlayerGlbShadows(this.playerModel, this.activeProfile !== 'low');
     this.rebuildVehicle();
     this.rebuildAirSeaFleet();
     this.rebuildCitizens();
     saveGameServer();
     this.ui.toast(`⚙️ Đã chuyển đồ họa: ${this.getGraphicsInfo().profileLabel}`);
+  }
+
+  async initPlayerGlbModel() {
+    this.playerGlbStatus.loading = true;
+    this.playerGlbStatus.error = null;
+    try {
+      const res = await fetch('/api/models/lumberjack/status', { cache: 'no-store' });
+      const info = await res.json();
+      if (!info?.exists) {
+        this.playerGlbStatus.exists = false;
+        this.playerGlbStatus.loaded = false;
+        this.playerGlbStatus.loading = false;
+        this.playerGlbStatus.sizeBytes = 0;
+        return;
+      }
+      this.playerGlbStatus.exists = true;
+      this.playerGlbStatus.sizeBytes = info.sizeBytes || 0;
+      await this.loadPlayerGlbFromUrl(info.url || '/models/lumberjack.glb', false);
+    } catch (err) {
+      this.playerGlbStatus.loading = false;
+      this.playerGlbStatus.error = err?.message || 'Không thể kiểm tra lumberjack.glb.';
+    }
+  }
+
+  async loadPlayerGlbFromUrl(url, showToast = false) {
+    this.playerGlbStatus.loading = true;
+    this.playerGlbStatus.progress = 0;
+    this.playerGlbStatus.error = null;
+    const result = await attachGlbToPlayerModel(this.playerModel, url, {
+      lowSpec: this.activeProfile === 'low',
+      useGlb: gameState.useGlbPlayer !== false,
+      yawOffset: Number(gameState.glbPlayerYawOffset || 0),
+      onProgress: (ev) => {
+        const total = ev?.total || this.playerGlbStatus.sizeBytes || 0;
+        if (total > 0 && ev?.loaded) {
+          this.playerGlbStatus.progress = Math.min(99, Math.round((ev.loaded / total) * 100));
+        }
+      }
+    });
+    this.playerGlbStatus.loading = false;
+    this.playerGlbStatus.progress = result.ok ? 100 : 0;
+    if (result.ok) {
+      this.playerGlbStatus.exists = true;
+      this.playerGlbStatus.loaded = true;
+      this.playerGlbStatus.meshCount = result.meshCount || 0;
+      this.playerGlbStatus.clipNames = result.clipNames || [];
+      this.playerGlbStatus.autoRigged = Boolean(result.autoRigged);
+      this.playerGlbStatus.error = null;
+      if (showToast) {
+        const animNote = result.hasAnimations
+          ? `${result.clipNames.length} clip animation`
+          : result.autoRigged
+            ? 'khung xương 13 khớp tự động'
+            : 'chuyển động mô phỏng tự động';
+        this.ui.toast(`🪵 Đã áp dụng lumberjack.glb (${result.meshCount} meshes · ${animNote})!`);
+      }
+    } else {
+      this.playerGlbStatus.loaded = false;
+      this.playerGlbStatus.error = result.error || 'Lỗi nạp lumberjack.glb.';
+      if (showToast) {
+        this.ui.toast(`⚠️ ${this.playerGlbStatus.error}`);
+      }
+    }
+    if (this.ui && !document.getElementById('hub-modal')?.hidden && this.ui.activeTab === 'cosmetics') {
+      this.ui.renderHub();
+    }
+    return result;
+  }
+
+  async uploadPlayerGlb(file) {
+    if (!file) return { ok: false };
+    const nameLower = String(file.name || '').toLowerCase();
+    if (!nameLower.endsWith('.glb')) {
+      this.ui.toast('⚠️ Vui lòng chọn file định dạng .glb (ví dụ: lumberjack.glb).');
+      return { ok: false };
+    }
+    if (file.size > 80 * 1024 * 1024) {
+      this.ui.toast('⚠️ File quá lớn (giới hạn tối đa 80 MB).');
+      return { ok: false };
+    }
+
+    this.playerGlbStatus.loading = true;
+    this.playerGlbStatus.error = null;
+    if (this.ui && !document.getElementById('hub-modal')?.hidden && this.ui.activeTab === 'cosmetics') {
+      this.ui.renderHub();
+    }
+
+    try {
+      const buffer = await file.arrayBuffer();
+      const resp = await fetch('/api/models/lumberjack', {
+        method: 'POST',
+        headers: { 'Content-Type': 'model/gltf-binary' },
+        body: buffer
+      });
+      const data = await resp.json();
+      if (!resp.ok || data.status !== 'success') {
+        const msg = data?.message || 'Tải lên file lumberjack.glb thất bại.';
+        this.playerGlbStatus.loading = false;
+        this.playerGlbStatus.error = msg;
+        this.ui.toast(`❌ ${msg}`);
+        if (this.ui && !document.getElementById('hub-modal')?.hidden && this.ui.activeTab === 'cosmetics') {
+          this.ui.renderHub();
+        }
+        return { ok: false, error: msg };
+      }
+
+      this.playerGlbStatus.exists = true;
+      this.playerGlbStatus.sizeBytes = data.sizeBytes || file.size;
+      gameState.useGlbPlayer = true;
+      const loadRes = await this.loadPlayerGlbFromUrl(data.url || `/models/lumberjack.glb?v=${Date.now()}`, true);
+      if (loadRes.ok) {
+        sound.playUpgrade();
+        saveGameServer();
+      }
+      return loadRes;
+    } catch (err) {
+      this.playerGlbStatus.loading = false;
+      this.playerGlbStatus.error = err?.message || 'Lỗi kết nối khi tải lên file.';
+      this.ui.toast(`❌ ${this.playerGlbStatus.error}`);
+      if (this.ui && !document.getElementById('hub-modal')?.hidden && this.ui.activeTab === 'cosmetics') {
+        this.ui.renderHub();
+      }
+      return { ok: false, error: this.playerGlbStatus.error };
+    }
+  }
+
+  togglePlayerGlb(enabled) {
+    gameState.useGlbPlayer = Boolean(enabled);
+    const active = setPlayerGlbActive(this.playerModel, gameState.useGlbPlayer);
+    saveGameServer();
+    this.ui.toast(active ? '🪵 Đang hiển thị mô hình 3D lumberjack.glb' : '👷 Đã chuyển về mô hình nhân vật mặc định');
+    if (this.ui && !document.getElementById('hub-modal')?.hidden && this.ui.activeTab === 'cosmetics') {
+      this.ui.renderHub();
+    }
+  }
+
+  rotatePlayerGlb() {
+    const next = (Number(gameState.glbPlayerYawOffset || 0) + Math.PI / 2) % (Math.PI * 2);
+    gameState.glbPlayerYawOffset = next;
+    setPlayerGlbYawOffset(this.playerModel, next);
+    saveGameServer();
+    const deg = Math.round((next * 180) / Math.PI) % 360;
+    this.ui.toast(`🧭 Đã xoay hướng mặt lumberjack.glb sang ${deg}°`);
+    if (this.ui && !document.getElementById('hub-modal')?.hidden && this.ui.activeTab === 'cosmetics') {
+      this.ui.renderHub();
+    }
   }
 
   flushGpuCaches() {
@@ -862,6 +1037,9 @@ class TimberPortEngine {
 
     this.archipelago?.dispose();
     if (this.world) this.world.dispose();
+    if (this.playerModel?.userData?.glbMixer) {
+      this.playerModel.userData.glbMixer.stopAllAction();
+    }
     disposeObject3D(this.playerModel);
     disposeObject3D(this.petModel);
     disposeObject3D(this.parkedVehicle);
@@ -2370,6 +2548,8 @@ class TimberPortEngine {
 
     const len = Math.hypot(ix, iy);
     const moving = len > 0.08;
+    this.playerMoving = moving;
+    let speedMult = 1;
 
     if (moving) {
       ix /= Math.max(1, len);
@@ -2387,6 +2567,7 @@ class TimberPortEngine {
       if (gameState.equippedPet === 'shiba') speed *= 1.12;
       if (gameState.vipLevel >= 2) speed *= 1.15;
       if (gameState.boostTimer > 0) speed *= 1.35;
+      speedMult = speed / 8.4;
 
       if (this.inVehicle) {
         const veh = VEHICLES.find((v) => v.id === (gameState.equippedVehicle || 'forklift')) || VEHICLES[0];
@@ -2409,9 +2590,12 @@ class TimberPortEngine {
       while (diff < -Math.PI) diff += Math.PI * 2;
       this.playerYaw += diff * Math.min(1, dt * 12);
 
-      this.walkPhase += dt * (this.inVehicle ? 6 : 12);
-    } else {
-      this.walkPhase = 0;
+      this.walkPhase += dt * (this.inVehicle ? 6 : 11 * Math.max(0.85, Math.min(1.45, speedMult)));
+    } else if (!this.inVehicle && this.chopSwing > 0 && this.chopTargetYaw !== null) {
+      let diff = this.chopTargetYaw - this.playerYaw;
+      while (diff > Math.PI) diff -= Math.PI * 2;
+      while (diff < -Math.PI) diff += Math.PI * 2;
+      this.playerYaw += diff * Math.min(1, dt * 14);
     }
 
     if (this.inVehicle && this.parkedVehicle) {
@@ -2422,17 +2606,23 @@ class TimberPortEngine {
     } else {
       this.playerModel.position.copy(this.playerPos);
       this.playerModel.rotation.y = this.playerYaw;
-      const { leftLeg, rightLeg, leftArm, rightArm } = this.playerModel.userData;
-      const swing = moving ? Math.sin(this.walkPhase) * 0.65 : 0;
-      leftLeg.rotation.x = swing;
-      rightLeg.rotation.x = -swing;
-      leftArm.rotation.x = -swing * 0.7;
       if (this.chopSwing > 0) {
-        this.chopSwing = Math.max(0, this.chopSwing - dt * 6);
-        rightArm.rotation.x = -Math.sin(this.chopSwing * Math.PI) * 1.45;
-      } else {
-        rightArm.rotation.x = swing * 0.7;
+        const chopDecay = gameState.boostTimer > 0 ? 4.4 : 3.0;
+        this.chopSwing = Math.max(0, this.chopSwing - dt * chopDecay);
+        if (this.chopSwing <= 0) this.chopTargetYaw = null;
       }
+      const cap = Math.max(1, getBackpackCapacity());
+      this._playerAnimOpts.carryRatio = Math.min(1, (gameState.logs || 0) / cap);
+      this._playerAnimOpts.speedMult = speedMult;
+      updatePlayerModelAnimation(
+        this.playerModel,
+        dt,
+        moving,
+        this.walkPhase,
+        this.chopSwing,
+        this.elapsed,
+        this._playerAnimOpts
+      );
     }
 
     this.sendNetPose(dt, moving, this.chopSwing > 0);
@@ -2830,6 +3020,7 @@ class TimberPortEngine {
           const forestMgr = 1 + getManagerBonus('forestSpeed');
           this.chopCooldown = (gameState.boostTimer > 0 ? 0.2 : 0.38) / forestMgr;
           this.chopSwing = 1.0;
+          this.chopTargetYaw = Math.atan2(nearest.pos.x - this.playerPos.x, nearest.pos.z - this.playerPos.z);
 
           const dmg = gameState.boostTimer > 0 ? 2 : Math.max(1, Math.ceil((gameState.axeTier || 1) * 0.75));
           nearest.hp -= dmg;
