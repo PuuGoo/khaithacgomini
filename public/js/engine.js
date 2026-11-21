@@ -115,6 +115,8 @@ import {
   createWorkerModel,
   createCitizenModel,
   createDrivableYachtModel,
+  attachGlbToPersonalBoat,
+  setPersonalBoatGlbShadows,
   createAirplaneModel,
   createHelicopterModel,
   applyLiveryToModel,
@@ -368,7 +370,7 @@ class TimberPortEngine {
 
     this.initThree();
 
-    this.world = new WorldManager(this.scene, { lowSpec: this.activeProfile === 'low' });
+    this.world = new WorldManager(this.scene, { lowSpec: this.activeProfile !== 'high' });
     this.applyBranchAtmosphere(getActiveBranch());
     this.world.syncEvolution(getSawmillVisualTier(), getHarborVisualTier());
     this.world.syncRailwayTier(gameState.railwayTier || 0);
@@ -483,6 +485,7 @@ class TimberPortEngine {
     this.aiSeaYachts = [];
     this.aiAirPlanes = [];
     this.rebuildAirSeaFleet();
+    this.ensureDockedPersonalBoatGlb();
 
     // Input State
     this.keys = new Set();
@@ -662,20 +665,21 @@ class TimberPortEngine {
     this.lastRenderTime = this.lastTime;
     this.elapsed = 0;
 
-    if (this.activeProfile === 'low' && gameState.graphicsQuality === 'auto') {
-      this.ui.toast(`🛡️ Đã bật chế độ Tiết kiệm RAM/GPU (${this.hw.reason})`);
-    }
-
     this.scheduleNextTick();
   }
 
   resolveProfile(mode) {
     if (mode === 'low' || mode === 'balanced' || mode === 'high') return mode;
-    return this.hw.autoTier;
+    // Default to Max-FPS performance profile (shadows & PointLights OFF, uncapped 60 FPS)
+    return 'low';
   }
 
   getGraphicsInfo() {
-    const labels = { low: 'Tiết kiệm (<8GB RAM)', balanced: 'Cân bằng', high: 'Cao (GPU rời)' };
+    const labels = {
+      low: 'Tối đa FPS (Mặc định)',
+      balanced: 'Cân bằng (60 FPS)',
+      high: 'Đồ họa Cao (Bóng đổ 1024px)'
+    };
     return {
       mode: gameState.graphicsQuality || 'auto',
       activeProfile: this.activeProfile,
@@ -698,15 +702,16 @@ class TimberPortEngine {
       240
     );
 
+    const high = this.activeProfile === 'high';
     const low = this.activeProfile === 'low';
     this.renderer = new THREE.WebGLRenderer({
-      antialias: !this.isSoftwareGl && !low,
-      powerPreference: low ? 'default' : 'high-performance'
+      antialias: !this.isSoftwareGl && high,
+      powerPreference: 'high-performance'
     });
     this.renderer.outputColorSpace = THREE.SRGBColorSpace;
     this.renderer.toneMapping = THREE.ACESFilmicToneMapping;
     this.renderer.toneMappingExposure = 1.08;
-    this.renderer.shadowMap.type = low ? THREE.BasicShadowMap : THREE.PCFSoftShadowMap;
+    this.renderer.shadowMap.type = high ? THREE.PCFSoftShadowMap : THREE.BasicShadowMap;
     this.renderer.setSize(window.innerWidth, window.innerHeight);
 
     this.container.innerHTML = '';
@@ -785,13 +790,30 @@ class TimberPortEngine {
         this.envRT = null;
       }
       this.scene.environment = null;
-      this.hemiLight.intensity = 1.05;
-      this.sunLight.intensity = 2.0;
-      this.renderer.setPixelRatio(1);
+      this.hemiLight.intensity = 1.12;
+      this.sunLight.intensity = 2.08;
+      this.renderer.setPixelRatio(Math.min(dpr, 1.2));
       this.renderer.shadowMap.enabled = false;
       this.sunLight.castShadow = false;
-      this.minFrameMs = 33.3; // Cap at ~30 FPS to prevent CPU/GPU thermal throttling & shared-RAM saturation
+      this.minFrameMs = 0; // Uncapped 60 FPS VSync for smooth Max-FPS performance
       setTextureAnisotropy(1);
+    } else if (p === 'balanced') {
+      if (!this.envRT) {
+        const pmrem = new THREE.PMREMGenerator(this.renderer);
+        const roomEnv = new RoomEnvironment();
+        this.envRT = pmrem.fromScene(roomEnv, 0.04);
+        this.scene.environment = this.envRT.texture;
+        this.scene.environmentIntensity = 0.7;
+        roomEnv.dispose();
+        pmrem.dispose();
+      }
+      this.hemiLight.intensity = 0.92;
+      this.sunLight.intensity = 2.18;
+      this.renderer.setPixelRatio(Math.min(dpr, 1.25));
+      this.renderer.shadowMap.enabled = false;
+      this.sunLight.castShadow = false;
+      this.minFrameMs = 0;
+      setTextureAnisotropy(2);
     } else {
       if (!this.envRT) {
         const pmrem = new THREE.PMREMGenerator(this.renderer);
@@ -804,31 +826,17 @@ class TimberPortEngine {
       }
       this.hemiLight.intensity = 0.78;
       this.sunLight.intensity = 2.25;
-      if (p === 'balanced') {
-        this.renderer.setPixelRatio(Math.min(dpr, 1.25));
-        const enableShadow = !this.isSoftwareGl;
-        this.renderer.shadowMap.enabled = enableShadow;
-        this.sunLight.castShadow = enableShadow;
-        if (enableShadow && this.sunLight.shadow.mapSize.x !== 1024) {
-          this.sunLight.shadow.map?.dispose();
-          this.sunLight.shadow.map = null;
-          this.sunLight.shadow.mapSize.set(1024, 1024);
-        }
-        this.minFrameMs = 22.0; // ~45 FPS
-        setTextureAnisotropy(2);
-      } else {
-        this.renderer.setPixelRatio(Math.min(dpr, 2));
-        const enableShadow = !this.isSoftwareGl;
-        this.renderer.shadowMap.enabled = enableShadow;
-        this.sunLight.castShadow = enableShadow;
-        if (enableShadow && this.sunLight.shadow.mapSize.x !== 2048) {
-          this.sunLight.shadow.map?.dispose();
-          this.sunLight.shadow.map = null;
-          this.sunLight.shadow.mapSize.set(2048, 2048);
-        }
-        this.minFrameMs = 0; // Uncapped VSync
-        setTextureAnisotropy(Math.min(8, this.renderer.capabilities.getMaxAnisotropy()));
+      this.renderer.setPixelRatio(Math.min(dpr, 1.5));
+      const enableShadow = !this.isSoftwareGl;
+      this.renderer.shadowMap.enabled = enableShadow;
+      this.sunLight.castShadow = enableShadow;
+      if (enableShadow && this.sunLight.shadow.mapSize.x !== 1024) {
+        this.sunLight.shadow.map?.dispose();
+        this.sunLight.shadow.map = null;
+        this.sunLight.shadow.mapSize.set(1024, 1024);
       }
+      this.minFrameMs = 0;
+      setTextureAnisotropy(Math.min(4, this.renderer.capabilities.getMaxAnisotropy()));
     }
 
     this.renderer.shadowMap.needsUpdate = true;
@@ -839,13 +847,23 @@ class TimberPortEngine {
     gameState.graphicsQuality = mode;
     this.activeProfile = this.resolveProfile(mode);
     this.applyGraphicsSettings();
-    this.world?.setLowSpec(this.activeProfile === 'low');
-    setPlayerGlbShadows(this.playerModel, this.activeProfile !== 'low');
+    this.world?.setLowSpec(this.activeProfile !== 'high');
+    setPlayerGlbShadows(this.playerModel, this.activeProfile === 'high');
+    setPersonalBoatGlbShadows(this.world?.vipYacht, false);
     this.rebuildVehicle();
     this.rebuildAirSeaFleet();
     this.rebuildCitizens();
     saveGameServer();
-    this.ui.toast(`⚙️ Đã chuyển đồ họa: ${this.getGraphicsInfo().profileLabel}`);
+    this.ui.toast(`⚡ Đã chuyển đồ họa: ${this.getGraphicsInfo().profileLabel}`);
+  }
+
+  ensureDockedPersonalBoatGlb() {
+    if ((gameState.yachtTier || 0) < 1) return;
+    if (!this.world?.vipYacht || this.world.vipYacht.userData?.glbBoatLoaded) return;
+    attachGlbToPersonalBoat(this.world.vipYacht, {
+      yawOffset: Math.PI / 2,
+      scaleMult: 1.0
+    });
   }
 
   async initPlayerGlbModel() {
@@ -1180,13 +1198,19 @@ class TimberPortEngine {
       this.drivableYacht = null;
     }
     if ((gameState.yachtTier || 0) >= 1) {
-      this.drivableYacht = createDrivableYachtModel(gameState.yachtTier || 1, low);
+      const yTier = gameState.yachtTier || 1;
+      this.drivableYacht = createDrivableYachtModel(yTier, low);
       this.drivableYacht.visible = this.controlMode === 'yacht';
       if (this.controlMode === 'yacht') {
         this.drivableYacht.position.copy(this.playerPos);
         this.drivableYacht.rotation.y = this.playerYaw;
       }
       this.scene.add(this.drivableYacht);
+      attachGlbToPersonalBoat(this.drivableYacht, {
+        yawOffset: 0,
+        scaleMult: 0.92 + yTier * 0.08
+      });
+      this.ensureDockedPersonalBoatGlb();
     }
 
     // Drivable Airplane parked on Runway (or active in flight)
@@ -3387,17 +3411,12 @@ class TimberPortEngine {
       const pos = new THREE.Vector3(startWp.x + jitterX, 0, startWp.z + jitterZ);
       mesh.position.copy(pos);
 
-      const initText = `${arch.bubbles[0]} ${arch.name}`;
-      const bubble = makeCitizenBubbleSprite(initText, arch.badgeHex || '#38bdf8', false);
-      bubble.position.set(0, 2.52, 0);
-      mesh.add(bubble);
-
       this.scene.add(mesh);
       this.aiCitizens.push({
         idx,
         arch,
         mesh,
-        bubble,
+        bubble: null,
         pos,
         useResortLoop,
         prevWpKey: null,
@@ -3468,7 +3487,7 @@ class TimberPortEngine {
 
     const quotes = c.arch.quotes || ['Chúc Đế Chế TimberPort thịnh vượng!'];
     const quote = quotes[Math.floor(Math.random() * quotes.length)];
-    updateCitizenBubbleSprite(c.bubble, `👋 +$${baseTip.toLocaleString()}`, '#facc15', true);
+    if (c.bubble) updateCitizenBubbleSprite(c.bubble, `👋 +$${baseTip.toLocaleString()}`, '#facc15', true);
     this.ui.toast(`🗣️ ${c.arch.name}: "${quote}" (+$${baseTip.toLocaleString()}${bonusGems > 0 ? ` & +${bonusGems} 💎` : ''})`);
     saveGameLocal();
     this.ui.refreshHUD();
@@ -3495,7 +3514,7 @@ class TimberPortEngine {
     sound.playCitizenGreet();
     const quotes = target.arch.quotes || ['Chào Chủ tịch!'];
     const quote = quotes[Math.floor(Math.random() * quotes.length)];
-    updateCitizenBubbleSprite(target.bubble, `👋 Chào Chủ tịch!`, '#38bdf8', false);
+    if (target.bubble) updateCitizenBubbleSprite(target.bubble, `👋 Chào Chủ tịch!`, '#38bdf8', false);
     this.spawnWorldText(target.pos, `👋 ${target.arch.name}`, 'gem');
     this.ui.toast(`🗣️ ${target.arch.name}: "${quote}"`);
     return true;
@@ -3710,30 +3729,7 @@ class TimberPortEngine {
         }
       }
 
-      // Update overhead 3D Emote Bubble (Dirty-checked in updateCitizenBubbleSprite -> zero GC)
-      c.bubbleTimer -= dt;
-      if (c.state === 'greet_ceo') {
-        updateCitizenBubbleSprite(c.bubble, `👋 Chào Chủ tịch!`, '#facc15', true);
-      } else if (c.hasTip) {
-        const tipBadge = c.arch.tipMult >= 1.45 ? `💎 VIP · ${c.arch.name}` : `💰 Tip · ${c.arch.name}`;
-        updateCitizenBubbleSprite(c.bubble, tipBadge, '#facc15', true);
-      } else if (isStorm) {
-        updateCitizenBubbleSprite(c.bubble, c.state === 'shelter' ? `☔ Trú mưa: ${c.interactLabel || 'Mái hiên'}` : `☔ Chạy trú bão!`, '#38bdf8', false);
-      } else if (c.evadingPlayer) {
-        updateCitizenBubbleSprite(c.bubble, `🚶 Nhường đường Chủ tịch`, '#38bdf8', false);
-      } else if (c.state === 'interact_building') {
-        const actLabel = c.chatPartnerIdx >= 0
-          ? `💬 Thảo luận · ${c.arch.name}`
-          : (c.interactLabel || `${c.arch.bubbles[0]} ${c.arch.name}`);
-        updateCitizenBubbleSprite(c.bubble, actLabel, c.arch.badgeHex || '#38bdf8', false);
-      } else {
-        if (c.bubbleTimer <= 0) {
-          c.bubbleTimer = 4.5 + (c.idx % 3) * 1.4;
-          c.bubbleIdx = (c.bubbleIdx + 1) % c.arch.bubbles.length;
-        }
-        const emo = isNight && c.arch.group === 'security' ? '🔦' : c.arch.bubbles[c.bubbleIdx];
-        updateCitizenBubbleSprite(c.bubble, `${emo} ${c.arch.name}`, c.arch.badgeHex || '#38bdf8', false);
-      }
+      // Overhead citizen text bubbles intentionally disabled for visual clarity & FPS
 
       // ---------------------------------------------------------------------
       // STATE 1: Greet CEO
@@ -4073,20 +4069,20 @@ class TimberPortEngine {
       this.sunLight.intensity = 1.35 + (1 - nightFactor) * 0.7;
       this.hemiLight.intensity = 0.7;
     } else if (nightFactor > 0.15) {
-      // Starry Night / Dem Sao
+      // Starry Night / Dem Sao (keep crisp readability when PointLights are off in Max-FPS mode)
       this.scene.background.lerpColors(this._daySkyBase, this._nightSkyColor, nightFactor * 0.92);
       this.scene.fog.color.lerpColors(this._dayFogBase, this._nightFogColor, nightFactor * 0.9);
-      this.sunLight.intensity = THREE.MathUtils.lerp(2.15, 0.68, nightFactor);
-      this.hemiLight.intensity = THREE.MathUtils.lerp(0.82, 0.48, nightFactor);
+      this.sunLight.intensity = THREE.MathUtils.lerp(2.1, 0.74, nightFactor);
+      this.hemiLight.intensity = THREE.MathUtils.lerp(0.95, 0.58, nightFactor);
     } else {
       // Bright Golden Day
-      const goldenBlend = this.activeProfile !== 'low'
+      const goldenBlend = this.activeProfile === 'high'
         ? (0.5 - 0.5 * Math.cos(this.elapsed * 0.045)) * 0.35
         : 0;
       this.scene.background.lerpColors(this._daySkyBase, this._skyGoldenColor, goldenBlend);
       this.scene.fog.color.lerpColors(this._dayFogBase, this._fogGoldenColor, goldenBlend);
-      this.sunLight.intensity = this.activeProfile === 'low' ? 2.0 : 2.25 - goldenBlend * 0.2;
-      this.hemiLight.intensity = this.activeProfile === 'low' ? 1.05 : 0.78;
+      this.sunLight.intensity = this.activeProfile === 'low' ? 2.08 : 2.25 - goldenBlend * 0.2;
+      this.hemiLight.intensity = this.activeProfile === 'low' ? 1.12 : this.activeProfile === 'balanced' ? 0.92 : 0.78;
     }
   }
 

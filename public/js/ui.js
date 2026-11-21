@@ -5211,16 +5211,16 @@ export class UIManager {
 
     const gfxCardHtml = gfx ? `
       <div class="hub-card">
-        <div class="card-title">🛡️ Tối Ưu GPU &amp; Chống Tràn RAM (&lt;8GB RAM)</div>
+        <div class="card-title">⚡ Tối Ưu Hiệu Năng &amp; Đồ Họa 3D</div>
         <div class="card-meta tabular-nums">
-          Đang chạy: <b>${gfx.profileLabel}</b> (${gfx.reason}) · ${gfx.fps} FPS · Geo: ${gfx.geometries} · Tex: ${gfx.textures} · Draw: ${gfx.calls}
+          Đang chạy: <b>${gfx.profileLabel}</b> · ${gfx.fps} FPS · Geo: ${gfx.geometries} · Tex: ${gfx.textures} · Draw: ${gfx.calls}
         </div>
         <div class="form-stack" style="margin-top:10px;">
           <select id="sel-graphics-mode" class="text-input">
-            <option value="auto" ${gfx.mode === 'auto' ? 'selected' : ''}>Tự động bảo vệ máy yếu (Khuyên dùng)</option>
-            <option value="low" ${gfx.mode === 'low' ? 'selected' : ''}>Tiết kiệm RAM/GPU (30 FPS, tắt ShadowMap)</option>
-            <option value="balanced" ${gfx.mode === 'balanced' ? 'selected' : ''}>Cân bằng (45 FPS, bóng đổ 1024px)</option>
-            <option value="high" ${gfx.mode === 'high' ? 'selected' : ''}>Đồ họa Cao (60+ FPS, bóng mềm 2048px)</option>
+            <option value="auto" ${gfx.mode === 'auto' ? 'selected' : ''}>Tối đa FPS mặc định (60 FPS, tắt bóng &amp; đèn nặng GPU)</option>
+            <option value="low" ${gfx.mode === 'low' ? 'selected' : ''}>Tối đa FPS (60 FPS, tắt bóng đổ &amp; PointLight)</option>
+            <option value="balanced" ${gfx.mode === 'balanced' ? 'selected' : ''}>Cân bằng (60 FPS, ánh sáng IBL, tắt bóng đổ)</option>
+            <option value="high" ${gfx.mode === 'high' ? 'selected' : ''}>Đồ họa Cao (60 FPS, bóng đổ 1024px &amp; đèn điểm)</option>
           </select>
           <button type="button" id="btn-flush-gpu" class="btn-secondary">🧹 Dọn cache bộ nhớ GPU ngay</button>
         </div>

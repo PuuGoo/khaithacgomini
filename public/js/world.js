@@ -1822,9 +1822,95 @@ export class WorldManager {
       this.waterTex.offset.y = (elapsed * 0.018) % 1;
     }
 
-    if (this.sawmill && this.sawmill.userData.sawBlade) {
-      const speed = sawmillWorking ? 14 : 2.5;
-      this.sawmill.userData.sawBlade.rotation.z -= dt * speed;
+    if (this.sawmill) {
+      const su = this.sawmill.userData;
+      const damp = 1 - Math.exp(-10 * dt);
+      const targetBeltSpeed = sawmillWorking ? 0.44 : 0.16;
+      su.conveyorSpeed = (su.conveyorSpeed ?? 0.16) + (targetBeltSpeed - (su.conveyorSpeed ?? 0.16)) * damp;
+      su.conveyorPhase = ((su.conveyorPhase || 0) + dt * su.conveyorSpeed) % 1;
+
+      const beltY = su.glbSawLoaded ? 1.68 : 1.18;
+      const beltZ = su.glbSawLoaded ? -0.20 : 0.0;
+      const pressX = su.glbSawLoaded ? -1.20 : -0.50;
+
+      // Animate moving conveyor belt cleats along X [-4.6 .. +4.6]
+      if (su.conveyorSlats) {
+        const slats = su.conveyorSlats;
+        const count = slats.length;
+        for (let i = 0; i < count; i++) {
+          const t = (su.conveyorPhase + i / count) % 1;
+          const sx = -4.6 + t * 9.2;
+          const slat = slats[i];
+          slat.position.set(sx, beltY + 0.02, beltZ);
+          // Hide cleats cleanly while passing beneath the hydraulic press head
+          slat.visible = !su.glbSawLoaded || sx < -2.15 || sx > -0.25;
+        }
+      }
+
+      // Animate logs riding from hopper -> press arch -> transforming into fresh lumber planks
+      if (su.conveyorItems) {
+        const items = su.conveyorItems;
+        for (let i = 0; i < items.length; i++) {
+          const item = items[i];
+          const t = (su.conveyorPhase + item.offset) % 1;
+          const x = -4.75 + t * 9.5;
+          const isPlank = x > pressX;
+
+          // Trigger press compression impulse & wood-chip burst right when a log crosses the press
+          if (item.lastX <= pressX && x > pressX) {
+            su.pressRecoil = 1.0;
+            if (sawmillWorking) {
+              this._tmpPressPos = this._tmpPressPos || new THREE.Vector3();
+              this._tmpPressPos.set(
+                this.sawmill.position.x + pressX + 0.35,
+                beltY + 0.35,
+                this.sawmill.position.z + beltZ
+              );
+              this.spawnParticles(this._tmpPressPos, 0xe9c496, this.lowSpec ? 2 : 4);
+            }
+          }
+          item.lastX = x;
+
+          // Smooth drop-in from hopper (t < 0.07) and drop-off onto output table (t > 0.93)
+          let yOffset = 0;
+          let pitch = 0;
+          if (t < 0.07) {
+            const u = 1 - t / 0.07;
+            yOffset = u * u * 0.48;
+            pitch = -u * 0.25;
+          } else if (t > 0.93) {
+            const u = (t - 0.93) / 0.07;
+            yOffset = -u * u * 0.42;
+            pitch = -u * 0.32;
+          }
+
+          item.logMesh.visible = !isPlank;
+          item.plankBundle.visible = isPlank;
+          const baseY = isPlank ? beltY + 0.04 : beltY + 0.21;
+          item.carrier.position.set(x, baseY + yOffset, beltZ);
+          item.carrier.rotation.set(0, 0, pitch);
+
+          // Gentle natural roll on raw logs before entering the press
+          if (!isPlank) {
+            item.logMesh.rotation.x = Math.sin(elapsed * 5 + i) * 0.08;
+          }
+        }
+      }
+
+      // Synchronized hydraulic press recoil & conveyor vibration on the GLB machine
+      if (su.pressRecoil > 0) {
+        su.pressRecoil = Math.max(0, su.pressRecoil - dt * 4.5);
+      }
+      if (su.glbSawLoaded && su.glbSawGroup) {
+        const stroke = Math.sin(su.pressRecoil * Math.PI);
+        const targetScaleY = 1 - stroke * (sawmillWorking ? 0.048 : 0.025);
+        const targetVibX = sawmillWorking ? Math.sin(elapsed * 30) * 0.016 : 0;
+        su.glbSawGroup.scale.y += (targetScaleY - su.glbSawGroup.scale.y) * damp;
+        su.glbSawGroup.position.x += (targetVibX - su.glbSawGroup.position.x) * damp;
+      } else if (su.sawBlade) {
+        const speed = sawmillWorking ? 14 : 2.5;
+        su.sawBlade.rotation.z -= dt * speed;
+      }
     }
     if (this.harbor && this.harbor.userData.ship) {
       this.harbor.userData.ship.position.y = 0.08 + Math.sin(elapsed * 1.4) * 0.14;

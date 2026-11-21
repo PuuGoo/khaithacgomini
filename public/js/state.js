@@ -3328,14 +3328,10 @@ export function getCivicTaxPer10s() {
   return Math.round((baseTax + popBonus) * happyMult * getPrestigeMultiplier());
 }
 
-export function getActiveCitizenCount(profile = 'high') {
-  const civicDef = CIVIC_AMENITY_TIERS.find((c) => c.tier === (gameState.civicTier || 0));
-  const extra = civicDef ? civicDef.extraCitizens : 0;
-  const infraExtra = Math.min(6, (gameState.hqTier || 0) + (gameState.islandResortTier || 0) + (gameState.railwayTier || 0) + (gameState.airportTier || 0));
-  const raw = 10 + extra + infraExtra;
-  if (profile === 'low') return Math.min(10, raw);
-  if (profile === 'balanced') return Math.min(16, raw);
-  return Math.min(24, raw);
+export function getActiveCitizenCount(profile = 'low') {
+  if (profile === 'high') return 6;
+  if (profile === 'balanced') return 5;
+  return 4;
 }
 
 export function upgradeCivicAmenity() {

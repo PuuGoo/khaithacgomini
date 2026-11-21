@@ -6,6 +6,7 @@
 
 import * as THREE from 'three';
 import { GLTFLoader } from 'three/addons/loaders/GLTFLoader.js';
+import { mergeGeometries } from 'three/addons/utils/BufferGeometryUtils.js';
 import { getBarkTexture, getTimberTexture, getTravertineTexture } from './textures.js';
 
 function markShared(resource) {
@@ -719,7 +720,8 @@ function buildAutoHumanoidRig(model, normH, lowSpec = false) {
 
     const skinned = new THREE.SkinnedMesh(geo, src.material);
     skinned.name = src.name;
-    skinned.castShadow = !lowSpec;
+    // Skip shadow-map pass on 83k-vert skinned GLB (contact shadow disc grounds the player cleanly at 0 GPU cost)
+    skinned.castShadow = false;
     skinned.receiveShadow = !lowSpec;
     skinned.frustumCulled = false;
     skinned.bind(skeleton);
@@ -770,7 +772,8 @@ export function setPlayerGlbShadows(playerModel, enableShadows = true) {
   if (!ud?.glbModelWrap) return;
   ud.glbModelWrap.traverse((child) => {
     if (child.isMesh) {
-      child.castShadow = enableShadows;
+      // Keep dense skinned GLB out of shadow-map pass; ground contact shadow handles grounding cheaply
+      child.castShadow = enableShadows && !child.isSkinnedMesh;
       child.receiveShadow = enableShadows;
     }
   });
@@ -889,7 +892,7 @@ export function attachGlbToPlayerModel(playerModel, url, options = {}) {
           model.traverse((child) => {
             if (child.isMesh) {
               meshCount++;
-              child.castShadow = !lowSpec;
+              child.castShadow = false;
               child.receiveShadow = !lowSpec;
               child.frustumCulled = false;
               const matsList = Array.isArray(child.material) ? child.material : [child.material];
@@ -1509,7 +1512,6 @@ export function createSawmillModel() {
   const concreteMat = new THREE.MeshStandardMaterial({ color: 0x64748b, roughness: 0.85, metalness: 0.06 });
   const apronMat = new THREE.MeshStandardMaterial({ map: markShared(getTravertineTexture(5, 3)), roughness: 0.78 });
   const steelMat = new THREE.MeshStandardMaterial({ color: 0x1e293b, roughness: 0.38, metalness: 0.72 });
-  const roofMat = new THREE.MeshStandardMaterial({ color: 0xd97706, roughness: 0.46, metalness: 0.25, flatShading: true });
   const timberMat = new THREE.MeshStandardMaterial({ map: markShared(getTimberTexture()), roughness: 0.68 });
   const warmGlowMat = new THREE.MeshStandardMaterial({ color: 0xfef3c7, emissive: 0xfbbf24, emissiveIntensity: 0.95, roughness: 0.25 });
 
@@ -1523,31 +1525,22 @@ export function createSawmillModel() {
   slab.receiveShadow = true;
   g.add(slab);
 
-  const colGeo = new THREE.BoxGeometry(0.45, 5.2, 0.45);
+  // Open-air Sawmill Yard: low industrial safety bollards at the 4 slab corners (no roof obstructing view)
+  const bollardGeo = new THREE.CylinderGeometry(0.14, 0.17, 0.85, 8);
+  const bollardCapMat = new THREE.MeshStandardMaterial({ color: 0xf59e0b, roughness: 0.42, metalness: 0.3 });
+  const bollardCapGeo = new THREE.CylinderGeometry(0.15, 0.15, 0.16, 8);
   [[-7.2, -4.6], [7.2, -4.6], [-7.2, 4.6], [7.2, 4.6]].forEach(([px, pz]) => {
-    const col = new THREE.Mesh(colGeo, steelMat);
-    col.position.set(px, 2.75, pz);
-    col.castShadow = true;
-    g.add(col);
+    const post = new THREE.Mesh(bollardGeo, steelMat);
+    post.position.set(px, 0.78, pz);
+    const cap = new THREE.Mesh(bollardCapGeo, bollardCapMat);
+    cap.position.set(px, 1.15, pz);
+    g.add(post, cap);
     if (pz > 0) {
-      const sconce = new THREE.Mesh(new THREE.BoxGeometry(0.28, 0.38, 0.18), warmGlowMat);
-      sconce.position.set(px, 3.2, pz + 0.28);
-      g.add(sconce);
+      const lamp = new THREE.Mesh(new THREE.BoxGeometry(0.24, 0.16, 0.24), warmGlowMat);
+      lamp.position.set(px, 1.28, pz);
+      g.add(lamp);
     }
   });
-
-  const roofGeo = new THREE.BoxGeometry(16.8, 0.28, 6.4);
-  const roofL = new THREE.Mesh(roofGeo, roofMat);
-  roofL.position.set(0, 5.85, -2.6);
-  roofL.rotation.x = -0.22;
-  roofL.castShadow = true;
-  const roofR = new THREE.Mesh(roofGeo, roofMat);
-  roofR.position.set(0, 5.85, 2.6);
-  roofR.rotation.x = 0.22;
-  roofR.castShadow = true;
-  const frontFascia = new THREE.Mesh(new THREE.BoxGeometry(16.9, 0.22, 0.24), steelMat);
-  frontFascia.position.set(0, 5.15, 5.6);
-  g.add(roofL, roofR, frontFascia);
 
   // Decorative seasoned timber rack beside rear corner
   const rackPostGeo = new THREE.BoxGeometry(0.18, 1.4, 0.18);
@@ -1568,10 +1561,13 @@ export function createSawmillModel() {
   hopper.castShadow = true;
   g.add(hopper);
 
+  const proceduralSawGroup = new THREE.Group();
+  proceduralSawGroup.name = 'ProceduralSawMachine';
+
   const belt = new THREE.Mesh(new THREE.BoxGeometry(10.5, 0.55, 2.1), steelMat);
   belt.position.set(0, 0.9, 0);
   belt.castShadow = true;
-  g.add(belt);
+  proceduralSawGroup.add(belt);
 
   const sawHousing = new THREE.Mesh(
     new THREE.BoxGeometry(2.6, 2.8, 2.9),
@@ -1579,7 +1575,7 @@ export function createSawmillModel() {
   );
   sawHousing.position.set(-0.5, 2.2, 0);
   sawHousing.castShadow = true;
-  g.add(sawHousing);
+  proceduralSawGroup.add(sawHousing);
 
   const sawBlade = new THREE.Mesh(
     new THREE.CylinderGeometry(0.95, 0.95, 0.08, 14),
@@ -1587,7 +1583,67 @@ export function createSawmillModel() {
   );
   sawBlade.rotation.x = Math.PI / 2;
   sawBlade.position.set(-0.5, 1.55, 1.15);
-  g.add(sawBlade);
+  proceduralSawGroup.add(sawBlade);
+  g.add(proceduralSawGroup);
+
+  const glbSawGroup = new THREE.Group();
+  glbSawGroup.name = 'SawmillConveyorPressGlb';
+  glbSawGroup.position.set(0, 0.36, 0);
+  glbSawGroup.visible = false;
+  g.add(glbSawGroup);
+
+  // Pre-pooled Animated Conveyor Feed: logs ride in from hopper -> pass through press -> emerge as planks
+  const conveyorAnimGroup = new THREE.Group();
+  conveyorAnimGroup.name = 'SawmillConveyorAnim';
+  const conveyorItems = [];
+  const ITEM_SLOTS = 6;
+  for (let i = 0; i < ITEM_SLOTS; i++) {
+    const carrier = new THREE.Group();
+    const logMesh = createLogMesh(i % 3 === 0);
+    logMesh.scale.setScalar(1.22);
+    logMesh.traverse((c) => { if (c.isMesh) c.castShadow = false; });
+
+    const plankBundle = new THREE.Group();
+    const p1 = createPlankMesh();
+    p1.castShadow = false;
+    p1.position.set(0, 0.06, -0.17);
+    const p2 = createPlankMesh();
+    p2.castShadow = false;
+    p2.position.set(0, 0.06, 0.17);
+    const p3 = createPlankMesh();
+    p3.castShadow = false;
+    p3.position.set(0, 0.18, 0);
+    plankBundle.add(p1, p2, p3);
+    plankBundle.scale.setScalar(1.16);
+    plankBundle.visible = false;
+
+    carrier.add(logMesh, plankBundle);
+    conveyorAnimGroup.add(carrier);
+    conveyorItems.push({
+      carrier,
+      logMesh,
+      plankBundle,
+      offset: i / ITEM_SLOTS,
+      lastX: -5
+    });
+  }
+
+  // Moving metallic conveyor belt cleats gliding across the rollers (y = 1.69, z = -0.20)
+  const cleatGeo = markShared(new THREE.BoxGeometry(0.11, 0.036, 1.24));
+  const cleatMat = markShared(new THREE.MeshStandardMaterial({
+    color: 0x334155,
+    roughness: 0.45,
+    metalness: 0.65
+  }));
+  const conveyorSlats = [];
+  const SLAT_COUNT = 14;
+  for (let i = 0; i < SLAT_COUNT; i++) {
+    const slat = new THREE.Mesh(cleatGeo, cleatMat);
+    slat.position.set(-4.6 + (i / SLAT_COUNT) * 9.2, 1.70, -0.20);
+    conveyorAnimGroup.add(slat);
+    conveyorSlats.push(slat);
+  }
+  g.add(conveyorAnimGroup);
 
   const outTable = new THREE.Mesh(new THREE.BoxGeometry(3.2, 0.85, 2.6), timberMat);
   outTable.position.set(5.8, 0.72, 0);
@@ -1627,40 +1683,164 @@ export function createSawmillModel() {
   }
   g.add(visualOutputGroup);
 
-  // Pre-built Tier 2 & Tier 3 architectural upgrades (Zero runtime allocation)
+  // Pre-built Tier 2 & Tier 3 grounded industrial upgrades (Open-air friendly, zero floating roof parts)
   const tier2Group = new THREE.Group();
   tier2Group.visible = false;
   const siloMat = new THREE.MeshStandardMaterial({ color: 0x94a3b8, roughness: 0.35, metalness: 0.72 });
-  const silo = new THREE.Mesh(new THREE.CylinderGeometry(1.15, 1.25, 5.4, 8), siloMat);
-  silo.position.set(-4.5, 4.4, -3.5);
-  silo.castShadow = true;
-  const pipe = new THREE.Mesh(new THREE.CylinderGeometry(0.32, 0.32, 4.6, 6), siloMat);
+  const silo = new THREE.Mesh(new THREE.CylinderGeometry(1.15, 1.25, 5.2, 8), siloMat);
+  silo.position.set(-4.6, 2.96, -3.5);
+  const pipe = new THREE.Mesh(new THREE.CylinderGeometry(0.32, 0.32, 4.2, 6), siloMat);
   pipe.rotation.z = Math.PI / 3;
-  pipe.position.set(-2.5, 4.5, -1.8);
-  const floodBar = new THREE.Mesh(new THREE.BoxGeometry(8.5, 0.28, 0.35), steelMat);
-  floodBar.position.set(0, 6.45, 4.4);
-  tier2Group.add(silo, pipe, floodBar);
+  pipe.position.set(-2.7, 3.25, -2.0);
+  tier2Group.add(silo, pipe);
   g.add(tier2Group);
 
   const tier3Group = new THREE.Group();
   tier3Group.visible = false;
   const solarMat = new THREE.MeshStandardMaterial({ color: 0x0f172a, roughness: 0.18, metalness: 0.85 });
-  const solarL = new THREE.Mesh(new THREE.BoxGeometry(11.5, 0.14, 3.8), solarMat);
-  solarL.position.set(0, 6.2, -2.5);
-  solarL.rotation.x = -0.22;
-  const solarR = new THREE.Mesh(new THREE.BoxGeometry(11.5, 0.14, 3.8), solarMat);
-  solarR.position.set(0, 6.2, 2.5);
-  solarR.rotation.x = 0.22;
-  const trimGold = new THREE.Mesh(
-    new THREE.BoxGeometry(16.2, 0.24, 0.35),
-    new THREE.MeshStandardMaterial({ color: 0xf59e0b, roughness: 0.28, metalness: 0.75 })
-  );
-  trimGold.position.set(0, 5.55, 5.3);
-  tier3Group.add(solarL, solarR, trimGold);
+  const trimGoldMat = new THREE.MeshStandardMaterial({ color: 0xf59e0b, roughness: 0.28, metalness: 0.75 });
+  const rearSolar = new THREE.Mesh(new THREE.BoxGeometry(7.2, 0.14, 1.8), solarMat);
+  rearSolar.position.set(2.2, 1.55, -4.1);
+  rearSolar.rotation.x = 0.42;
+  const solarLegL = new THREE.Mesh(new THREE.BoxGeometry(0.18, 1.2, 0.18), steelMat);
+  solarLegL.position.set(-0.6, 0.96, -4.1);
+  const solarLegR = new THREE.Mesh(new THREE.BoxGeometry(0.18, 1.2, 0.18), steelMat);
+  solarLegR.position.set(5.0, 0.96, -4.1);
+  const slabGoldTrim = new THREE.Mesh(new THREE.BoxGeometry(16.0, 0.14, 0.22), trimGoldMat);
+  slabGoldTrim.position.set(0, 0.42, 5.45);
+  tier3Group.add(rearSolar, solarLegL, solarLegR, slabGoldTrim);
   g.add(tier3Group);
 
-  g.userData = { sawBlade, visualBufferGroup, visualOutputGroup, palletSlots, plankSlots, tier2Group, tier3Group };
+  g.userData = {
+    sawBlade,
+    proceduralSawGroup,
+    glbSawGroup,
+    glbSawLoaded: false,
+    conveyorItems,
+    conveyorSlats,
+    conveyorPhase: 0,
+    conveyorSpeed: 0.18,
+    pressRecoil: 0,
+    visualBufferGroup,
+    visualOutputGroup,
+    palletSlots,
+    plankSlots,
+    tier2Group,
+    tier3Group
+  };
+
+  attachGlbToSawmill(g);
   return g;
+}
+
+// Cached Sawmill Conveyor Press GLB loader (single draw call, shared GPU buffers)
+const SAWMILL_GLB_URL = `/models/${encodeURIComponent('Meshy_AI_Üstünde_press_makinesi_olan_bir_konveyor_20251112_texture.glb')}`;
+let sawmillGlbPromise = null;
+const _sawBox = new THREE.Box3();
+const _sawSize = new THREE.Vector3();
+const _sawCenter = new THREE.Vector3();
+
+function loadSawmillGlbTemplate(url = SAWMILL_GLB_URL) {
+  if (!sawmillGlbPromise) {
+    sawmillGlbPromise = new Promise((resolve, reject) => {
+      const loader = getGltfLoader();
+      loader.load(
+        url,
+        (gltf) => {
+          try {
+            const rawScene = gltf.scene || gltf.scenes?.[0];
+            if (!rawScene) {
+              reject(new Error('File GLB máy cưa không chứa scene hợp lệ.'));
+              return;
+            }
+
+            rawScene.updateMatrixWorld(true);
+            _sawBox.setFromObject(rawScene);
+            _sawBox.getSize(_sawSize);
+
+            // Fit conveyor length along X to ~9.6 units (cleanly spanning between hopper and output table)
+            const rawLen = Math.max(_sawSize.x, _sawSize.z, 0.001);
+            const targetLen = 9.6;
+            const scaleFactor = targetLen / rawLen;
+            rawScene.scale.multiplyScalar(scaleFactor);
+            rawScene.updateMatrixWorld(true);
+
+            _sawBox.setFromObject(rawScene);
+            _sawBox.getCenter(_sawCenter);
+
+            // Ground bottom cleanly at local y = 0 (sits on top of concrete slab at y = 0.36)
+            rawScene.position.x -= _sawCenter.x;
+            rawScene.position.z -= _sawCenter.z;
+            rawScene.position.y -= _sawBox.min.y;
+            rawScene.updateMatrixWorld(true);
+
+            rawScene.traverse((child) => {
+              if (!child.isMesh) return;
+              child.castShadow = false;
+              child.receiveShadow = false;
+              child.frustumCulled = true;
+              if (child.geometry) {
+                child.geometry.computeBoundingBox();
+                child.geometry.computeBoundingSphere();
+                markShared(child.geometry);
+              }
+              const mats = Array.isArray(child.material) ? child.material : [child.material];
+              for (const m of mats) {
+                if (!m) continue;
+                markShared(m);
+                if (m.map) {
+                  m.map.colorSpace = THREE.SRGBColorSpace;
+                  markShared(m.map);
+                }
+                if (m.emissiveMap) {
+                  m.emissiveMap.colorSpace = THREE.SRGBColorSpace;
+                  markShared(m.emissiveMap);
+                }
+                if (typeof m.envMapIntensity === 'number') {
+                  m.envMapIntensity = 0.85;
+                }
+                m.needsUpdate = true;
+              }
+            });
+
+            const template = new THREE.Group();
+            template.name = 'SawmillConveyorPressTemplate';
+            template.add(rawScene);
+            resolve(template);
+          } catch (err) {
+            reject(err);
+          }
+        },
+        undefined,
+        (err) => reject(err)
+      );
+    }).catch((err) => {
+      sawmillGlbPromise = null;
+      throw err;
+    });
+  }
+  return sawmillGlbPromise;
+}
+
+export function attachGlbToSawmill(sawmillGroup, url = SAWMILL_GLB_URL) {
+  const ud = sawmillGroup?.userData;
+  if (!ud?.glbSawGroup) return Promise.resolve({ ok: false });
+
+  return loadSawmillGlbTemplate(url)
+    .then((template) => {
+      while (ud.glbSawGroup.children.length > 0) {
+        ud.glbSawGroup.remove(ud.glbSawGroup.children[0]);
+      }
+      const instance = template.clone(true);
+      ud.glbSawGroup.add(instance);
+      ud.glbSawGroup.visible = true;
+      if (ud.proceduralSawGroup) {
+        ud.proceduralSawGroup.visible = false;
+      }
+      ud.glbSawLoaded = true;
+      return { ok: true };
+    })
+    .catch((err) => ({ ok: false, error: err?.message || 'Không thể tải mô hình máy cưa GLB.' }));
 }
 
 export function createHarborStructure() {
@@ -2032,6 +2212,281 @@ export function createDrivableYachtModel(tier = 1, lowSpec = false) {
     liveryMats: { hullMat, trimMat, cabinMat }
   };
   return g;
+}
+
+// Cached personal boat GLB loader (single download, shared GPU buffers across docked & drivable personal boat)
+let personalBoatGlbPromise = null;
+const _boatBox = new THREE.Box3();
+const _boatSize = new THREE.Vector3();
+const _boatCenter = new THREE.Vector3();
+const _waterBox = new THREE.Box3();
+
+function loadPersonalBoatGlbTemplate(url = '/models/boat.glb') {
+  if (!personalBoatGlbPromise) {
+    personalBoatGlbPromise = new Promise((resolve, reject) => {
+      const loader = getGltfLoader();
+      loader.load(
+        url,
+        (gltf) => {
+          try {
+            const rawScene = gltf.scene || gltf.scenes?.[0];
+            if (!rawScene) {
+              reject(new Error('boat.glb không chứa scene 3D hợp lệ.'));
+              return;
+            }
+
+            rawScene.updateMatrixWorld(true);
+            _waterBox.makeEmpty();
+            const waterNodes = [];
+
+            // Strip any embedded diorama water cube (e.g. Cube.016_Material_0) and capture its water surface Y
+            rawScene.traverse((child) => {
+              if (!child.isMesh) return;
+              const name = child.name || '';
+              const mat = Array.isArray(child.material) ? child.material[0] : child.material;
+              const matName = mat?.name || '';
+              if (/^Cube\.016_Material/i.test(name) || (/^Material$/i.test(matName) && mat?.transparent)) {
+                _waterBox.expandByObject(child);
+                waterNodes.push(child);
+              }
+            });
+
+            for (const wn of waterNodes) {
+              if (wn.parent) wn.parent.remove(wn);
+              if (wn.geometry) wn.geometry.dispose();
+              const mats = Array.isArray(wn.material) ? wn.material : [wn.material];
+              for (const m of mats) if (m) m.dispose();
+            }
+
+            rawScene.updateMatrixWorld(true);
+            _boatBox.setFromObject(rawScene);
+            _boatBox.getSize(_boatSize);
+            _boatBox.getCenter(_boatCenter);
+
+            // Normalize length along +Z (bow faces +Z) to match TimberPort personal boat scale (~11.0 units)
+            const rawLen = Math.max(_boatSize.z, _boatSize.x, 1);
+            const targetLength = 11.0;
+            const scaleFactor = targetLength / rawLen;
+            rawScene.scale.multiplyScalar(scaleFactor);
+            rawScene.updateMatrixWorld(true);
+
+            _boatBox.setFromObject(rawScene);
+            _boatBox.getCenter(_boatCenter);
+            _boatBox.getSize(_boatSize);
+
+            // Align waterline precisely to local y = 0 so the hull floats naturally on TimberPort's ocean
+            const waterlineY = !_waterBox.isEmpty()
+              ? (_waterBox.max.y - 0.12) * scaleFactor
+              : _boatBox.min.y + _boatSize.y * 0.24;
+
+            rawScene.position.x -= _boatCenter.x;
+            rawScene.position.z -= _boatCenter.z;
+            rawScene.position.y -= waterlineY;
+            rawScene.updateMatrixWorld(true);
+
+            // Runtime Draw-Call Batching: merge static boat sub-meshes by material (~80 -> ~12 draw calls)
+            // Keeps boat.glb untouched on disk while cutting CPU/GPU overhead and enabling frustum culling.
+            const buckets = new Map();
+            const unmergedMeshes = [];
+            const originalGeos = [];
+            rawScene.traverse((child) => {
+              if (!child.isMesh || !child.geometry?.attributes?.position) return;
+              originalGeos.push(child.geometry);
+              if (Array.isArray(child.material) || !child.material) {
+                unmergedMeshes.push(child);
+                return;
+              }
+              let list = buckets.get(child.material);
+              if (!list) {
+                list = [];
+                buckets.set(child.material, list);
+              }
+              list.push(child);
+            });
+
+            const configureMat = (m) => {
+              if (!m) return;
+              markShared(m);
+              if (m.map) {
+                m.map.colorSpace = THREE.SRGBColorSpace;
+                markShared(m.map);
+              }
+              if (m.emissiveMap) {
+                m.emissiveMap.colorSpace = THREE.SRGBColorSpace;
+                markShared(m.emissiveMap);
+              }
+              if (typeof m.envMapIntensity === 'number') {
+                m.envMapIntensity = 0.85;
+              }
+              if (/glass-bullp|bulb|lantern/i.test(m.name || '')) {
+                m.emissive = new THREE.Color(0xfbbf24);
+                m.emissiveIntensity = 0.75;
+              }
+              m.needsUpdate = true;
+            };
+
+            const template = new THREE.Group();
+            template.name = 'PersonalBoatGlbTemplate';
+
+            for (const [mat, list] of buckets.entries()) {
+              configureMat(mat);
+              const allHaveUv = list.every((m) => Boolean(m.geometry.attributes.uv));
+              const prepared = [];
+              for (const m of list) {
+                const rawGeo = m.geometry.index ? m.geometry.toNonIndexed() : m.geometry.clone();
+                rawGeo.applyMatrix4(m.matrixWorld);
+                if (!rawGeo.attributes.normal) rawGeo.computeVertexNormals();
+                // Harmonize attributes so mergeGeometries always succeeds cleanly
+                for (const attrName of Object.keys(rawGeo.attributes)) {
+                  if (attrName === 'position' || attrName === 'normal' || (allHaveUv && attrName === 'uv')) {
+                    continue;
+                  }
+                  rawGeo.deleteAttribute(attrName);
+                }
+                rawGeo.morphAttributes = {};
+                prepared.push(rawGeo);
+              }
+
+              const merged = prepared.length === 1 ? prepared[0] : mergeGeometries(prepared, false);
+              if (merged) {
+                merged.computeBoundingBox();
+                merged.computeBoundingSphere();
+                markShared(merged);
+                const batchedMesh = new THREE.Mesh(merged, mat);
+                batchedMesh.name = `BoatBatch_${mat.name || 'mat'}`;
+                batchedMesh.castShadow = false;
+                batchedMesh.receiveShadow = false;
+                batchedMesh.frustumCulled = true;
+                template.add(batchedMesh);
+                if (prepared.length > 1) {
+                  for (const g of prepared) g.dispose();
+                }
+              } else {
+                // Safe fallback if any exotic attribute mismatch ever occurred
+                for (const g of prepared) {
+                  g.computeBoundingBox();
+                  g.computeBoundingSphere();
+                  markShared(g);
+                  const fallbackMesh = new THREE.Mesh(g, mat);
+                  fallbackMesh.castShadow = false;
+                  fallbackMesh.receiveShadow = false;
+                  fallbackMesh.frustumCulled = true;
+                  template.add(fallbackMesh);
+                }
+              }
+            }
+
+            // Preserve any multi-material meshes as-is
+            for (const m of unmergedMeshes) {
+              const mats = Array.isArray(m.material) ? m.material : [m.material];
+              mats.forEach(configureMat);
+              const g = m.geometry.clone();
+              g.applyMatrix4(m.matrixWorld);
+              g.computeBoundingBox();
+              g.computeBoundingSphere();
+              markShared(g);
+              const cloneMesh = new THREE.Mesh(g, m.material);
+              cloneMesh.castShadow = false;
+              cloneMesh.receiveShadow = false;
+              cloneMesh.frustumCulled = true;
+              template.add(cloneMesh);
+            }
+
+            // Free original unbatched geometries immediately
+            for (const g of originalGeos) {
+              if (g && !g.userData?.shared) g.dispose();
+            }
+
+            resolve(template);
+          } catch (err) {
+            reject(err);
+          }
+        },
+        undefined,
+        (err) => reject(err)
+      );
+    }).catch((err) => {
+      personalBoatGlbPromise = null;
+      throw err;
+    });
+  }
+  return personalBoatGlbPromise;
+}
+
+export function setPersonalBoatGlbShadows(boatGroup, enableShadows = false) {
+  const wrap = boatGroup?.userData?.glbBoatWrap;
+  if (!wrap) return;
+  wrap.traverse((child) => {
+    if (child.isMesh) {
+      // Never cast shadow maps from high-poly 278k-vert boat GLB
+      child.castShadow = false;
+      child.receiveShadow = Boolean(enableShadows);
+    }
+  });
+}
+
+export function attachGlbToPersonalBoat(boatGroup, options = {}) {
+  if (!boatGroup) return Promise.resolve({ ok: false });
+  const yawOffset = Number.isFinite(options.yawOffset) ? options.yawOffset : 0;
+  const scaleMult = Number.isFinite(options.scaleMult) ? options.scaleMult : 1.0;
+  const url = options.url || '/models/boat.glb';
+
+  // Wrap existing procedural meshes once (preserving deckLight for warm night lighting)
+  if (!boatGroup.userData.proceduralBoatWrap) {
+    const proceduralWrap = new THREE.Group();
+    proceduralWrap.name = 'ProceduralBoatWrap';
+    const existing = [...boatGroup.children];
+    for (const ch of existing) {
+      if (ch === boatGroup.userData.deckLight) continue;
+      proceduralWrap.add(ch);
+    }
+    boatGroup.add(proceduralWrap);
+    boatGroup.userData.proceduralBoatWrap = proceduralWrap;
+  }
+
+  if (!boatGroup.userData.glbBoatWrap) {
+    const glbWrap = new THREE.Group();
+    glbWrap.name = 'PersonalBoatGlbWrap';
+    glbWrap.visible = false;
+    boatGroup.add(glbWrap);
+    boatGroup.userData.glbBoatWrap = glbWrap;
+  }
+
+  const glbWrap = boatGroup.userData.glbBoatWrap;
+  glbWrap.rotation.y = yawOffset;
+  glbWrap.scale.setScalar(scaleMult);
+
+  const attachToken = (boatGroup.userData.glbBoatToken || 0) + 1;
+  boatGroup.userData.glbBoatToken = attachToken;
+
+  return loadPersonalBoatGlbTemplate(url)
+    .then((template) => {
+      if (boatGroup.userData.glbBoatToken !== attachToken) {
+        return { ok: false, stale: true };
+      }
+      while (glbWrap.children.length > 0) {
+        glbWrap.remove(glbWrap.children[0]);
+      }
+      const instance = template.clone(true);
+      instance.traverse((child) => {
+        if (child.isMesh) {
+          child.castShadow = false;
+          child.receiveShadow = false;
+          child.frustumCulled = true;
+        }
+      });
+      glbWrap.add(instance);
+      glbWrap.visible = true;
+      if (boatGroup.userData.proceduralBoatWrap) {
+        boatGroup.userData.proceduralBoatWrap.visible = false;
+      }
+      if (boatGroup.userData.deckLight) {
+        boatGroup.userData.deckLight.position.set(0, 5.2 * scaleMult, 0);
+      }
+      boatGroup.userData.glbBoatLoaded = true;
+      return { ok: true };
+    })
+    .catch((err) => ({ ok: false, error: err?.message || 'Không thể tải boat.glb.' }));
 }
 
 export function createAirplaneModel(planeId = 'bush_plane', lowSpec = false) {
