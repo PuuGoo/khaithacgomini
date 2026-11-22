@@ -141,7 +141,7 @@ export class RegionalLife {
     }
 
     nearby.sort((a, b) => a.distance - b.distance);
-    const count = Math.min(nearby.length, lowSpec ? 12 : MAX_VISIBLE);
+    const count = Math.min(nearby.length, lowSpec ? 28 : MAX_VISIBLE);
     this.people.length = count;
     this.body.count = this.head.count = this.legs.count = count;
     for (let i = 0; i < count; i++) {
@@ -172,7 +172,6 @@ export class RegionalLife {
       }
       const x = centerX + (axisX ? along : lane);
       const z = centerZ + (axisX ? lane : along);
-      if (x > -72 && x < 72 && z > -60 && z < 26) continue;
       const distance = (player.x - x) ** 2 + (player.z - z) ** 2;
       if (z > LAND_EDGE_Z || x < WORLD_BOUNDS.minX || x > WORLD_BOUNDS.maxX || distance > VIEW_RADIUS ** 2) continue;
       const index = this.nearby.length;

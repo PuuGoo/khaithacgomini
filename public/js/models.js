@@ -7,7 +7,6 @@
 import * as THREE from 'three';
 import { GLTFLoader } from 'three/addons/loaders/GLTFLoader.js';
 import { mergeGeometries } from 'three/addons/utils/BufferGeometryUtils.js';
-import * as SkeletonUtils from 'three/addons/utils/SkeletonUtils.js';
 import { getBarkTexture, getTimberTexture, getTravertineTexture } from './textures.js';
 
 function markShared(resource) {
@@ -167,9 +166,8 @@ let playerGeos = null;
 function getPlayerGeos() {
   if (playerGeos) return playerGeos;
   playerGeos = {
-    thigh: markShared(new THREE.BoxGeometry(0.24, 0.34, 0.26)),
-    shin: markShared(new THREE.BoxGeometry(0.21, 0.32, 0.23)),
-    boot: markShared(new THREE.BoxGeometry(0.26, 0.18, 0.35)),
+    thigh: markShared(new THREE.BoxGeometry(0.24, 0.56, 0.26)),
+    boot: markShared(new THREE.BoxGeometry(0.26, 0.2, 0.34)),
     chest: markShared(new THREE.BoxGeometry(0.74, 0.78, 0.42)),
     vest: markShared(new THREE.BoxGeometry(0.78, 0.24, 0.45)),
     belt: markShared(new THREE.BoxGeometry(0.76, 0.1, 0.44)),
@@ -178,9 +176,7 @@ function getPlayerGeos() {
     helmet: markShared(new THREE.CylinderGeometry(0.26, 0.29, 0.18, 8)),
     brim: markShared(new THREE.BoxGeometry(0.52, 0.05, 0.36)),
     crown: markShared(new THREE.ConeGeometry(0.16, 0.2, 6)),
-    arm: markShared(new THREE.BoxGeometry(0.2, 0.34, 0.22)),
-    foreArm: markShared(new THREE.BoxGeometry(0.17, 0.32, 0.19)),
-    hand: markShared(new THREE.BoxGeometry(0.15, 0.14, 0.16)),
+    arm: markShared(new THREE.BoxGeometry(0.2, 0.62, 0.22)),
     axeHandle: markShared(new THREE.CylinderGeometry(0.035, 0.04, 0.82, 6)),
     axeBlade: markShared(new THREE.BoxGeometry(0.06, 0.28, 0.26)),
     packFrame: markShared(new THREE.BoxGeometry(0.62, 0.68, 0.14)),
@@ -208,33 +204,25 @@ export function createPlayerModel(skinData, vipLevel = 0) {
   };
 
   const leftLeg = new THREE.Group();
-  leftLeg.position.set(-0.18, 0.74, 0);
+  leftLeg.position.set(-0.18, 0.72, 0);
   const lThigh = new THREE.Mesh(geos.thigh, mats.pants);
-  lThigh.position.y = -0.17;
+  lThigh.position.y = -0.28;
   lThigh.castShadow = true;
-  const leftShin = new THREE.Group();
-  leftShin.position.set(0, -0.34, 0);
-  const lShinMesh = new THREE.Mesh(geos.shin, mats.pants);
-  lShinMesh.position.y = -0.16;
   const lBoot = new THREE.Mesh(geos.boot, mats.boot);
-  lBoot.position.set(0, -0.32, 0.05);
-  leftShin.add(lShinMesh, lBoot);
-  leftLeg.add(lThigh, leftShin);
+  lBoot.position.set(0, -0.62, 0.04);
+  lBoot.castShadow = true;
+  leftLeg.add(lThigh, lBoot);
   proceduralBody.add(leftLeg);
 
   const rightLeg = new THREE.Group();
-  rightLeg.position.set(0.18, 0.74, 0);
+  rightLeg.position.set(0.18, 0.72, 0);
   const rThigh = new THREE.Mesh(geos.thigh, mats.pants);
-  rThigh.position.y = -0.17;
+  rThigh.position.y = -0.28;
   rThigh.castShadow = true;
-  const rightShin = new THREE.Group();
-  rightShin.position.set(0, -0.34, 0);
-  const rShinMesh = new THREE.Mesh(geos.shin, mats.pants);
-  rShinMesh.position.y = -0.16;
   const rBoot = new THREE.Mesh(geos.boot, mats.boot);
-  rBoot.position.set(0, -0.32, 0.05);
-  rightShin.add(rShinMesh, rBoot);
-  rightLeg.add(rThigh, rightShin);
+  rBoot.position.set(0, -0.62, 0.04);
+  rBoot.castShadow = true;
+  rightLeg.add(rThigh, rBoot);
   proceduralBody.add(rightLeg);
 
   const torso = new THREE.Group();
@@ -288,41 +276,27 @@ export function createPlayerModel(skinData, vipLevel = 0) {
   const leftArm = new THREE.Group();
   leftArm.position.set(-0.48, 0.68, 0);
   const lArmMesh = new THREE.Mesh(geos.arm, mats.shirt);
-  lArmMesh.position.y = -0.15;
+  lArmMesh.position.y = -0.26;
   lArmMesh.castShadow = true;
-  const leftForeArm = new THREE.Group();
-  leftForeArm.position.set(0, -0.31, 0);
-  const lForeMesh = new THREE.Mesh(geos.foreArm, mats.shirt);
-  lForeMesh.position.y = -0.15;
-  const lHand = new THREE.Mesh(geos.hand, mats.skin);
-  lHand.position.y = -0.31;
-  leftForeArm.add(lForeMesh, lHand);
-  leftArm.add(lArmMesh, leftForeArm);
+  leftArm.add(lArmMesh);
   torso.add(leftArm);
 
   const rightArm = new THREE.Group();
   rightArm.position.set(0.48, 0.68, 0);
   const rArmMesh = new THREE.Mesh(geos.arm, mats.shirt);
-  rArmMesh.position.y = -0.15;
+  rArmMesh.position.y = -0.26;
   rArmMesh.castShadow = true;
-  const rightForeArm = new THREE.Group();
-  rightForeArm.position.set(0, -0.31, 0);
-  const rForeMesh = new THREE.Mesh(geos.foreArm, mats.shirt);
-  rForeMesh.position.y = -0.15;
-  const rHand = new THREE.Mesh(geos.hand, mats.skin);
-  rHand.position.y = -0.31;
-  rightForeArm.add(rForeMesh, rHand);
-  rightArm.add(rArmMesh, rightForeArm);
+  rightArm.add(rArmMesh);
 
   const axeGroup = new THREE.Group();
-  axeGroup.position.set(0, -0.32, 0.1);
+  axeGroup.position.set(0, -0.52, 0.15);
   const handle = new THREE.Mesh(geos.axeHandle, mats.boot);
   handle.rotation.x = Math.PI / 2;
   handle.position.z = 0.28;
   const blade = new THREE.Mesh(geos.axeBlade, mats.steel);
   blade.position.set(0, 0.08, 0.62);
   axeGroup.add(handle, blade);
-  rightForeArm.add(axeGroup);
+  rightArm.add(axeGroup);
   torso.add(rightArm);
 
   const packFrame = new THREE.Mesh(geos.packFrame, mats.boot);
@@ -358,17 +332,8 @@ export function createPlayerModel(skinData, vipLevel = 0) {
 
   root.userData = {
     proceduralBody,
-    leftLeg, rightLeg, leftShin, rightShin,
-    leftArm, rightArm, leftForeArm, rightForeArm,
-    torso, head,
-    vipCrown, axeBlade: blade, axeGroup, mats, logStackGroup,
-    procAnimState: {
-      moveBlend: 0,
-      chopBlend: 0,
-      phase: Math.random() * Math.PI * 2,
-      breathPhase: Math.random() * Math.PI * 2,
-      lookPhase: Math.random() * Math.PI * 2
-    },
+    leftLeg, rightLeg, leftArm, rightArm, torso, head,
+    vipCrown, axeBlade: blade, mats, logStackGroup,
     glbPivot, glbAnimGroup, glbModelWrap, glbLogAnchor, glbCrownAnchor,
     glbLoaded: false,
     glbActive: false,
@@ -1064,41 +1029,11 @@ export function updatePlayerModelAnimation(playerModel, dt, moving, walkPhase, c
       const clampedDt = Math.min(dt, 0.05);
       const carryRatio = options ? (options.carryRatio || 0) : 0;
       const speedMult = options ? (options.speedMult || 1) : 1;
-      const turnLean = options ? (options.turnLean || 0) : 0;
-      const accelLean = options ? (options.accelLean || 0) : 0;
-      const isDriving = Boolean(options && options.isDriving);
-      const steerAngle = options ? (options.steerAngle || 0) : 0;
 
       // Reset outer wrapper transforms cleanly
       anim.position.set(0, 0, 0);
       anim.rotation.set(0, 0, 0);
       anim.scale.set(1, 1, 1);
-
-      // Seated vehicle driving biomechanics (hands gripping wheel, bent knees, torso vibrates with engine)
-      if (isDriving) {
-        st.breathPhase += clampedDt * 2.4;
-        const vib = Math.sin(elapsed * 26) * 0.008;
-        const s = rig.scale;
-        b.hips.position.set(0, rig.hipsRestY - 0.30 * s + vib * s, 0.04 * s);
-        b.hips.rotation.set(-0.08, 0, -steerAngle * 0.14);
-        b.spine.rotation.set(0.08, steerAngle * 0.12, -steerAngle * 0.12);
-        b.chest.rotation.set(0.06, steerAngle * 0.18, -steerAngle * 0.08);
-        b.neck.rotation.set(-0.04, steerAngle * 0.22, 0);
-        b.head.rotation.set(-0.04, steerAngle * 0.36, -steerAngle * 0.06);
-        b.thighL.rotation.set(-1.38, 0.12, 0.06);
-        b.shinL.rotation.set(1.26, 0, 0);
-        b.thighR.rotation.set(-1.38, -0.12, -0.06);
-        b.shinR.rotation.set(1.22, 0, 0);
-        // Reach forward to grip steering wheel
-        b.upperArmL.rotation.set(-0.98 + steerAngle * 0.32, 0.24, -0.42);
-        b.foreArmL.rotation.set(-0.46, -0.34, -0.04);
-        b.upperArmR.rotation.set(-0.98 - steerAngle * 0.32, -0.24, 0.42);
-        b.foreArmR.rotation.set(-0.46, 0.34, 0.04);
-        if (rig.axeMesh) rig.axeMesh.visible = false;
-        return;
-      } else if (rig.axeMesh && !rig.axeMesh.visible) {
-        rig.axeMesh.visible = true;
-      }
 
       // Smooth locomotive & chop blend states
       const targetMove = moving ? 1 : 0;
@@ -1111,16 +1046,15 @@ export function updatePlayerModelAnimation(playerModel, dt, moving, walkPhase, c
       st.chopBlend += (targetChop - st.chopBlend) * (1 - Math.exp(-chopRate * clampedDt));
       if (st.chopBlend < 0.001 && chopSwing <= 0) st.chopBlend = 0;
 
-      // Advance gait cycle smoothly while moving; heavier carry shortens stride slightly
-      const heavyPace = 1 - carryRatio * 0.14;
+      // Advance gait cycle smoothly while moving; settle feet cleanly when stopping
       if (moving) {
-        st.phase += clampedDt * (9.2 * Math.max(0.72, Math.min(1.55, speedMult * heavyPace)));
+        st.phase += clampedDt * (9.2 * Math.max(0.75, Math.min(1.55, speedMult)));
       } else if (st.moveBlend > 0.005) {
         const nearestRest = Math.round(st.phase / Math.PI) * Math.PI;
         st.phase += (nearestRest - st.phase) * (1 - Math.exp(-10 * clampedDt));
       }
 
-      st.breathPhase += clampedDt * (2.15 + st.moveBlend * 1.45 + carryRatio * 0.65);
+      st.breathPhase += clampedDt * (2.15 + st.moveBlend * 1.45);
       st.idleLookPhase += clampedDt * 0.68;
 
       const m = st.moveBlend;
@@ -1132,107 +1066,109 @@ export function updatePlayerModelAnimation(playerModel, dt, moving, walkPhase, c
       const breath = Math.sin(st.breathPhase);
       const shift = Math.sin(elapsed * 0.85);
       const s = rig.scale;
-      const strideAmp = 1 - carryRatio * 0.18;
 
-      // --- 1. Pelvis / Hips (weight shift + sprint drop + carry compression) ---
-      const idleHipY = rig.hipsRestY + (breath * 0.007 - carryRatio * 0.025) * s;
-      const walkHipY = rig.hipsRestY + (Math.abs(sp) * 0.058 - 0.028 - carryRatio * 0.032) * s;
+      // --- 1. Pelvis / Hips ---
+      const idleHipY = rig.hipsRestY + breath * 0.007 * s;
+      const walkHipY = rig.hipsRestY + (Math.abs(sp) * 0.056 - 0.026) * s;
       let hipY = idleHipY * idle + walkHipY * m;
-      let hipX = (shift * 0.015 * idle - cp * 0.028 * m) * s;
-      let hipZ = accelLean * 0.03 * s;
-      let hipRx = 0.015 * idle + (0.055 + accelLean * 0.09) * m;
-      let hipRy = sp * 0.12 * m * strideAmp;
-      let hipRz = shift * 0.022 * idle - sp * 0.05 * m - turnLean * 0.12 * m;
+      let hipX = (shift * 0.015 * idle - cp * 0.025 * m) * s;
+      let hipZ = 0;
+      let hipRx = 0.015 * idle + 0.05 * m;
+      let hipRy = sp * 0.115 * m;
+      let hipRz = shift * 0.022 * idle - sp * 0.048 * m;
 
-      // --- 2. Spine & Chest (counter-rotation + carry lean + momentum lean) ---
-      let spineRx = (0.025 + carryRatio * 0.11 + breath * 0.016) * idle + (0.095 + carryRatio * 0.14 + accelLean * 0.12 + Math.abs(cp) * 0.03) * m;
-      let spineRy = -sp * 0.095 * m * strideAmp;
-      let spineRz = -shift * 0.014 * idle + sp * 0.028 * m - turnLean * 0.15 * m;
+      // --- 2. Spine & Chest (counter-rotation + carry lean + breathing) ---
+      let spineRx = (0.025 + carryRatio * 0.075 + breath * 0.016) * idle + (0.095 + carryRatio * 0.095 + Math.abs(cp) * 0.028) * m;
+      let spineRy = -sp * 0.09 * m;
+      let spineRz = -shift * 0.014 * idle + sp * 0.026 * m;
 
-      let chestRx = (-0.015 + carryRatio * 0.04 + breath * 0.028) * idle + (0.055 + carryRatio * 0.065 + breath * 0.016) * m;
-      let chestRy = Math.sin(elapsed * 0.58) * 0.042 * idle - sp * 0.14 * m * strideAmp;
-      let chestRz = -shift * 0.012 * idle + sp * 0.024 * m - turnLean * 0.09 * m;
+      let chestRx = (-0.015 + breath * 0.028) * idle + (0.055 + carryRatio * 0.045 + breath * 0.014) * m;
+      let chestRy = Math.sin(elapsed * 0.58) * 0.042 * idle - sp * 0.135 * m;
+      let chestRz = -shift * 0.012 * idle + sp * 0.022 * m;
 
-      // --- 3. Neck & Head (natural scanning on idle, gaze into turns while running) ---
-      const lookYaw = (Math.sin(st.idleLookPhase) * 0.19 + Math.sin(st.idleLookPhase * 0.43) * 0.09) * idle;
-      const lookPitch = Math.sin(st.idleLookPhase * 0.71) * 0.045 * idle;
-      const lookTilt = Math.sin(st.idleLookPhase * 0.54) * 0.038 * idle;
+      // --- 3. Neck & Head (natural scanning on idle, gaze stabilization while walking) ---
+      const lookYaw = (Math.sin(st.idleLookPhase) * 0.17 + Math.sin(st.idleLookPhase * 0.43) * 0.08) * idle;
+      const lookPitch = Math.sin(st.idleLookPhase * 0.71) * 0.042 * idle;
+      const lookTilt = Math.sin(st.idleLookPhase * 0.54) * 0.036 * idle;
 
-      let neckRx = -0.02 * m - carryRatio * 0.05;
-      let neckRy = lookYaw * 0.35 + sp * 0.075 * m + turnLean * 0.22 * m;
+      let neckRx = -0.02 * m;
+      let neckRy = lookYaw * 0.35 + sp * 0.075 * m;
       let neckRz = lookTilt * 0.35;
 
-      let headRx = lookPitch - (0.095 + carryRatio * 0.08) * m;
-      let headRy = lookYaw * 0.65 + sp * 0.09 * m + turnLean * 0.34 * m;
+      let headRx = lookPitch - (0.095 + carryRatio * 0.05) * m;
+      let headRy = lookYaw * 0.65 + sp * 0.09 * m;
       let headRz = lookTilt * 0.65 - sp * 0.02 * m;
 
       // --- 4. Legs (relaxed athletic stance <-> alternating human stride with realistic knee flexion) ---
-      const kneeLiftL = Math.max(0.05, Math.sin(p - 0.85) * 0.52 + 0.44);
-      const kneeLiftR = Math.max(0.05, Math.sin(p + Math.PI - 0.85) * 0.52 + 0.44);
+      const kneeLiftL = Math.max(0.05, Math.sin(p - 0.85) * 0.50 + 0.42);
+      const kneeLiftR = Math.max(0.05, Math.sin(p + Math.PI - 0.85) * 0.50 + 0.42);
 
-      let thighLRx = -0.04 * idle + (-sp * 0.64 * strideAmp) * m;
+      let thighLRx = -0.04 * idle + (-sp * 0.62) * m;
       let thighLRy = 0.05 * idle;
       let thighLRz = 0.03 * idle + 0.02 * m;
-      let shinLRx = (0.08 + carryRatio * 0.08) * idle + (kneeLiftL + carryRatio * 0.12) * m;
+      let shinLRx = 0.08 * idle + kneeLiftL * m;
 
-      let thighRRx = 0.045 * idle + (sp * 0.64 * strideAmp) * m;
+      let thighRRx = 0.045 * idle + (sp * 0.62) * m;
       let thighRRy = -0.05 * idle;
       let thighRRz = -0.03 * idle - 0.02 * m;
-      let shinRRx = (0.04 + carryRatio * 0.08) * idle + (kneeLiftR + carryRatio * 0.12) * m;
+      let shinRRx = 0.04 * idle + kneeLiftR * m;
 
-      // --- 5. Arms (relaxed <-> sprint swing <-> bracing heavy timber load on back/shoulder) ---
-      const carryBrace = Math.min(1, carryRatio * 1.4);
-      let uArmLRx = (0.05 + breath * 0.025) * idle + (sp * 0.58 * (1 - carryBrace * 0.55) + 0.05) * m - carryBrace * 0.42;
-      let uArmLRy = 0.08 * idle + 0.04 * m + carryBrace * 0.18;
-      let uArmLRz = -0.64 - breath * 0.025 * idle - 0.04 * m + carryBrace * 0.18;
+      // --- 5. Arms (relaxed out of A-pose <-> opposite-phase swing + dynamic elbow bend) ---
+      // Default A-pose arms are lowered with upperArmL.rz ~ -0.64 and upperArmR.rz ~ +0.58
+      let uArmLRx = (0.05 + breath * 0.025) * idle + (sp * 0.58 + 0.05) * m;
+      let uArmLRy = 0.08 * idle + 0.04 * m;
+      let uArmLRz = -0.64 - breath * 0.025 * idle - 0.04 * m;
 
-      const elbowFlexL = (0.22 + carryBrace * 0.62) * idle + (0.28 + Math.max(0, -sp) * 0.44 + carryBrace * 0.48) * m;
+      const elbowFlexL = 0.22 * idle + (0.28 + Math.max(0, -sp) * 0.42) * m;
       let fArmLRx = -elbowFlexL * 0.65;
       let fArmLRy = -elbowFlexL * 0.65;
       let fArmLRz = -0.04;
 
-      // Right arm holds the PBR lumberjack axe naturally at the ready (or stabilizes straps under heavy carry)
-      let uArmRRx = (-0.16 + breath * 0.022) * idle + (-sp * 0.46 * (1 - carryBrace * 0.45) - 0.12) * m - carryBrace * 0.22;
+      // Right arm holds the PBR lumberjack axe naturally at the ready
+      let uArmRRx = (-0.16 + breath * 0.022) * idle + (-sp * 0.44 - 0.12) * m;
       let uArmRRy = -0.08 * idle - 0.04 * m;
-      let uArmRRz = 0.58 + breath * 0.022 * idle + 0.03 * m - carryBrace * 0.10;
+      let uArmRRz = 0.58 + breath * 0.022 * idle + 0.03 * m;
 
-      const elbowFlexR = (0.38 + carryBrace * 0.32) * idle + (0.36 + Math.max(0, sp) * 0.36 + carryBrace * 0.28) * m;
+      const elbowFlexR = 0.38 * idle + (0.36 + Math.max(0, sp) * 0.34) * m;
       let fArmRRx = -elbowFlexR * 0.65;
       let fArmRRy = elbowFlexR * 0.65;
       let fArmRRz = 0.05;
 
-      // --- 6. Full-Body Athletic Lumberjack Axe Chop Overlay (with impact shudder recoil) ---
+      // --- 6. Full-Body Athletic Lumberjack Axe Chop Overlay ---
       if (ch > 0.001) {
         const t = 1 - Math.max(0, Math.min(1, chopSwing));
         // Phase A: explosive overhead wind-up (t: 0 -> 0.34)
-        const windUp = smoothstep(0.0, 0.25, t) * (1 - smoothstep(0.28, 0.45, t));
-        // Phase B: powerful diagonal downswing & impact strike (t: 0.27 -> 0.88)
-        const strike = smoothstep(0.27, 0.52, t) * (1 - smoothstep(0.68, 1.0, t));
-        // Micro-recoil right at blade impact (t ~ 0.48 -> 0.60)
-        const recoil = Math.sin(Math.max(0, Math.min(1, (t - 0.46) / 0.16)) * Math.PI) * 0.14;
+        const windUp = smoothstep(0.0, 0.26, t) * (1 - smoothstep(0.28, 0.46, t));
+        // Phase B: powerful diagonal downswing & impact strike (t: 0.28 -> 0.88)
+        const strike = smoothstep(0.26, 0.54, t) * (1 - smoothstep(0.68, 1.0, t));
 
-        hipY += (windUp * 0.025 - strike * 0.072) * s * ch;
-        hipZ += (strike * 0.045 - windUp * 0.022) * s * ch;
-        hipRy += (-windUp * 0.20 + strike * 0.18) * ch;
+        // Grounded athletic stance & knee drive on strike
+        hipY += (windUp * 0.022 - strike * 0.068) * s * ch;
+        hipZ += (strike * 0.04 - windUp * 0.02) * s * ch;
+        hipRy += (-windUp * 0.18 + strike * 0.16) * ch;
 
-        spineRx += (-windUp * 0.16 + strike * 0.32 - recoil * 0.35) * ch;
-        spineRy += (-windUp * 0.32 + strike * 0.30) * ch;
-        chestRx += (-windUp * 0.18 + strike * 0.26 - recoil * 0.4) * ch;
-        chestRy += (-windUp * 0.40 + strike * 0.36) * ch;
-        chestRz += (windUp * 0.09 - strike * 0.13) * ch;
+        // Torso coil right on wind-up -> whip forward & left into tree trunk on strike
+        spineRx += (-windUp * 0.14 + strike * 0.30) * ch;
+        spineRy += (-windUp * 0.30 + strike * 0.28) * ch;
+        chestRx += (-windUp * 0.16 + strike * 0.24) * ch;
+        chestRy += (-windUp * 0.38 + strike * 0.34) * ch;
+        chestRz += (windUp * 0.08 - strike * 0.12) * ch;
 
-        headRy += (windUp * 0.48 - strike * 0.44) * ch;
+        // Keep head locked forward on the target trunk
+        headRy += (windUp * 0.46 - strike * 0.42) * ch;
         headRx += (windUp * 0.12 - strike * 0.18) * ch;
 
-        thighLRx += (-strike * 0.18) * ch;
-        shinLRx += (strike * 0.26) * ch;
-        thighRRx += (strike * 0.16) * ch;
-        shinRRx += (strike * 0.20) * ch;
+        // Braced leg drive during impact
+        thighLRx += (-strike * 0.16) * ch;
+        shinLRx += (strike * 0.24) * ch;
+        thighRRx += (strike * 0.14) * ch;
+        shinRRx += (strike * 0.18) * ch;
 
-        const chopUArmRRx = -windUp * 2.12 + strike * 0.58 - recoil - 0.35;
-        const chopUArmRRy = -windUp * 0.30 + strike * 0.44;
-        const chopUArmRRz = 0.56 - windUp * 0.34 - strike * 0.16;
-        const chopElbowR = 0.92 * windUp + 0.18 * strike + 0.14 + recoil * 0.45;
+        // Right arm: high overhead axe raise -> explosive diagonal slash down
+        const chopUArmRRx = -windUp * 2.05 + strike * 0.56 - 0.35;
+        const chopUArmRRy = -windUp * 0.28 + strike * 0.42;
+        const chopUArmRRz = 0.56 - windUp * 0.32 - strike * 0.16;
+        const chopElbowR = 0.88 * windUp + 0.18 * strike + 0.14;
 
         uArmRRx = uArmRRx * (1 - ch) + chopUArmRRx * ch;
         uArmRRy = uArmRRy * (1 - ch) + chopUArmRRy * ch;
@@ -1240,9 +1176,10 @@ export function updatePlayerModelAnimation(playerModel, dt, moving, walkPhase, c
         fArmRRx = fArmRRx * (1 - ch) + (-chopElbowR * 0.65) * ch;
         fArmRRy = fArmRRy * (1 - ch) + (chopElbowR * 0.65) * ch;
 
-        const chopUArmLRx = -windUp * 0.78 + strike * 0.50;
-        const chopUArmLRz = -0.64 + windUp * 0.28 - strike * 0.15;
-        const chopElbowL = 0.64 * windUp + 0.32 * strike + 0.22;
+        // Left arm: counterbalance sweep
+        const chopUArmLRx = -windUp * 0.72 + strike * 0.48;
+        const chopUArmLRz = -0.64 + windUp * 0.26 - strike * 0.14;
+        const chopElbowL = 0.62 * windUp + 0.30 * strike + 0.22;
 
         uArmLRx = uArmLRx * (1 - ch) + chopUArmLRx * ch;
         uArmLRz = uArmLRz * (1 - ch) + chopUArmLRz * ch;
@@ -1301,111 +1238,18 @@ export function updatePlayerModelAnimation(playerModel, dt, moving, walkPhase, c
     return;
   }
 
-  // Articulated Procedural Humanoid Biomechanics (AI Lumberjacks + Seated Driver + Fallback)
-  const { leftLeg, rightLeg, leftShin, rightShin, leftArm, rightArm, leftForeArm, rightForeArm, torso, head, procAnimState } = ud;
+  // Fallback / Classic procedural humanoid limb animation
+  const { leftLeg, rightLeg, leftArm, rightArm } = ud;
   if (!leftLeg || !rightLeg || !leftArm || !rightArm) return;
-
-  const clampedDt = Math.min(dt || 0.016, 0.05);
-  const carryRatio = options ? (options.carryRatio || 0) : 0;
-  const speedMult = options ? (options.speedMult || 1) : 1;
-  const isDriving = Boolean(options && options.isDriving);
-  const steerAngle = options ? (options.steerAngle || 0) : 0;
-
-  if (isDriving) {
-    if (torso) {
-      torso.position.y = 0.56;
-      torso.rotation.set(0.08, steerAngle * 0.22, -steerAngle * 0.12);
-    }
-    if (head) head.rotation.set(-0.04, steerAngle * 0.35, 0);
-    leftLeg.rotation.set(-1.35, 0, 0.06);
-    rightLeg.rotation.set(-1.35, 0, -0.06);
-    if (leftShin) leftShin.rotation.x = 1.25;
-    if (rightShin) rightShin.rotation.x = 1.25;
-    leftArm.rotation.set(-1.05 + steerAngle * 0.35, 0.18, 0.12);
-    rightArm.rotation.set(-1.05 - steerAngle * 0.35, -0.18, -0.12);
-    if (leftForeArm) leftForeArm.rotation.x = -0.45;
-    if (rightForeArm) rightForeArm.rotation.x = -0.45;
-    if (ud.axeGroup) ud.axeGroup.visible = false;
-    return;
-  } else if (ud.axeGroup && !ud.axeGroup.visible) {
-    ud.axeGroup.visible = true;
+  const swing = moving ? Math.sin(walkPhase) * 0.65 : 0;
+  leftLeg.rotation.x = swing;
+  rightLeg.rotation.x = -swing;
+  leftArm.rotation.x = -swing * 0.7;
+  if (chopSwing > 0) {
+    rightArm.rotation.x = -Math.sin(chopSwing * Math.PI) * 1.45;
+  } else {
+    rightArm.rotation.x = swing * 0.7;
   }
-
-  const st = procAnimState || { moveBlend: moving ? 1 : 0, chopBlend: 0, phase: walkPhase || 0, breathPhase: elapsed * 2, lookPhase: elapsed * 0.7 };
-  st.moveBlend += ((moving ? 1 : 0) - st.moveBlend) * (1 - Math.exp(-10 * clampedDt));
-  const targetChop = chopSwing > 0 ? smoothstep(0.0, 0.18, chopSwing) : 0;
-  st.chopBlend += (targetChop - st.chopBlend) * (1 - Math.exp(-(chopSwing > 0 ? 24 : 10) * clampedDt));
-  if (moving) {
-    st.phase += clampedDt * 9.5 * Math.max(0.7, Math.min(1.5, speedMult * (1 - carryRatio * 0.12)));
-  } else if (st.moveBlend > 0.01) {
-    const rest = Math.round(st.phase / Math.PI) * Math.PI;
-    st.phase += (rest - st.phase) * (1 - Math.exp(-10 * clampedDt));
-  }
-  st.breathPhase += clampedDt * (2.2 + st.moveBlend * 1.4);
-  st.lookPhase += clampedDt * 0.72;
-
-  const m = st.moveBlend;
-  const idle = 1 - m;
-  const ch = st.chopBlend;
-  const p = st.phase;
-  const sp = Math.sin(p);
-  const cp = Math.cos(p);
-  const breath = Math.sin(st.breathPhase);
-
-  // Legs with realistic knee bend
-  const kneeL = Math.max(0.06, Math.sin(p - 0.85) * 0.65 + 0.5);
-  const kneeR = Math.max(0.06, Math.sin(p + Math.PI - 0.85) * 0.65 + 0.5);
-  leftLeg.rotation.set((-sp * 0.62) * m - 0.04 * idle, 0, 0.03);
-  rightLeg.rotation.set((sp * 0.62) * m + 0.04 * idle, 0, -0.03);
-  if (leftShin) leftShin.rotation.x = 0.08 * idle + kneeL * m;
-  if (rightShin) rightShin.rotation.x = 0.06 * idle + kneeR * m;
-
-  // Torso bob, carry-weight lean, and walking counter-twist
-  if (torso) {
-    torso.position.y = 0.76 + (Math.abs(sp) * 0.055 - 0.025) * m + breath * 0.012 * idle - carryRatio * 0.03;
-    torso.rotation.x = (0.04 + carryRatio * 0.14) * idle + (0.12 + carryRatio * 0.16) * m;
-    torso.rotation.y = -sp * 0.16 * m;
-    torso.rotation.z = sp * 0.045 * m;
-  }
-
-  // Head subtle glance & stabilization
-  if (head) {
-    head.rotation.y = Math.sin(st.lookPhase) * 0.24 * idle + sp * 0.12 * m;
-    head.rotation.x = -0.06 * m - carryRatio * 0.06 + Math.sin(st.lookPhase * 0.7) * 0.04 * idle;
-  }
-
-  // Arms & elbows (bracing shoulders when carrying timber logs)
-  const brace = Math.min(1, carryRatio * 1.3);
-  let lArmRx = (sp * 0.62 * (1 - brace * 0.6)) * m - brace * 0.52;
-  let lArmRz = 0.08 + brace * 0.16;
-  let lElbow = -0.25 * idle - (0.35 + Math.max(0, -sp) * 0.5) * m - brace * 0.65;
-
-  let rArmRx = (-sp * 0.52 * (1 - brace * 0.45)) * m - 0.16 * idle - brace * 0.28;
-  let rArmRz = -0.08 - brace * 0.12;
-  let rElbow = -0.42 * idle - (0.38 + Math.max(0, sp) * 0.4) * m - brace * 0.35;
-
-  // Full-body 2-phase chopping overlay for AI Lumberjacks
-  if (ch > 0.001) {
-    const t = 1 - Math.max(0, Math.min(1, chopSwing));
-    const windUp = smoothstep(0.0, 0.26, t) * (1 - smoothstep(0.28, 0.46, t));
-    const strike = smoothstep(0.26, 0.52, t) * (1 - smoothstep(0.68, 1.0, t));
-    if (torso) {
-      torso.position.y += (windUp * 0.03 - strike * 0.08) * ch;
-      torso.rotation.x += (-windUp * 0.22 + strike * 0.38) * ch;
-      torso.rotation.y += (-windUp * 0.42 + strike * 0.44) * ch;
-    }
-    if (head) head.rotation.y += (windUp * 0.38 - strike * 0.38) * ch;
-    rArmRx = rArmRx * (1 - ch) + (-windUp * 2.25 + strike * 0.68 - 0.32) * ch;
-    rArmRz = rArmRz * (1 - ch) + (-0.18 + windUp * 0.15) * ch;
-    rElbow = rElbow * (1 - ch) + (-0.85 * windUp - 0.18 * strike - 0.15) * ch;
-    lArmRx = lArmRx * (1 - ch) + (-windUp * 0.85 + strike * 0.55) * ch;
-    lElbow = lElbow * (1 - ch) + (-0.55 * windUp - 0.28 * strike - 0.2) * ch;
-  }
-
-  leftArm.rotation.set(lArmRx, 0, lArmRz);
-  if (leftForeArm) leftForeArm.rotation.x = lElbow;
-  rightArm.rotation.set(rArmRx, 0, rArmRz);
-  if (rightForeArm) rightForeArm.rotation.x = rElbow;
 }
 
 export function createPetModel(petId) {
@@ -1565,197 +1409,9 @@ export function createTreeModel(kind = 'pine') {
   return g;
 }
 
-// ---------------------------------------------------------------------------
-// Shared GLB Caches & Kinematics: Forklift (forklift_truck.glb) & Trucks Collection
-// ---------------------------------------------------------------------------
-const FORKLIFT_GLB_URL = '/models/forklift_truck.glb';
-const TRUCKS_COLLECTION_GLB_URL = '/models/trucks_collection.glb';
-let _forkliftTemplatePromise = null;
-let _trucksCollectionPromise = null;
-
-function loadForkliftGlbTemplate() {
-  if (_forkliftTemplatePromise) return _forkliftTemplatePromise;
-  _forkliftTemplatePromise = new Promise((resolve) => {
-    getGltfLoader().load(
-      FORKLIFT_GLB_URL,
-      (gltf) => {
-        const root = gltf.scene;
-        root.updateMatrixWorld(true);
-        _glbBox.setFromObject(root);
-        _glbBox.getSize(_glbSize);
-        _glbBox.getCenter(_glbCenter);
-
-        const targetHeight = 2.48;
-        const scale = targetHeight / Math.max(0.01, _glbSize.y);
-        const wrapper = new THREE.Group();
-        root.scale.setScalar(scale);
-        root.position.set(
-          -_glbCenter.x * scale,
-          -_glbBox.min.y * scale,
-          -_glbCenter.z * scale + 0.18
-        );
-        root.traverse((obj) => {
-          if (obj.isMesh) {
-            obj.castShadow = false;
-            obj.receiveShadow = true;
-            obj.frustumCulled = true;
-            if (obj.material) {
-              obj.material.envMapIntensity = 0.75;
-            }
-          }
-        });
-        wrapper.add(root);
-        resolve(wrapper);
-      },
-      undefined,
-      () => resolve(null)
-    );
-  });
-  return _forkliftTemplatePromise;
-}
-
-// 5 cleanly separated trucks along X in trucks_collection.glb:
-// 0: flatbed trailer (-1378), 1: cargo trailer (-679), 2: box trailer (+21),
-// 3: compact solo timber truck (+725), 4: fuel tanker (+1457)
-const TRUCK_X_CENTERS = [-1378.5, -679.3, 20.8, 725.4, 1457.5];
-
-function loadTrucksCollectionTemplates() {
-  if (_trucksCollectionPromise) return _trucksCollectionPromise;
-  _trucksCollectionPromise = new Promise((resolve) => {
-    getGltfLoader().load(
-      TRUCKS_COLLECTION_GLB_URL,
-      (gltf) => {
-        const sceneRoot = gltf.scene;
-        sceneRoot.updateMatrixWorld(true);
-        const rootNode = sceneRoot.getObjectByName('RootNode') || sceneRoot;
-        const clusters = [[], [], [], [], []];
-
-        for (const child of rootNode.children) {
-          const wp = _glbCenter;
-          child.getWorldPosition(wp);
-          let bestIdx = 0;
-          let bestDist = Infinity;
-          for (let i = 0; i < TRUCK_X_CENTERS.length; i++) {
-            const d = Math.abs(wp.x - TRUCK_X_CENTERS[i]);
-            if (d < bestDist) {
-              bestDist = d;
-              bestIdx = i;
-            }
-          }
-          clusters[bestIdx].push(child);
-        }
-
-        const templates = clusters.map((nodes) => {
-          const group = new THREE.Group();
-          for (const n of nodes) {
-            const cloned = n.clone(true);
-            group.add(cloned);
-          }
-          group.updateMatrixWorld(true);
-          _glbBox.setFromObject(group);
-          _glbBox.getSize(_glbSize);
-          _glbBox.getCenter(_glbCenter);
-
-          // Normalize width to realistic ~2.18m truck width, bottom tires flush at y = 0
-          const scale = 2.18 / Math.max(0.01, _glbSize.x);
-          const normGroup = new THREE.Group();
-          group.scale.setScalar(scale);
-          group.position.set(
-            -_glbCenter.x * scale,
-            -_glbBox.min.y * scale,
-            -_glbCenter.z * scale
-          );
-          group.traverse((obj) => {
-            if (obj.isMesh) {
-              obj.castShadow = false;
-              obj.receiveShadow = true;
-              obj.frustumCulled = true;
-              if (obj.material) obj.material.envMapIntensity = 0.85;
-            }
-          });
-          normGroup.add(group);
-          normGroup.updateMatrixWorld(true);
-          return normGroup;
-        });
-
-        resolve(templates);
-      },
-      undefined,
-      () => resolve(null)
-    );
-  });
-  return _trucksCollectionPromise;
-}
-
-function rigTruckInstanceFromTemplate(template) {
-  const clone = template.clone(true);
-  const bodyPivot = new THREE.Group();
-  const frontSteerPivots = [];
-  const wheelSpinPivots = [];
-  let steeringWheel = null;
-
-  clone.updateMatrixWorld(true);
-  const innerGroup = clone.children[0];
-  if (innerGroup) {
-    const scale = innerGroup.scale.x || 1;
-    const invScale = 1 / scale;
-    const wheelNodes = [];
-    for (const part of innerGroup.children) {
-      const nm = part.name || '';
-      if (/Truck_Wheel_(Front|Back)/i.test(nm)) {
-        wheelNodes.push(part);
-      } else if (/Truck_Steering/i.test(nm)) {
-        steeringWheel = part;
-      }
-    }
-
-    for (const wNode of wheelNodes) {
-      const isFront = /Front/i.test(wNode.name);
-      // Compute bounding center of this wheel node in innerGroup space
-      const wBox = new THREE.Box3().setFromObject(wNode);
-      const wCenterWorld = wBox.getCenter(new THREE.Vector3());
-      const wSizeWorld = wBox.getSize(new THREE.Vector3());
-      const wRadius = Math.max(0.28, wSizeWorld.y * 0.5);
-      const localCenter = innerGroup.worldToLocal(wCenterWorld.clone());
-
-      const steerPivot = new THREE.Group();
-      steerPivot.position.copy(localCenter);
-      const spinPivot = new THREE.Group();
-      steerPivot.add(spinPivot);
-
-      // Re-parent wheel node inside centered spinPivot
-      innerGroup.remove(wNode);
-      wNode.position.sub(localCenter);
-      spinPivot.add(wNode);
-      innerGroup.add(steerPivot);
-
-      spinPivot.userData.wheelRadius = wRadius;
-      wheelSpinPivots.push(spinPivot);
-      if (isFront) frontSteerPivots.push(steerPivot);
-    }
-
-    // Wrap chassis parts inside bodyPivot? Keep full clone inside bodyPivot for subtle spring pitch/roll
-    // while keeping wheel radius metadata cleanly accessible
-    void invScale;
-  }
-
-  bodyPivot.add(clone);
-  return { bodyPivot, frontSteerPivots, wheelSpinPivots, steeringWheel };
-}
-
 export function createVehicleModel(type = 'forklift', lowSpec = false) {
   const g = new THREE.Group();
-  g.add(makeContactShadow(type === 'forklift' ? 2.4 : 3.4, 0.42));
-
-  const bodyPivot = new THREE.Group();
-  g.add(bodyPivot);
-
-  const fallbackGroup = new THREE.Group();
-  bodyPivot.add(fallbackGroup);
-
-  const glbContainer = new THREE.Group();
-  glbContainer.visible = false;
-  bodyPivot.add(glbContainer);
+  g.add(makeContactShadow(2.2, 0.4));
 
   const tireMat = new THREE.MeshStandardMaterial({ color: 0x0f172a, roughness: 0.92, metalness: 0.05 });
   const rimMat = new THREE.MeshStandardMaterial({ color: 0xe2e8f0, roughness: 0.25, metalness: 0.85 });
@@ -1764,29 +1420,24 @@ export function createVehicleModel(type = 'forklift', lowSpec = false) {
     ? new THREE.MeshStandardMaterial({ color: 0x7dd3fc, roughness: 0.12, metalness: 0.2, transparent: true, opacity: 0.58 })
     : new THREE.MeshPhysicalMaterial({ color: 0x7dd3fc, roughness: 0.08, metalness: 0.1, transparent: true, opacity: 0.55 });
 
-  const fallbackWheels = [];
   function addWheel(x, y, z, r = 0.42, w = 0.28) {
     const wg = new THREE.Group();
     wg.position.set(x, y, z);
     const tire = new THREE.Mesh(new THREE.CylinderGeometry(r, r, w, 10), tireMat);
     tire.rotation.z = Math.PI / 2;
+    tire.castShadow = true;
     const rim = new THREE.Mesh(new THREE.CylinderGeometry(r * 0.56, r * 0.56, w + 0.02, 8), rimMat);
     rim.rotation.z = Math.PI / 2;
     wg.add(tire, rim);
-    wg.userData.wheelRadius = r;
-    fallbackGroup.add(wg);
-    fallbackWheels.push(wg);
+    g.add(wg);
     return wg;
   }
-
-  let forkCargoPivot = null;
-  let cargoVisual = null;
-  let safetyBeacon = null;
 
   if (type === 'forklift') {
     const bodyMat = new THREE.MeshStandardMaterial({ color: 0xf59e0b, roughness: 0.42, metalness: 0.25 });
     const body = new THREE.Mesh(new THREE.BoxGeometry(1.55, 0.72, 2.3), bodyMat);
     body.position.set(0, 0.68, -0.1);
+    body.castShadow = true;
     const counterweight = new THREE.Mesh(new THREE.BoxGeometry(1.52, 0.62, 0.65), steelMat);
     counterweight.position.set(0, 0.74, -1.05);
     const cabinFrame = new THREE.Mesh(new THREE.BoxGeometry(1.3, 1.15, 1.2), steelMat);
@@ -1795,209 +1446,65 @@ export function createVehicleModel(type = 'forklift', lowSpec = false) {
     roof.position.set(0, 2.18, -0.2);
     const mast = new THREE.Mesh(new THREE.BoxGeometry(1.1, 2.2, 0.18), steelMat);
     mast.position.set(0, 1.35, 1.15);
-    fallbackGroup.add(body, counterweight, cabinFrame, roof, mast);
+    const forkL = new THREE.Mesh(new THREE.BoxGeometry(0.14, 0.08, 1.1), rimMat);
+    forkL.position.set(-0.32, 0.28, 1.65);
+    const forkR = new THREE.Mesh(new THREE.BoxGeometry(0.14, 0.08, 1.1), rimMat);
+    forkR.position.set(0.32, 0.28, 1.65);
+    g.add(body, counterweight, cabinFrame, roof, mast, forkL, forkR);
     addWheel(-0.82, 0.42, 0.72, 0.42);
     addWheel(0.82, 0.42, 0.72, 0.42);
     addWheel(-0.82, 0.36, -0.82, 0.36);
     addWheel(0.82, 0.36, -0.82, 0.36);
-
-    // Hydraulic lifting fork carriage + timber pallet cargo (animated in real time!)
-    forkCargoPivot = new THREE.Group();
-    forkCargoPivot.position.set(0, 0.24, 1.72);
-    const forkBar = new THREE.Mesh(new THREE.BoxGeometry(1.15, 0.18, 0.12), steelMat);
-    forkBar.position.set(0, 0.14, -0.34);
-    const tineL = new THREE.Mesh(new THREE.BoxGeometry(0.11, 0.06, 1.18), rimMat);
-    tineL.position.set(-0.34, 0, 0.22);
-    const tineR = new THREE.Mesh(new THREE.BoxGeometry(0.11, 0.06, 1.18), rimMat);
-    tineR.position.set(0.34, 0, 0.22);
-    cargoVisual = createPalletCrate();
-    cargoVisual.scale.set(0.95, 0.9, 0.95);
-    cargoVisual.position.set(0, 0.05, 0.24);
-    cargoVisual.visible = false;
-    forkCargoPivot.add(forkBar, tineL, tineR, cargoVisual);
-    bodyPivot.add(forkCargoPivot);
-
-    // Amber rotating industrial safety beacon on overhead guard
-    safetyBeacon = new THREE.Mesh(
-      new THREE.CylinderGeometry(0.11, 0.13, 0.18, 8),
-      new THREE.MeshStandardMaterial({ color: 0xf59e0b, emissive: 0xf59e0b, emissiveIntensity: 0.9, roughness: 0.2 })
+  } else if (type === 'pickup') {
+    const paint = new THREE.MeshStandardMaterial({ color: 0x0ea5e9, roughness: 0.28, metalness: 0.55 });
+    const chassis = new THREE.Mesh(new THREE.BoxGeometry(1.85, 0.68, 4.1), paint);
+    chassis.position.set(0, 0.72, 0);
+    chassis.castShadow = true;
+    const cabin = new THREE.Mesh(new THREE.BoxGeometry(1.68, 0.85, 1.65), paint);
+    cabin.position.set(0, 1.45, 0.35);
+    cabin.castShadow = true;
+    const windshield = new THREE.Mesh(new THREE.BoxGeometry(1.56, 0.62, 1.52), glassMat);
+    windshield.position.set(0, 1.48, 0.42);
+    const bedFloor = new THREE.Mesh(new THREE.BoxGeometry(1.65, 0.14, 1.6), steelMat);
+    bedFloor.position.set(0, 1.05, -1.15);
+    const lightMat = new THREE.MeshStandardMaterial({ color: 0xfef08a, emissive: 0xfacc15, emissiveIntensity: 0.8 });
+    [-0.65, 0.65].forEach((hx) => {
+      const hl = new THREE.Mesh(new THREE.BoxGeometry(0.3, 0.16, 0.08), lightMat);
+      hl.position.set(hx, 0.76, 2.06);
+      g.add(hl);
+    });
+    g.add(chassis, cabin, windshield, bedFloor);
+    addWheel(-0.96, 0.46, 1.25, 0.46, 0.3);
+    addWheel(0.96, 0.46, 1.25, 0.46, 0.3);
+    addWheel(-0.96, 0.46, -1.25, 0.46, 0.3);
+    addWheel(0.96, 0.46, -1.25, 0.46, 0.3);
+  } else {
+    const paint = lowSpec
+      ? new THREE.MeshStandardMaterial({ color: 0xdc2626, roughness: 0.22, metalness: 0.65 })
+      : new THREE.MeshPhysicalMaterial({ color: 0xdc2626, roughness: 0.18, metalness: 0.68, clearcoat: 0.9 });
+    const body = new THREE.Mesh(new THREE.BoxGeometry(1.96, 0.62, 4.35), paint);
+    body.position.set(0, 0.68, 0);
+    body.castShadow = true;
+    const hood = new THREE.Mesh(new THREE.BoxGeometry(1.86, 0.25, 1.45), paint);
+    hood.position.set(0, 0.96, 1.2);
+    hood.rotation.x = 0.09;
+    const canopy = new THREE.Mesh(new THREE.BoxGeometry(1.66, 0.62, 1.95), glassMat);
+    canopy.position.set(0, 1.24, -0.05);
+    const spoiler = new THREE.Mesh(new THREE.BoxGeometry(1.88, 0.1, 0.34), steelMat);
+    spoiler.position.set(0, 1.32, -1.96);
+    const ledBar = new THREE.Mesh(
+      new THREE.BoxGeometry(1.4, 0.09, 0.08),
+      new THREE.MeshStandardMaterial({ color: 0xffffff, emissive: 0x38bdf8, emissiveIntensity: 1.0 })
     );
-    safetyBeacon.position.set(0, 2.52, -0.25);
-    bodyPivot.add(safetyBeacon);
-  } else {
-    const paintHex = type === 'pickup' ? 0x0ea5e9 : type === 'tanker_truck' ? 0xeab308 : 0xdc2626;
-    const paint = new THREE.MeshStandardMaterial({ color: paintHex, roughness: 0.32, metalness: 0.55 });
-    const chassis = new THREE.Mesh(new THREE.BoxGeometry(1.9, 0.72, 4.4), paint);
-    chassis.position.set(0, 0.74, 0);
-    const cabin = new THREE.Mesh(new THREE.BoxGeometry(1.75, 0.95, 1.7), paint);
-    cabin.position.set(0, 1.5, 0.95);
-    const windshield = new THREE.Mesh(new THREE.BoxGeometry(1.62, 0.62, 1.58), glassMat);
-    windshield.position.set(0, 1.52, 1.02);
-    fallbackGroup.add(chassis, cabin, windshield);
-    addWheel(-0.96, 0.46, 1.35, 0.46, 0.3);
-    addWheel(0.96, 0.46, 1.35, 0.46, 0.3);
-    addWheel(-0.96, 0.46, -1.35, 0.46, 0.3);
-    addWheel(0.96, 0.46, -1.35, 0.46, 0.3);
-
-    // Stacked timber logs on flatbed rear cargo area
-    cargoVisual = new THREE.Group();
-    cargoVisual.position.set(0, 1.38, -1.35);
-    for (let row = 0; row < 2; row++) {
-      for (let col = -1; col <= 1; col++) {
-        const log = createLogMesh(row === 1 && col === 0);
-        log.rotation.x = Math.PI / 2;
-        log.scale.set(0.7, 1.45, 0.7);
-        log.position.set(col * 0.44, row * 0.36, 0);
-        cargoVisual.add(log);
-      }
-    }
-    cargoVisual.visible = type === 'timber_truck' || type === 'flatbed_truck';
-    bodyPivot.add(cargoVisual);
-  }
-
-  // Seated animated driver inside cabin (shown when vehicle is active/driven)
-  const driverSeat = new THREE.Group();
-  driverSeat.position.set(
-    type === 'forklift' ? 0 : -0.44,
-    type === 'forklift' ? 0.92 : 1.32,
-    type === 'forklift' ? -0.35 : 0.85
-  );
-  driverSeat.scale.setScalar(type === 'forklift' ? 0.76 : 0.72);
-  const driverMesh = createPlayerModel(
-    type === 'forklift'
-      ? { shirt: 0xf59e0b, pants: 0x1e293b, hat: 0xfacc15, accent: 0x0f172a }
-      : { shirt: 0x0284c7, pants: 0x0f172a, hat: 0xef4444, accent: 0xf8fafc },
-    0
-  );
-  driverMesh.userData.logStackGroup.visible = false;
-  if (driverMesh.children[0]) driverMesh.children[0].visible = false; // hide contact shadow inside cab
-  driverSeat.add(driverMesh);
-  bodyPivot.add(driverSeat);
-
-  g.userData = {
-    vehicleType: type,
-    bodyPivot,
-    fallbackGroup,
-    glbContainer,
-    forkCargoPivot,
-    cargoVisual,
-    safetyBeacon,
-    driverSeat,
-    driverMesh,
-    frontSteerPivots: [],
-    wheelSpinPivots: fallbackWheels,
-    steeringWheel: null,
-    kinematics: {
-      forkHeight: 0.24,
-      steerAngle: 0,
-      suspPitch: 0,
-      suspRoll: 0,
-      prevSpeed: 0,
-      exhaustTimer: 0
-    }
-  };
-
-  // Async GLB swap (keeps instant frame-1 rendering + zero blocking)
-  if (type === 'forklift') {
-    loadForkliftGlbTemplate().then((tpl) => {
-      if (!tpl || !g.userData) return;
-      glbContainer.add(tpl.clone(true));
-      glbContainer.visible = true;
-      fallbackGroup.visible = false;
-    });
-  } else {
-    const variantIdx =
-      type === 'pickup' ? 3 :
-      type === 'sport' ? 1 :
-      type === 'flatbed_truck' ? 0 :
-      type === 'tanker_truck' ? 4 :
-      type === 'timber_truck' ? 2 : 3;
-    loadTrucksCollectionTemplates().then((templates) => {
-      if (!templates || !templates[variantIdx] || !g.userData) return;
-      const rigged = rigTruckInstanceFromTemplate(templates[variantIdx]);
-      glbContainer.add(rigged.bodyPivot);
-      glbContainer.visible = true;
-      fallbackGroup.visible = false;
-      g.userData.frontSteerPivots = rigged.frontSteerPivots;
-      g.userData.wheelSpinPivots = rigged.wheelSpinPivots;
-      g.userData.steeringWheel = rigged.steeringWheel;
-      // Align timber cargo stack nicely behind cab on flatbed/solo variants
-      if (cargoVisual) {
-        if (variantIdx === 3) cargoVisual.position.set(0, 1.38, -1.65);
-        else if (variantIdx === 0 || variantIdx === 1 || variantIdx === 2) cargoVisual.position.set(0, 1.62, -2.55);
-        else cargoVisual.visible = false; // tanker already carries fuel tank
-      }
-    });
+    ledBar.position.set(0, 0.72, 2.18);
+    g.add(body, hood, canopy, spoiler, ledBar);
+    addWheel(-1.0, 0.46, 1.35, 0.46, 0.32);
+    addWheel(1.0, 0.46, 1.35, 0.46, 0.32);
+    addWheel(-1.0, 0.46, -1.35, 0.46, 0.32);
+    addWheel(1.0, 0.46, -1.35, 0.46, 0.32);
   }
 
   return g;
-}
-
-export function updateVehicleKinematics(vehicleGroup, dt, speed = 0, steerInput = 0, hasCargo = false, elapsed = 0, showDriver = true) {
-  const ud = vehicleGroup?.userData;
-  if (!ud || !ud.kinematics) return;
-  const k = ud.kinematics;
-  const clampedDt = Math.min(dt || 0.016, 0.05);
-  const damp = 1 - Math.exp(-10 * clampedDt);
-
-  // Smooth front wheel steering
-  const targetSteer = THREE.MathUtils.clamp(steerInput, -0.52, 0.52);
-  k.steerAngle += (targetSteer - k.steerAngle) * damp;
-  for (let i = 0; i < ud.frontSteerPivots.length; i++) {
-    ud.frontSteerPivots[i].rotation.y = k.steerAngle;
-  }
-  if (ud.steeringWheel) {
-    ud.steeringWheel.rotation.z = -k.steerAngle * 2.4;
-  }
-
-  // Real physical wheel rotation from linear distance traveled
-  if (Math.abs(speed) > 0.02) {
-    for (let i = 0; i < ud.wheelSpinPivots.length; i++) {
-      const w = ud.wheelSpinPivots[i];
-      const r = w.userData.wheelRadius || 0.44;
-      w.rotation.x += (speed * clampedDt) / r;
-    }
-  }
-
-  // Acceleration squat / braking nose-dive & cornering body roll suspension
-  const accel = (speed - k.prevSpeed) / Math.max(0.01, clampedDt);
-  k.prevSpeed = speed;
-  const targetPitch = THREE.MathUtils.clamp(-accel * 0.0045, -0.06, 0.065);
-  const targetRoll = THREE.MathUtils.clamp(k.steerAngle * Math.min(1, Math.abs(speed) / 8) * 0.14, -0.09, 0.09);
-  k.suspPitch += (targetPitch - k.suspPitch) * (1 - Math.exp(-12 * clampedDt));
-  k.suspRoll += (targetRoll - k.suspRoll) * (1 - Math.exp(-10 * clampedDt));
-
-  const engineHum = Math.abs(speed) > 0.15
-    ? Math.sin(elapsed * 22) * 0.014
-    : Math.sin(elapsed * 14) * 0.005;
-  ud.bodyPivot.position.y = Math.max(0, engineHum);
-  ud.bodyPivot.rotation.x = k.suspPitch;
-  ud.bodyPivot.rotation.z = k.suspRoll;
-
-  // Forklift hydraulic lift carriage & safety beacon
-  if (ud.forkCargoPivot) {
-    const targetForkY = hasCargo ? 0.96 : 0.24;
-    k.forkHeight += (targetForkY - k.forkHeight) * (1 - Math.exp(-6.5 * clampedDt));
-    ud.forkCargoPivot.position.y = k.forkHeight;
-  }
-  if (ud.cargoVisual && ud.vehicleType !== 'tanker_truck') {
-    ud.cargoVisual.visible = Boolean(hasCargo);
-  }
-  if (ud.safetyBeacon) {
-    const pulse = 0.55 + Math.sin(elapsed * 11) * 0.45;
-    ud.safetyBeacon.material.emissiveIntensity = Math.abs(speed) > 0.2 ? 0.4 + pulse * 1.1 : 0.25;
-  }
-
-  // Animated seated driver turning wheel & looking into corners
-  if (ud.driverSeat && ud.driverMesh) {
-    ud.driverSeat.visible = Boolean(showDriver);
-    if (showDriver) {
-      updatePlayerModelAnimation(ud.driverMesh, clampedDt, false, 0, 0, elapsed, {
-        isDriving: true,
-        steerAngle: k.steerAngle
-      });
-    }
-  }
 }
 
 export function createSawmillModel() {
@@ -2343,102 +1850,80 @@ export function createHarborStructure() {
   const craneMat = new THREE.MeshStandardMaterial({ color: 0xf59e0b, roughness: 0.38, metalness: 0.55 });
   const steelMat = new THREE.MeshStandardMaterial({ color: 0x1e293b, roughness: 0.4, metalness: 0.7 });
 
-  const pier = new THREE.Mesh(new THREE.BoxGeometry(24, 0.55, 7.5), deckMat);
-  pier.position.set(0, 0.36, 3.75);
+  const pier = new THREE.Mesh(new THREE.BoxGeometry(26, 0.55, 14), deckMat);
+  pier.position.set(0, 0.45, 7);
   pier.receiveShadow = true;
   pier.castShadow = true;
   g.add(pier);
 
-  const pileGeo = new THREE.CylinderGeometry(0.28, 0.32, 3.2, 7);
-  for (let px = -10.5; px <= 10.5; px += 5.25) {
-    for (let pz = 1.2; pz <= 6.8; pz += 5.2) {
+  const pileGeo = new THREE.CylinderGeometry(0.32, 0.35, 3.4, 7);
+  for (let px = -11; px <= 11; px += 5.5) {
+    for (let pz = 1; pz <= 13; pz += 6) {
       const pile = new THREE.Mesh(pileGeo, pilingMat);
-      pile.position.set(px, -1.15, pz);
+      pile.position.set(px, -1.1, pz);
       g.add(pile);
     }
   }
 
-  // Harbor Master Timber Warehouse on the West edge of the quay
-  const canneryBody = new THREE.Mesh(new THREE.BoxGeometry(4.8, 2.5, 4.2), new THREE.MeshStandardMaterial({ color: 0x0284c7, roughness: 0.48 }));
-  canneryBody.position.set(-9.0, 1.85, 3.5);
+  const canneryBody = new THREE.Mesh(new THREE.BoxGeometry(6.2, 3.2, 5.0), new THREE.MeshStandardMaterial({ color: 0x0284c7, roughness: 0.48 }));
+  canneryBody.position.set(-8.5, 2.3, 5.2);
   canneryBody.castShadow = true;
-  const canneryRoof = new THREE.Mesh(new THREE.ConeGeometry(3.8, 1.45, 4), new THREE.MeshStandardMaterial({ color: 0xf8fafc, roughness: 0.45, flatShading: true }));
+  const canneryRoof = new THREE.Mesh(new THREE.ConeGeometry(4.8, 1.8, 4), new THREE.MeshStandardMaterial({ color: 0xf8fafc, roughness: 0.45, flatShading: true }));
   canneryRoof.rotation.y = Math.PI / 4;
-  canneryRoof.position.set(-9.0, 3.8, 3.5);
+  canneryRoof.position.set(-8.5, 4.75, 5.2);
   g.add(canneryBody, canneryRoof);
 
   const craneGroup = new THREE.Group();
-  craneGroup.position.set(5.5, 0.62, 4.2);
-  const legGeo = new THREE.BoxGeometry(0.4, 6.4, 0.4);
-  [[-2.2, -1.7], [2.2, -1.7], [-2.2, 1.7], [2.2, 1.7]].forEach(([lx, lz]) => {
+  craneGroup.position.set(6.5, 0.7, 9.5);
+  const legGeo = new THREE.BoxGeometry(0.45, 7.6, 0.45);
+  [[-2.5, -2.0], [2.5, -2.0], [-2.5, 2.0], [2.5, 2.0]].forEach(([lx, lz]) => {
     const leg = new THREE.Mesh(legGeo, craneMat);
-    leg.position.set(lx, 3.2, lz);
+    leg.position.set(lx, 3.8, lz);
     leg.castShadow = true;
     craneGroup.add(leg);
   });
-  const boom = new THREE.Mesh(new THREE.BoxGeometry(6.2, 0.56, 10.5), craneMat);
-  boom.position.set(0, 6.6, 1.8);
+  const boom = new THREE.Mesh(new THREE.BoxGeometry(7.0, 0.65, 12.5), craneMat);
+  boom.position.set(0, 7.8, 2.2);
   boom.castShadow = true;
-  const trolley = new THREE.Mesh(new THREE.BoxGeometry(1.5, 0.6, 1.5), steelMat);
-  trolley.position.set(0, 6.1, 3.8);
+  const trolley = new THREE.Mesh(new THREE.BoxGeometry(1.8, 0.7, 1.8), steelMat);
+  trolley.position.set(0, 7.3, 4.5);
   const hoistedCrate = new THREE.Mesh(
-    new THREE.BoxGeometry(2.3, 1.25, 3.2),
+    new THREE.BoxGeometry(2.6, 1.4, 3.8),
     new THREE.MeshStandardMaterial({ color: 0x10b981, roughness: 0.45 })
   );
-  hoistedCrate.position.set(0, 3.6, 3.8);
+  hoistedCrate.position.set(0, 4.2, 4.5);
   craneGroup.add(boom, trolley, hoistedCrate);
   g.add(craneGroup);
 
-  // 4 Neat Wooden Finger Piers extending straight south into the harbor (3 timber ship berths!)
-  const fingerGeo = new THREE.BoxGeometry(2.4, 0.42, 12.2);
-  [-10.2, -3.4, 3.4, 10.2].forEach((fx) => {
-    const finger = new THREE.Mesh(fingerGeo, deckMat);
-    finger.position.set(fx, 0.34, 13.4);
-    g.add(finger);
-    for (const fz of [9.5, 14.2, 18.8]) {
-      const fp = new THREE.Mesh(pileGeo, pilingMat);
-      fp.position.set(fx, -1.15, fz);
-      g.add(fp);
-    }
-  });
-
-  // Main Cargo Ship (kept in userData.ship for animation) + 2 docked timber freighters side-by-side
   const ship = new THREE.Group();
-  ship.position.set(-6.8, -0.05, 14.0);
-  ship.rotation.y = Math.PI / 2;
-  const timberCargoMat = new THREE.MeshStandardMaterial({ map: markShared(getTimberTexture('#d48e48', '#9a5b25')), roughness: 0.72 });
-  const hullMat = new THREE.MeshStandardMaterial({ color: 0x1e293b, roughness: 0.55, metalness: 0.35 });
-  const keelMat = new THREE.MeshStandardMaterial({ color: 0xb91c1c, roughness: 0.6 });
-  const cabinMat = new THREE.MeshStandardMaterial({ color: 0xf8fafc, roughness: 0.42 });
+  ship.position.set(6.5, 0.1, 20.5);
+  const hull = new THREE.Mesh(new THREE.BoxGeometry(17, 2.6, 5.4), new THREE.MeshStandardMaterial({ color: 0x1e293b, roughness: 0.55, metalness: 0.35 }));
+  hull.position.y = 0.8;
+  hull.castShadow = true;
+  const redKeel = new THREE.Mesh(new THREE.BoxGeometry(16.4, 0.8, 5.1), new THREE.MeshStandardMaterial({ color: 0xb91c1c, roughness: 0.6 }));
+  redKeel.position.y = -0.3;
+  const bridge = new THREE.Mesh(new THREE.BoxGeometry(3.6, 4.2, 4.4), new THREE.MeshStandardMaterial({ color: 0xf8fafc, roughness: 0.42 }));
+  bridge.position.set(-5.8, 3.9, 0);
+  bridge.castShadow = true;
+  const funnel = new THREE.Mesh(new THREE.CylinderGeometry(0.65, 0.8, 1.9, 8), craneMat);
+  funnel.position.set(-6.2, 6.6, 0);
+  ship.add(hull, redKeel, bridge, funnel);
 
-  const buildTimberShipBody = (targetGroup) => {
-    const h = new THREE.Mesh(new THREE.BoxGeometry(10.8, 1.75, 3.4), hullMat);
-    h.position.y = 0.65;
-    const k = new THREE.Mesh(new THREE.BoxGeometry(10.4, 0.65, 3.2), keelMat);
-    k.position.y = -0.22;
-    const b = new THREE.Mesh(new THREE.BoxGeometry(2.6, 2.85, 2.9), cabinMat);
-    b.position.set(-3.6, 2.55, 0);
-    const fn = new THREE.Mesh(new THREE.CylinderGeometry(0.38, 0.48, 1.3, 8), craneMat);
-    fn.position.set(-3.9, 4.5, 0);
-    const stack1 = new THREE.Mesh(new THREE.BoxGeometry(5.2, 1.25, 2.6), timberCargoMat);
-    stack1.position.set(1.1, 2.05, 0);
-    targetGroup.add(h, k, b, fn, stack1);
-  };
-  buildTimberShipBody(ship);
+  const cColors = [0x0ea5e9, 0xf59e0b, 0x10b981, 0xef4444];
+  const contGeo = new THREE.BoxGeometry(3.1, 1.5, 2.0);
+  for (let i = 0; i < 4; i++) {
+    const cont = new THREE.Mesh(
+      contGeo,
+      new THREE.MeshStandardMaterial({ color: cColors[i], roughness: 0.5 })
+    );
+    cont.position.set(-1.5 + (i % 2) * 3.5, 2.75, i < 2 ? -1.1 : 1.1);
+    cont.castShadow = true;
+    ship.add(cont);
+  }
   g.add(ship);
-
-  // Two additional docked timber ships in the adjacent wooden berths (sharing materials, 0 extra textures)
-  [0.0, 6.8].forEach((sx, sIdx) => {
-    const dockedShip = new THREE.Group();
-    dockedShip.position.set(sx, -0.06 + sIdx * 0.02, 14.0);
-    dockedShip.rotation.y = Math.PI / 2;
-    buildTimberShipBody(dockedShip);
-    g.add(dockedShip);
-  });
 
   // Pre-built Tier 2 & Tier 3 Harbor Extensions (Lighthouse + Pier Containers + Control Tower)
   const tier2Group = new THREE.Group();
-  const contGeo = new THREE.BoxGeometry(3.1, 1.5, 2.0);
   tier2Group.visible = false;
   const lhTower = new THREE.Mesh(
     new THREE.CylinderGeometry(0.85, 1.35, 7.2, 8),
@@ -2512,333 +1997,18 @@ export function createFisheryIslandModel() {
       mesh(pier, new THREE.CylinderGeometry(0.13, 0.13, 1.4, 8), '#59402b', x, 0.12, z);
     }
   }
-
-  // Enhance Fishery Island with optimized GitHub Jungle River tropical palms GLB (1 draw call)
-  const jungleWrap = createInstancedGlbGroup('/models/jungle_river_opt.glb', [
-    { x: 0.5, y: 0.45, z: -3.2, ry: 0.4, sx: 1, sy: 1, sz: 1 }
-  ], { targetWidth: 11.5 });
-  land.add(jungleWrap);
   return land;
-}
-
-// ---------------------------------------------------------------------------
-// Shared 3D Ocean Surface (matbien_hq.glb) & Azure Sailor Tug Fleet (azure_sailor_tug_hq.glb)
-// ---------------------------------------------------------------------------
-const OCEAN_GLB_URL = '/models/matbien_hq.glb';
-const AZURE_TUG_GLB_URL = '/models/azure_sailor_tug_hq.glb';
-let _oceanGlbTemplatePromise = null;
-let _azureTugTemplatePromise = null;
-
-// Shared multi-wave buoyancy math synced with the 3D ocean vertex shader (zero GC)
-export function getOceanWaveSample(x, z, elapsed, stormFactor = 0, out = null) {
-  const amp = 0.14 + stormFactor * 0.22;
-  const speed = 1.25 + stormFactor * 0.65;
-  const p1 = x * 0.085 + z * 0.065 + elapsed * speed;
-  const p2 = x * -0.055 + z * 0.115 - elapsed * (speed * 0.82);
-  const p3 = (x + z) * 0.16 + elapsed * (speed * 1.35);
-
-  const h = (Math.sin(p1) * 0.55 + Math.cos(p2) * 0.32 + Math.sin(p3) * 0.13) * amp;
-  const dhdx = (Math.cos(p1) * 0.55 * 0.085 + Math.sin(p2) * 0.32 * 0.055 + Math.cos(p3) * 0.13 * 0.16) * amp;
-  const dhdz = (Math.cos(p1) * 0.55 * 0.065 - Math.sin(p2) * 0.32 * 0.115 + Math.cos(p3) * 0.13 * 0.16) * amp;
-
-  if (out) {
-    out.y = h;
-    out.dhdx = dhdx;
-    out.dhdz = dhdz;
-    return out;
-  }
-  return { y: h, dhdx, dhdz };
-}
-
-function loadOceanGlbTemplate() {
-  if (_oceanGlbTemplatePromise) return _oceanGlbTemplatePromise;
-  _oceanGlbTemplatePromise = new Promise((resolve) => {
-    getGltfLoader().load(
-      OCEAN_GLB_URL,
-      (gltf) => {
-        let srcMesh = null;
-        gltf.scene.traverse((obj) => {
-          if (!srcMesh && obj.isMesh && obj.geometry) srcMesh = obj;
-        });
-        if (!srcMesh) {
-          resolve(null);
-          return;
-        }
-        const geo = srcMesh.geometry;
-        geo.computeBoundingBox();
-        const box = geo.boundingBox;
-        const size = new THREE.Vector3();
-        const center = new THREE.Vector3();
-        box.getSize(size);
-        box.getCenter(center);
-        // Center horizontally & align wave crest mean to y = 0
-        geo.translate(-center.x, -(box.min.y + size.y * 0.52), -center.z);
-        geo.computeBoundingBox();
-        geo.computeBoundingSphere();
-
-        const mat = srcMesh.material ? srcMesh.material.clone() : new THREE.MeshStandardMaterial({ color: 0x0ea5e9 });
-        mat.roughness = 0.24;
-        mat.metalness = 0.22;
-        mat.envMapIntensity = 1.05;
-        mat.side = THREE.FrontSide;
-        if (mat.map) mat.map.colorSpace = THREE.SRGBColorSpace;
-
-        const uniforms = {
-          uTime: { value: 0 },
-          uStorm: { value: 0 },
-          uCoastZ: { value: 26.5 },
-          uTint: { value: new THREE.Color('#38bdf8') }
-        };
-        mat.userData.oceanUniforms = uniforms;
-        mat.onBeforeCompile = (shader) => {
-          shader.uniforms.uTime = uniforms.uTime;
-          shader.uniforms.uStorm = uniforms.uStorm;
-          shader.uniforms.uCoastZ = uniforms.uCoastZ;
-          shader.uniforms.uTint = uniforms.uTint;
-
-          shader.vertexShader =
-            `uniform float uTime;\nuniform float uStorm;\nvarying vec3 vOceanWorldPos;\nvarying float vWaveHeight;\n` +
-            shader.vertexShader.replace(
-              '#include <begin_vertex>',
-              `
-              #include <begin_vertex>
-              vec4 oWp = modelMatrix * vec4(transformed, 1.0);
-              float oAmp = 0.14 + uStorm * 0.22;
-              float oSpd = 1.25 + uStorm * 0.65;
-              float w1 = sin(oWp.x * 0.085 + oWp.z * 0.065 + uTime * oSpd) * 0.55;
-              float w2 = cos(oWp.x * -0.055 + oWp.z * 0.115 - uTime * oSpd * 0.82) * 0.32;
-              float w3 = sin((oWp.x + oWp.z) * 0.16 + uTime * oSpd * 1.35) * 0.13;
-              float wH = (w1 + w2 + w3) * oAmp;
-              transformed.y += wH * 0.55;
-              vWaveHeight = wH;
-              vOceanWorldPos = oWp.xyz;
-              `
-            );
-
-          shader.fragmentShader =
-            `uniform float uTime;\nuniform float uStorm;\nuniform float uCoastZ;\nuniform vec3 uTint;\nvarying vec3 vOceanWorldPos;\nvarying float vWaveHeight;\n` +
-            shader.fragmentShader.replace(
-              '#include <color_fragment>',
-              `
-              #include <color_fragment>
-              // Blend rich 3D ocean texture with regional water tint, sunlit crests & shoreline foam
-              diffuseColor.rgb = mix(diffuseColor.rgb, diffuseColor.rgb * uTint * 1.25, 0.38);
-              float crest = smoothstep(0.06, 0.24, vWaveHeight);
-              float coastDist = abs(vOceanWorldPos.z - uCoastZ);
-              float shoreBand = (1.0 - smoothstep(0.0, 5.2, coastDist)) * step(vOceanWorldPos.z, uCoastZ + 6.0);
-              float shoreWave = 0.5 + 0.5 * sin(vOceanWorldPos.x * 0.42 + uTime * 2.6 + vOceanWorldPos.z * 0.9);
-              float foam = clamp(crest * (0.28 + uStorm * 0.32) + shoreBand * smoothstep(0.32, 0.82, shoreWave) * 0.72, 0.0, 0.85);
-              diffuseColor.rgb = mix(diffuseColor.rgb, vec3(0.92, 0.97, 1.0), foam);
-              `
-            );
-        };
-
-        resolve({ geometry: geo, material: mat, tileSpanX: Math.max(0.01, size.x), tileSpanZ: Math.max(0.01, size.z) });
-      },
-      undefined,
-      () => resolve(null)
-    );
-  });
-  return _oceanGlbTemplatePromise;
-}
-
-export function createOcean3DModel(width, depth, centerX, centerZ, fallbackWaterMat) {
-  const oceanGroup = new THREE.Group();
-  // Kept strictly below y = -0.25 so wave crests NEVER z-fight with y = 0.0 mainland!
-  oceanGroup.position.set(centerX, -0.62, centerZ);
-
-  // Instant fallback plane (remains underneath as deep sea bed once 3D wave mesh loads)
-  const fallbackPlane = new THREE.Mesh(new THREE.PlaneGeometry(width, depth), fallbackWaterMat);
-  fallbackPlane.rotation.x = -Math.PI / 2;
-  fallbackPlane.position.y = -0.18;
-  fallbackPlane.receiveShadow = false;
-  oceanGroup.add(fallbackPlane);
-
-  const tilesGroup = new THREE.Group();
-  oceanGroup.add(tilesGroup);
-
-  oceanGroup.userData = {
-    fallbackPlane,
-    tilesGroup,
-    oceanMaterial: null,
-    glbLoaded: false
-  };
-
-  loadOceanGlbTemplate().then((tpl) => {
-    if (!tpl || !oceanGroup.userData) return;
-    // Seamlessly mirror-tile the high-detail 3D matbien_hq.glb surface across the playable sea
-    const cols = 3;
-    const rows = 3;
-    const tileW = (width * 1.04) / cols;
-    const tileD = (depth * 1.04) / rows;
-    const sx = tileW / tpl.tileSpanX;
-    const sz = tileD / tpl.tileSpanZ;
-    const sy = 1.05;
-
-    for (let r = 0; r < rows; r++) {
-      for (let c = 0; c < cols; c++) {
-        const mesh = new THREE.Mesh(tpl.geometry, tpl.material);
-        mesh.position.set(
-          (c - (cols - 1) * 0.5) * tileW,
-          0.06,
-          (r - (rows - 1) * 0.5) * tileD
-        );
-        // Mirror alternating tiles so edges meet seamlessly with zero visible seams!
-        const flipX = c % 2 === 1 ? -1 : 1;
-        const flipZ = r % 2 === 1 ? -1 : 1;
-        mesh.scale.set(sx * flipX, sy, sz * flipZ);
-        mesh.receiveShadow = false;
-        mesh.castShadow = false;
-        mesh.frustumCulled = true;
-        tilesGroup.add(mesh);
-      }
-    }
-    oceanGroup.userData.oceanMaterial = tpl.material;
-    oceanGroup.userData.glbLoaded = true;
-    fallbackPlane.position.y = -0.85;
-  });
-
-  return oceanGroup;
-}
-
-export function updateOcean3D(oceanGroup, elapsed, stormFactor = 0, waterTintHex = null) {
-  const mat = oceanGroup?.userData?.oceanMaterial;
-  const u = mat?.userData?.oceanUniforms;
-  if (!u) return;
-  u.uTime.value = elapsed;
-  u.uStorm.value = stormFactor;
-  if (waterTintHex) {
-    u.uTint.value.set(waterTintHex);
-  }
-}
-
-function loadAzureTugGlbTemplate() {
-  if (_azureTugTemplatePromise) return _azureTugTemplatePromise;
-  _azureTugTemplatePromise = new Promise((resolve) => {
-    getGltfLoader().load(
-      AZURE_TUG_GLB_URL,
-      (gltf) => {
-        const root = gltf.scene;
-        root.updateMatrixWorld(true);
-        _glbBox.setFromObject(root);
-        _glbBox.getSize(_glbSize);
-        _glbBox.getCenter(_glbCenter);
-
-        // Bow of Azure_Sailor_Tug faces +X -> rotate -PI/2 around Y so bow faces +Z!
-        const wrapper = new THREE.Group();
-        const normScale = 1 / Math.max(0.01, _glbSize.x); // normalize length to 1.0m
-        root.scale.setScalar(normScale);
-        // After -PI/2 Y rotation: local +X maps to +Z, local +Z maps to -X
-        root.rotation.y = -Math.PI / 2;
-        root.position.set(
-          _glbCenter.z * normScale,
-          -(_glbBox.min.y + _glbSize.y * 0.24) * normScale,
-          -_glbCenter.x * normScale
-        );
-        root.traverse((obj) => {
-          if (obj.isMesh) {
-            obj.castShadow = false;
-            obj.receiveShadow = true;
-            obj.frustumCulled = true;
-            if (obj.material) {
-              obj.material.envMapIntensity = 0.9;
-            }
-          }
-        });
-        wrapper.add(root);
-        resolve(wrapper);
-      },
-      undefined,
-      () => resolve(null)
-    );
-  });
-  return _azureTugTemplatePromise;
-}
-
-function createBoatWakeVfx(length = 4.5, beam = 2.0) {
-  const wakeGroup = new THREE.Group();
-  const wakeMat = new THREE.MeshBasicMaterial({
-    color: 0xe0f2fe,
-    transparent: true,
-    opacity: 0.48,
-    depthWrite: false,
-    side: THREE.DoubleSide
-  });
-
-  // Left & Right V-shaped bow wave ribbons
-  const ribbonGeo = new THREE.PlaneGeometry(beam * 0.34, length * 1.15);
-  ribbonGeo.rotateX(-Math.PI / 2);
-  const bowL = new THREE.Mesh(ribbonGeo, wakeMat);
-  bowL.position.set(-beam * 0.52, 0.04, -length * 0.12);
-  bowL.rotation.y = 0.28;
-  const bowR = new THREE.Mesh(ribbonGeo, wakeMat);
-  bowR.position.set(beam * 0.52, 0.04, -length * 0.12);
-  bowR.rotation.y = -0.28;
-
-  // Trailing stern whitewash tail
-  const sternGeo = new THREE.PlaneGeometry(beam * 0.65, length * 0.95);
-  sternGeo.rotateX(-Math.PI / 2);
-  const stern = new THREE.Mesh(sternGeo, wakeMat);
-  stern.position.set(0, 0.03, -length * 0.92);
-
-  wakeGroup.add(bowL, bowR, stern);
-  wakeGroup.userData = { wakeMat, bowL, bowR, stern };
-  return wakeGroup;
-}
-
-const _waveSampleTmp = { y: 0, dhdx: 0, dhdz: 0 };
-
-// Shared realistic 3-axis wave buoyancy + turn banking + wake responsiveness (Zero GC)
-export function updateVesselBuoyancy(vesselGroup, x, z, yaw, speed, turnRate, elapsed, stormFactor = 0, dt = 0.016, baseY = -0.05) {
-  if (!vesselGroup) return;
-  getOceanWaveSample(x, z, elapsed, stormFactor, _waveSampleTmp);
-  const clampedDt = Math.min(dt || 0.016, 0.05);
-  const damp = 1 - Math.exp(-7.5 * clampedDt);
-
-  const cosY = Math.cos(yaw);
-  const sinY = Math.sin(yaw);
-  // Project world wave slope into vessel forward (+Z) and starboard (+X) axes
-  const forwardSlope = _waveSampleTmp.dhdx * sinY + _waveSampleTmp.dhdz * cosY;
-  const sideSlope = _waveSampleTmp.dhdx * cosY - _waveSampleTmp.dhdz * sinY;
-
-  const targetY = baseY + _waveSampleTmp.y;
-  const bowLift = -Math.min(0.09, Math.max(0, speed) * 0.008);
-  const targetPitch = THREE.MathUtils.clamp(-forwardSlope * 1.45 + bowLift, -0.22, 0.22);
-  const targetRoll = THREE.MathUtils.clamp(sideSlope * 1.55 - turnRate * 0.22, -0.26, 0.26);
-
-  vesselGroup.position.set(x, targetY, z);
-  vesselGroup.rotation.y = yaw;
-
-  const hullPivot = vesselGroup.userData?.hullPivot || vesselGroup;
-  if (hullPivot !== vesselGroup) {
-    hullPivot.rotation.x += (targetPitch - hullPivot.rotation.x) * damp;
-    hullPivot.rotation.z += (targetRoll - hullPivot.rotation.z) * damp;
-  } else {
-    vesselGroup.rotation.x += (targetPitch - vesselGroup.rotation.x) * damp;
-    vesselGroup.rotation.z += (targetRoll - vesselGroup.rotation.z) * damp;
-  }
-
-  const wake = vesselGroup.userData?.wakeGroup;
-  if (wake && wake.userData?.wakeMat) {
-    const speedFactor = THREE.MathUtils.clamp(speed / 6.5, 0, 1.25);
-    wake.visible = speedFactor > 0.08;
-    wake.userData.wakeMat.opacity = Math.min(0.62, 0.12 + speedFactor * 0.42);
-    wake.scale.set(0.85 + speedFactor * 0.28, 1, 0.55 + speedFactor * 0.72 + Math.sin(elapsed * 8) * 0.04);
-  }
 }
 
 export function createFishingBoatModel(index = 0) {
   const g = new THREE.Group();
-  const hullPivot = new THREE.Group();
-  g.add(hullPivot);
-
-  const fallbackGroup = new THREE.Group();
   const hullColor = index % 2 === 0 ? 0xf8fafc : 0x0ea5e9;
   const hull = new THREE.Mesh(
     new THREE.BoxGeometry(1.7, 0.75, 3.6),
     new THREE.MeshStandardMaterial({ color: hullColor, roughness: 0.45 })
   );
   hull.position.y = 0.35;
+  hull.castShadow = true;
   const trim = new THREE.Mesh(
     new THREE.BoxGeometry(1.78, 0.2, 3.68),
     new THREE.MeshStandardMaterial({ color: 0xf59e0b, roughness: 0.4 })
@@ -2849,38 +2019,8 @@ export function createFishingBoatModel(index = 0) {
     new THREE.MeshStandardMaterial({ color: 0x1e293b, roughness: 0.4 })
   );
   cabin.position.set(0, 1.15, 0.3);
-  fallbackGroup.add(hull, trim, cabin);
-  hullPivot.add(fallbackGroup);
-
-  const glbContainer = new THREE.Group();
-  glbContainer.visible = false;
-  hullPivot.add(glbContainer);
-
-  const wakeGroup = createBoatWakeVfx(4.8, 2.2);
-  g.add(wakeGroup);
-
-  const funnelAnchor = new THREE.Object3D();
-  funnelAnchor.position.set(0, 3.05, -0.45);
-  hullPivot.add(funnelAnchor);
-
-  g.userData = {
-    hullPivot,
-    fallbackGroup,
-    glbContainer,
-    wakeGroup,
-    funnelAnchor,
-    smokeTimer: Math.random() * 1.2
-  };
-
-  loadAzureTugGlbTemplate().then((tpl) => {
-    if (!tpl || !g.userData) return;
-    const tug = tpl.clone(true);
-    tug.scale.setScalar(5.4); // 5.4m agile coastal Azure Sailor Tug
-    glbContainer.add(tug);
-    glbContainer.visible = true;
-    fallbackGroup.visible = false;
-  });
-
+  cabin.castShadow = true;
+  g.add(hull, trim, cabin);
   return g;
 }
 
@@ -2895,64 +2035,43 @@ export function createWorkerModel(role = 'lumberjack') {
 
 export function createCargoFreighterModel(lowSpec = false) {
   const g = new THREE.Group();
-  const hullPivot = new THREE.Group();
-  g.add(hullPivot);
-
-  const fallbackGroup = new THREE.Group();
   const hullMat = new THREE.MeshStandardMaterial({ color: 0x0f172a, roughness: 0.55, metalness: 0.35 });
   const deckMat = new THREE.MeshStandardMaterial({ color: 0x991b1b, roughness: 0.65, metalness: 0.15 });
   const bridgeMat = new THREE.MeshStandardMaterial({ color: 0xf8fafc, roughness: 0.4 });
   const accentMat = new THREE.MeshStandardMaterial({ color: 0xf59e0b, roughness: 0.35, metalness: 0.5 });
 
-  const hull = new THREE.Mesh(new THREE.BoxGeometry(3.6, 1.8, 11.5), hullMat);
+  const hull = new THREE.Mesh(new THREE.BoxGeometry(11.5, 1.8, 3.6), hullMat);
   hull.position.y = 0.7;
-  const keel = new THREE.Mesh(new THREE.BoxGeometry(3.3, 0.65, 11.0), deckMat);
-  keel.position.y = -0.2;
-  const bridge = new THREE.Mesh(new THREE.BoxGeometry(3.0, 3.0, 2.6), bridgeMat);
-  bridge.position.set(0, 2.7, -3.9);
-  const funnel = new THREE.Mesh(new THREE.CylinderGeometry(0.42, 0.54, 1.3, 8), accentMat);
-  funnel.position.set(0, 4.6, -4.3);
-  fallbackGroup.add(hull, keel, bridge, funnel);
-  hullPivot.add(fallbackGroup);
+  hull.castShadow = !lowSpec;
 
-  const glbContainer = new THREE.Group();
-  glbContainer.visible = false;
-  hullPivot.add(glbContainer);
+  const keel = new THREE.Mesh(new THREE.BoxGeometry(11.0, 0.65, 3.3), deckMat);
+  keel.position.y = -0.2;
+
+  const bridge = new THREE.Mesh(new THREE.BoxGeometry(2.6, 3.0, 3.0), bridgeMat);
+  bridge.position.set(-3.9, 2.7, 0);
+  bridge.castShadow = !lowSpec;
+
+  const funnel = new THREE.Mesh(new THREE.CylinderGeometry(0.42, 0.54, 1.3, 8), accentMat);
+  funnel.position.set(-4.3, 4.6, 0);
 
   const mastBeacon = new THREE.Mesh(
     new THREE.SphereGeometry(0.28, 8, 8),
     new THREE.MeshStandardMaterial({ color: 0xfef08a, emissive: 0xfacc15, emissiveIntensity: 1.0 })
   );
-  mastBeacon.position.set(0, 6.2, 0.4);
+  mastBeacon.position.set(5.2, 2.1, 0);
   mastBeacon.visible = !lowSpec;
-  hullPivot.add(mastBeacon);
 
-  const wakeGroup = createBoatWakeVfx(10.8, 4.6);
-  g.add(wakeGroup);
+  const contColors = [0x0ea5e9, 0x10b981, 0xf59e0b, 0xef4444];
+  const contGeo = markShared(new THREE.BoxGeometry(2.3, 1.15, 1.35));
+  for (let i = 0; i < 4; i++) {
+    const c = new THREE.Mesh(contGeo, new THREE.MeshStandardMaterial({ color: contColors[i], roughness: 0.5 }));
+    c.position.set(-0.8 + (i % 2) * 2.6, 2.1, i < 2 ? -0.78 : 0.78);
+    c.castShadow = !lowSpec;
+    g.add(c);
+  }
 
-  const funnelAnchor = new THREE.Object3D();
-  funnelAnchor.position.set(0, 5.8, -0.9);
-  hullPivot.add(funnelAnchor);
-
-  g.userData = {
-    hullPivot,
-    fallbackGroup,
-    glbContainer,
-    mastBeacon,
-    wakeGroup,
-    funnelAnchor,
-    smokeTimer: 0
-  };
-
-  loadAzureTugGlbTemplate().then((tpl) => {
-    if (!tpl || !g.userData) return;
-    const tug = tpl.clone(true);
-    tug.scale.setScalar(11.4); // 11.4m heavy harbor Azure Sailor Tug!
-    glbContainer.add(tug);
-    glbContainer.visible = true;
-    fallbackGroup.visible = false;
-  });
-
+  g.add(hull, keel, bridge, funnel, mastBeacon);
+  g.userData = { mastBeacon };
   return g;
 }
 
@@ -4238,12 +3357,12 @@ export function createRailwayAndTrainModel(lowSpec = false) {
   const contBlueMat = new THREE.MeshStandardMaterial({ color: 0x0284c7, roughness: 0.42, metalness: 0.28 });
   const contTealMat = new THREE.MeshStandardMaterial({ color: 0x0d9488, roughness: 0.42, metalness: 0.28 });
 
-  // Track Corridor along East Infrastructure Zone (x = 33.5 from z = -34 to z = 25.5 connecting to Timber Harbor)
-  const trackLen = 59.5;
-  const trackCenterZ = -4.25;
-  const trackX = 33.5;
+  // Track Corridor along x = -19.5 from z = -13.5 (Sawmill/Forest Rail Depot) to z = 25.5 (Deep-Water Container Port)
+  const trackLen = 39.0;
+  const trackCenterZ = 6.0;
+  const trackX = -19.5;
 
-  const ballast = new THREE.Mesh(new THREE.BoxGeometry(2.6, 0.12, trackLen + 1.4), ballastMat);
+  const ballast = new THREE.Mesh(new THREE.BoxGeometry(2.4, 0.12, trackLen + 1.4), ballastMat);
   ballast.position.set(trackX, 0.06, trackCenterZ);
   ballast.receiveShadow = !lowSpec;
   g.add(ballast);
@@ -4255,56 +3374,52 @@ export function createRailwayAndTrainModel(lowSpec = false) {
   g.add(railL, railR);
 
   // Instanced Wooden Sleepers (Zero Draw-Call Overhead)
-  const sleeperCount = 62;
+  const sleeperCount = 44;
   const sleeperGeo = new THREE.BoxGeometry(1.75, 0.09, 0.32);
   const sleeperInst = new THREE.InstancedMesh(sleeperGeo, sleeperMat, sleeperCount);
   const dummy = new THREE.Object3D();
   for (let i = 0; i < sleeperCount; i++) {
-    const sz = -33.6 + (i / (sleeperCount - 1)) * 58.6;
+    const sz = -13.2 + (i / (sleeperCount - 1)) * 38.4;
     dummy.position.set(trackX, 0.12, sz);
     dummy.updateMatrix();
     sleeperInst.setMatrixAt(i, dummy.matrix);
   }
   sleeperInst.instanceMatrix.needsUpdate = true;
-  sleeperInst.computeBoundingSphere();
   g.add(sleeperInst);
 
   // North & South Heavy Steel Buffer Stops
-  for (const bz of [-34.0, 25.6]) {
+  for (const bz of [-13.6, 25.6]) {
     const buf = new THREE.Mesh(new THREE.BoxGeometry(1.6, 0.65, 0.35), locoRedMat);
     buf.position.set(trackX, 0.38, bz);
     g.add(buf);
   }
 
-  // East Infrastructure Train Station Platform & Gabled Station House (at x = 30.0, z = -10.0)
+  // Sawmill Rail Depot Platform (at x = -17.3, z = -10.5)
   const depotGroup = new THREE.Group();
-  depotGroup.position.set(30.0, 0, -10.0);
-  const platform = new THREE.Mesh(new THREE.BoxGeometry(3.4, 0.45, 9.4), ballastMat);
+  depotGroup.position.set(-17.2, 0, -10.5);
+  const platform = new THREE.Mesh(new THREE.BoxGeometry(2.4, 0.45, 5.8), ballastMat);
   platform.position.y = 0.225;
   platform.receiveShadow = !lowSpec;
-  const stationHouse = new THREE.Mesh(new THREE.BoxGeometry(2.6, 2.3, 5.4), new THREE.MeshStandardMaterial({ color: 0xd6c7b2, roughness: 0.78 }));
-  stationHouse.position.set(-0.35, 1.55, 0);
-  const canopyRoof = new THREE.Mesh(new THREE.BoxGeometry(3.8, 0.24, 8.8), darkIronMat);
-  canopyRoof.position.set(0.1, 2.85, 0);
-  const canopyRidge = new THREE.Mesh(new THREE.BoxGeometry(1.8, 0.65, 6.2), new THREE.MeshStandardMaterial({ color: 0x475569, roughness: 0.65 }));
-  canopyRidge.position.set(-0.2, 3.25, 0);
-  const canopyStripe = new THREE.Mesh(new THREE.BoxGeometry(3.84, 0.1, 8.84), brassMat);
-  canopyStripe.position.set(0.1, 2.7, 0);
-  for (const pz of [-3.6, 3.6]) {
-    const post = new THREE.Mesh(new THREE.CylinderGeometry(0.1, 0.12, 2.4, 6), darkIronMat);
-    post.position.set(1.2, 1.5, pz);
+  const canopyRoof = new THREE.Mesh(new THREE.BoxGeometry(2.6, 0.18, 5.4), darkIronMat);
+  canopyRoof.position.set(0, 2.55, 0);
+  const canopyStripe = new THREE.Mesh(new THREE.BoxGeometry(2.64, 0.1, 5.44), brassMat);
+  canopyStripe.position.set(0, 2.48, 0);
+  for (const pz of [-2.1, 2.1]) {
+    const post = new THREE.Mesh(new THREE.CylinderGeometry(0.1, 0.12, 2.3, 6), darkIronMat);
+    post.position.set(0.5, 1.35, pz);
     depotGroup.add(post);
   }
-  const signalPost = new THREE.Mesh(new THREE.CylinderGeometry(0.08, 0.1, 3.4, 6), darkIronMat);
-  signalPost.position.set(1.4, 1.7, 4.9);
+  // Signal Semaphore Post with glowing lantern
+  const signalPost = new THREE.Mesh(new THREE.CylinderGeometry(0.08, 0.1, 3.2, 6), darkIronMat);
+  signalPost.position.set(-0.85, 1.6, 3.1);
   const signalLamp = new THREE.Mesh(new THREE.SphereGeometry(0.22, 8, 8), headlightMat);
-  signalLamp.position.set(1.4, 3.35, 4.9);
-  depotGroup.add(platform, stationHouse, canopyRoof, canopyRidge, canopyStripe, signalPost, signalLamp);
+  signalLamp.position.set(-0.85, 3.15, 3.1);
+  depotGroup.add(platform, canopyRoof, canopyStripe, signalPost, signalLamp);
   g.add(depotGroup);
 
-  // Animated Diesel-Electric Freight Train Group (moves along Z between -22 and +20)
+  // Animated Diesel-Electric Freight Train Group (moves along Z between -10.5 and +21.5)
   const trainGroup = new THREE.Group();
-  trainGroup.position.set(trackX, 0.24, -10.0);
+  trainGroup.position.set(trackX, 0.24, -8.0);
   trainGroup.visible = false;
 
   // 1. Locomotive Engine Unit
@@ -4765,20 +3880,8 @@ export function createCitizenModel(archDef = {}) {
     rightArm.add(fl);
   }
 
-  // Procedural fallback group + GitHub GLB character container
-  const proceduralBody = new THREE.Group();
-  proceduralBody.add(leftLeg, rightLeg, torso);
-  root.add(proceduralBody);
-
-  const glbBody = new THREE.Group();
-  glbBody.visible = false;
-  root.add(glbBody);
-
-  root.scale.setScalar(0.88);
+  root.scale.setScalar(0.84);
   root.userData = {
-    proceduralBody,
-    glbBody,
-    glbLoaded: false,
     leftLeg,
     rightLeg,
     leftArm,
@@ -4810,17 +3913,16 @@ export function createCivicPromenadeModel(lowSpec = false) {
   const parasolRedMat = new THREE.MeshStandardMaterial({ color: 0xe11d48, roughness: 0.6, flatShading: true });
   const parasolCyanMat = new THREE.MeshStandardMaterial({ color: 0x0284c7, roughness: 0.6, flatShading: true });
 
-  // Tier 1: Central Square Park Benches, Planters & Warm Street Bollards (strictly inside park & waterfront!)
+  // Tier 1: Harbor & Central Avenue Park Benches, Planters & Warm Street Bollards
   const tier1Group = new THREE.Group();
   tier1Group.visible = false;
   const benchCoords = [
-    [-4.8, -5.5, Math.PI / 2], [9.8, -5.5, -Math.PI / 2],
-    [-4.8, -1.2, Math.PI / 2], [9.8, -1.2, -Math.PI / 2],
-    [-4.0, 23.2, Math.PI], [9.0, 23.2, Math.PI]
+    [-6.5, 5.5, 0], [6.5, 5.5, 0], [-6.5, 16.5, 0], [6.5, 16.5, 0],
+    [-11.5, 22.8, Math.PI], [5.5, 22.8, Math.PI]
   ];
   for (const [bx, bz, rotY] of benchCoords) {
     const bench = new THREE.Group();
-    bench.position.set(bx, 0.08, bz);
+    bench.position.set(bx, 0, bz);
     bench.rotation.y = rotY;
     const seat = new THREE.Mesh(new THREE.BoxGeometry(1.5, 0.1, 0.48), woodMat);
     seat.position.y = 0.42;
@@ -4836,79 +3938,79 @@ export function createCivicPromenadeModel(lowSpec = false) {
 
     // Adjacent planter box + bollard lamp
     const planter = new THREE.Group();
-    planter.position.set(bx + (bx < 2.5 ? -1.1 : 1.1), 0.08, bz);
-    const pot = new THREE.Mesh(new THREE.BoxGeometry(0.68, 0.44, 0.68), stoneMat);
-    pot.position.y = 0.22;
-    const bush = new THREE.Mesh(new THREE.DodecahedronGeometry(0.42, 0), foliageMat);
-    bush.position.y = 0.64;
-    const post = new THREE.Mesh(new THREE.CylinderGeometry(0.06, 0.08, 2.1, 6), ironMat);
-    post.position.set(0, 1.05, 0.5);
-    const lantern = new THREE.Mesh(new THREE.SphereGeometry(0.17, 8, 6), lampGlowMat);
-    lantern.position.set(0, 2.18, 0.5);
+    planter.position.set(bx + (bx < 0 ? -1.35 : 1.35), 0, bz);
+    const pot = new THREE.Mesh(new THREE.BoxGeometry(0.72, 0.48, 0.72), stoneMat);
+    pot.position.y = 0.24;
+    const bush = new THREE.Mesh(new THREE.DodecahedronGeometry(0.46, 0), foliageMat);
+    bush.position.y = 0.68;
+    const post = new THREE.Mesh(new THREE.CylinderGeometry(0.06, 0.08, 2.2, 6), ironMat);
+    post.position.set(0, 1.1, 0.55);
+    const lantern = new THREE.Mesh(new THREE.SphereGeometry(0.18, 8, 6), lampGlowMat);
+    lantern.position.set(0, 2.25, 0.55);
     planter.add(pot, bush, post, lantern);
     tier1Group.add(planter);
   }
   g.add(tier1Group);
 
-  // Tier 2: Central Park & Waterfront Café Tables, Striped Parasols & Tourist Kiosk
+  // Tier 2: Harbor Boardwalk Café Tables, Striped Parasols & Tourist Kiosk
   const tier2Group = new THREE.Group();
   tier2Group.visible = false;
   const cafeSpots = [
-    [-5.8, 22.8], [-1.5, 22.8], [6.5, 22.8], [10.8, 22.8]
+    [-14.5, 20.8], [-9.2, 20.8], [7.8, 20.8], [12.4, 20.8]
   ];
   cafeSpots.forEach(([cx, cz], idx) => {
     const cafe = new THREE.Group();
-    cafe.position.set(cx, 0.08, cz);
-    const pole = new THREE.Mesh(new THREE.CylinderGeometry(0.05, 0.05, 2.2, 6), ironMat);
-    pole.position.y = 1.1;
-    const table = new THREE.Mesh(new THREE.CylinderGeometry(0.64, 0.64, 0.08, 10), woodMat);
-    table.position.y = 0.72;
+    cafe.position.set(cx, 0, cz);
+    const pole = new THREE.Mesh(new THREE.CylinderGeometry(0.05, 0.05, 2.3, 6), ironMat);
+    pole.position.y = 1.15;
+    const table = new THREE.Mesh(new THREE.CylinderGeometry(0.68, 0.68, 0.08, 10), woodMat);
+    table.position.y = 0.74;
     const canopy = new THREE.Mesh(
-      new THREE.ConeGeometry(1.25, 0.52, 8),
+      new THREE.ConeGeometry(1.35, 0.55, 8),
       idx % 2 === 0 ? parasolRedMat : parasolCyanMat
     );
-    canopy.position.y = 2.24;
+    canopy.position.y = 2.32;
     canopy.castShadow = !lowSpec;
     cafe.add(pole, table, canopy);
     tier2Group.add(cafe);
   });
 
-  // Tourist Welcome Kiosk cleanly inside West Lawn of Central Square Park
+  // Harbor Tourist Welcome Kiosk near Central Plaza
   const kiosk = new THREE.Group();
-  kiosk.position.set(-4.2, 0.08, -9.2);
-  const kBase = new THREE.Mesh(new THREE.CylinderGeometry(1.0, 1.08, 1.05, 8), woodMat);
-  kBase.position.y = 0.525;
-  const kGlass = new THREE.Mesh(new THREE.CylinderGeometry(0.9, 0.9, 1.05, 8), lampGlowMat);
-  kGlass.position.y = 1.4;
-  const kRoof = new THREE.Mesh(new THREE.ConeGeometry(1.35, 0.8, 8), parasolCyanMat);
-  kRoof.position.y = 2.25;
+  kiosk.position.set(-5.8, 0, 11.2);
+  const kBase = new THREE.Mesh(new THREE.CylinderGeometry(1.1, 1.15, 1.1, 8), woodMat);
+  kBase.position.y = 0.55;
+  const kGlass = new THREE.Mesh(new THREE.CylinderGeometry(0.98, 0.98, 1.1, 8), lampGlowMat);
+  kGlass.position.y = 1.45;
+  const kRoof = new THREE.Mesh(new THREE.ConeGeometry(1.45, 0.85, 8), parasolCyanMat);
+  kRoof.position.y = 2.35;
   kiosk.add(kBase, kGlass, kRoof);
   tier2Group.add(kiosk);
   g.add(tier2Group);
 
-  // Tier 3: Golden Harbor Arch spanning East Main Ave approach & Royal Monument in Central Park
+  // Tier 3: Golden Wall Street Harbor Arch & Royal Maritime Monument
   const tier3Group = new THREE.Group();
   tier3Group.visible = false;
   const arch = new THREE.Group();
-  arch.position.set(16.5, 0, 22.8);
+  arch.position.set(0, 0, 21.6);
   const colL = new THREE.Mesh(new THREE.CylinderGeometry(0.32, 0.38, 4.8, 8), ironMat);
-  colL.position.set(-3.1, 2.4, 0);
+  colL.position.set(-3.4, 2.4, 0);
   const colR = new THREE.Mesh(new THREE.CylinderGeometry(0.32, 0.38, 4.8, 8), ironMat);
-  colR.position.set(3.1, 2.4, 0);
-  const beam = new THREE.Mesh(new THREE.BoxGeometry(7.2, 0.62, 0.58), goldMat);
+  colR.position.set(3.4, 2.4, 0);
+  const beam = new THREE.Mesh(new THREE.BoxGeometry(7.8, 0.62, 0.58), goldMat);
   beam.position.set(0, 4.95, 0);
   const crest = new THREE.Mesh(new THREE.OctahedronGeometry(0.55, 0), goldMat);
   crest.position.set(0, 5.65, 0);
   arch.add(colL, colR, beam, crest);
   tier3Group.add(arch);
 
-  // Golden Maritime Sphere Monument cleanly inside East Lawn of Central Square Park
+  // Golden Bull / Maritime Sphere Monument in Central Plaza
   const monument = new THREE.Group();
-  monument.position.set(9.2, 0.08, -9.2);
-  const ped = new THREE.Mesh(new THREE.CylinderGeometry(0.9, 1.12, 1.05, 8), stoneMat);
-  ped.position.y = 0.525;
-  const globe = new THREE.Mesh(new THREE.TorusKnotGeometry(0.48, 0.13, 28, 6), goldMat);
-  globe.position.y = 1.78;
+  monument.position.set(5.8, 0, 11.2);
+  const ped = new THREE.Mesh(new THREE.CylinderGeometry(0.95, 1.2, 1.1, 8), stoneMat);
+  ped.position.y = 0.55;
+  const globe = new THREE.Mesh(new THREE.TorusKnotGeometry(0.52, 0.14, 28, 6), goldMat);
+  globe.position.y = 1.85;
   monument.add(ped, globe);
   tier3Group.add(monument);
   g.add(tier3Group);
@@ -4922,248 +4024,5 @@ export function createCivicPromenadeModel(lowSpec = false) {
   };
   return g;
 }
-
-// ---------------------------------------------------------------------------
-// 22. High-FPS GPU-Instanced GitHub GLB Asset Loader & Mixamo Worker / GLB Citizen Loaders
-// ---------------------------------------------------------------------------
-const _instancedGlbCache = new Map();
-const _instDummy = new THREE.Object3D();
-const _instBox = new THREE.Box3();
-const _instSize = new THREE.Vector3();
-const _instCenter = new THREE.Vector3();
-
-function loadNormalizedSingleMeshGlb(url, options = {}) {
-  const key = `${url}|${options.targetWidth || 0}|${options.targetHeight || 0}|${options.sinkY || 0}`;
-  if (_instancedGlbCache.has(key)) return _instancedGlbCache.get(key);
-
-  const promise = new Promise((resolve, reject) => {
-    const loader = getGltfLoader();
-    loader.load(
-      url,
-      (gltf) => {
-        try {
-          const scene = gltf.scene || gltf.scenes?.[0];
-          if (!scene) return reject(new Error('Empty GLB scene: ' + url));
-          scene.updateMatrixWorld(true);
-          let srcMesh = null;
-          scene.traverse((c) => {
-            if (!srcMesh && c.isMesh && c.geometry) srcMesh = c;
-          });
-          if (!srcMesh) return reject(new Error('No mesh in GLB: ' + url));
-
-          const geo = srcMesh.geometry.clone();
-          geo.applyMatrix4(srcMesh.matrixWorld);
-          geo.computeBoundingBox();
-          _instBox.copy(geo.boundingBox);
-          _instBox.getSize(_instSize);
-          _instBox.getCenter(_instCenter);
-
-          let scale = 1;
-          if (options.targetHeight) {
-            scale = options.targetHeight / Math.max(0.001, _instSize.y);
-          } else if (options.targetWidth) {
-            scale = options.targetWidth / Math.max(0.001, Math.max(_instSize.x, _instSize.z));
-          }
-
-          geo.translate(-_instCenter.x, -_instBox.min.y, -_instCenter.z);
-          geo.scale(scale, scale, scale);
-          if (options.sinkY) geo.translate(0, -options.sinkY, 0);
-          geo.computeBoundingBox();
-          geo.computeBoundingSphere();
-          markShared(geo);
-
-          const rawMat = Array.isArray(srcMesh.material) ? srcMesh.material[0] : srcMesh.material;
-          const mat = rawMat ? rawMat.clone() : new THREE.MeshStandardMaterial({ color: 0xcbd5e1, roughness: 0.8 });
-          if (mat.map) {
-            mat.map.colorSpace = THREE.SRGBColorSpace;
-            markShared(mat.map);
-          }
-          if (mat.emissiveMap) {
-            mat.emissiveMap.colorSpace = THREE.SRGBColorSpace;
-            markShared(mat.emissiveMap);
-          }
-          if (typeof mat.envMapIntensity === 'number') mat.envMapIntensity = 0.85;
-          mat.roughness = Math.max(0.62, mat.roughness ?? 0.8);
-          mat.metalness = Math.min(0.22, mat.metalness ?? 0.05);
-          mat.needsUpdate = true;
-          markShared(mat);
-
-          resolve({ geometry: geo, material: mat });
-        } catch (e) {
-          reject(e);
-        }
-      },
-      undefined,
-      reject
-    );
-  }).catch((err) => {
-    _instancedGlbCache.delete(key);
-    throw err;
-  });
-
-  _instancedGlbCache.set(key, promise);
-  return promise;
-}
-
-/**
- * Loads a GitHub GLB model once and renders all placements as ONE GPU InstancedMesh (1 draw call total!).
- */
-export function createInstancedGlbGroup(url, placements = [], options = {}) {
-  const container = new THREE.Group();
-  container.name = `InstancedGLB_${url.split('/').pop()}`;
-  if (!placements.length) return container;
-
-  loadNormalizedSingleMeshGlb(url, options)
-    .then(({ geometry, material }) => {
-      const inst = new THREE.InstancedMesh(geometry, material, placements.length);
-      inst.castShadow = false;
-      inst.receiveShadow = false;
-      inst.frustumCulled = true;
-      for (let i = 0; i < placements.length; i++) {
-        const p = placements[i];
-        _instDummy.position.set(p.x || 0, p.y || 0, p.z || 0);
-        _instDummy.rotation.set(0, p.ry || 0, 0);
-        _instDummy.scale.set(p.sx ?? 1, p.sy ?? 1, p.sz ?? 1);
-        _instDummy.updateMatrix();
-        inst.setMatrixAt(i, _instDummy.matrix);
-      }
-      inst.instanceMatrix.needsUpdate = true;
-      inst.computeBoundingSphere();
-      container.add(inst);
-    })
-    .catch((err) => {
-      console.warn('[TimberPort] Failed loading instanced GLB:', url, err);
-    });
-
-  return container;
-}
-
-const CITIZEN_GLB_VARIANTS = [
-  { url: '/models/harvest_helper_opt.glb', height: 1.92, sinkY: 0.02 },
-  { url: '/models/dockyard_stranger_opt.glb', height: 2.02, sinkY: 0.02 },
-  { url: '/models/traders_spirit_opt.glb', height: 1.96, sinkY: 0.08 },
-  { url: '/models/townswoman_opt.glb', height: 1.94, sinkY: 0.02 }
-];
-
-/**
- * Replaces a citizen's procedural body with one of the 4 optimized GitHub GLB characters (shared GPU geometry/material).
- */
-export function attachGlbCitizenModel(citizenRoot, variantIdx = 0) {
-  const ud = citizenRoot?.userData;
-  if (!ud?.glbBody) return;
-  const spec = CITIZEN_GLB_VARIANTS[Math.abs(variantIdx) % CITIZEN_GLB_VARIANTS.length];
-  loadNormalizedSingleMeshGlb(spec.url, { targetHeight: spec.height, sinkY: spec.sinkY })
-    .then(({ geometry, material }) => {
-      const mesh = new THREE.Mesh(geometry, material);
-      mesh.castShadow = false;
-      mesh.receiveShadow = false;
-      mesh.frustumCulled = true;
-      ud.glbBody.add(mesh);
-      ud.glbBody.visible = true;
-      if (ud.proceduralBody) ud.proceduralBody.visible = false;
-      ud.glbLoaded = true;
-    })
-    .catch(() => {
-      // Keep procedural body seamlessly if GLB fails
-    });
-}
-
-// Cached Mixamo Animated Construction Worker Loader (for AI Lumberjacks!)
-const MIXAMO_WORKER_URL = '/models/construction_worker_opt.glb';
-let _mixamoWorkerPromise = null;
-
-function loadMixamoWorkerTemplate() {
-  if (!_mixamoWorkerPromise) {
-    _mixamoWorkerPromise = new Promise((resolve, reject) => {
-      getGltfLoader().load(
-        MIXAMO_WORKER_URL,
-        (gltf) => {
-          try {
-            const scene = gltf.scene || gltf.scenes?.[0];
-            if (!scene) return reject(new Error('Empty Mixamo worker GLB'));
-            scene.traverse((c) => {
-              if (c.isMesh) {
-                c.castShadow = false;
-                c.receiveShadow = false;
-                c.frustumCulled = true;
-                const mats = Array.isArray(c.material) ? c.material : [c.material];
-                for (const m of mats) {
-                  if (!m) continue;
-                  if (m.map) m.map.colorSpace = THREE.SRGBColorSpace;
-                  if (typeof m.envMapIntensity === 'number') m.envMapIntensity = 0.85;
-                  m.needsUpdate = true;
-                }
-              }
-            });
-            resolve({ scene, animations: gltf.animations || [] });
-          } catch (e) {
-            reject(e);
-          }
-        },
-        undefined,
-        reject
-      );
-    }).catch((err) => {
-      _mixamoWorkerPromise = null;
-      throw err;
-    });
-  }
-  return _mixamoWorkerPromise;
-}
-
-/**
- * Attaches the Mixamo-rigged GitHub Construction Worker GLB (with Walking/Running/Arise animations) to an AI Lumberjack!
- */
-export function attachMixamoWorkerModel(workerRoot) {
-  const ud = workerRoot?.userData;
-  if (!ud?.glbModelWrap) return;
-
-  loadMixamoWorkerTemplate()
-    .then(({ scene, animations }) => {
-      const clone = SkeletonUtils.clone(scene);
-      clone.updateMatrixWorld(true);
-      _instBox.setFromObject(clone);
-      _instBox.getSize(_instSize);
-      const rawH = Math.max(0.01, _instSize.y);
-      const sc = 1.92 / rawH;
-      clone.scale.multiplyScalar(sc);
-      clone.updateMatrixWorld(true);
-      _instBox.setFromObject(clone);
-      _instBox.getCenter(_instCenter);
-      clone.position.x -= _instCenter.x;
-      clone.position.z -= _instCenter.z;
-      clone.position.y -= _instBox.min.y;
-
-      ud.glbModelWrap.add(clone);
-      const mixer = new THREE.AnimationMixer(clone);
-      const findClip = (re) => animations.find((c) => re.test(c.name || ''));
-      const idleClip = findClip(/arise|idle|stand/i) || animations[0];
-      const walkClip = findClip(/walk|run/i) || animations[1] || animations[0];
-      const runClip = findClip(/run/i) || walkClip;
-
-      const actions = {};
-      if (idleClip) actions.idle = mixer.clipAction(idleClip);
-      if (walkClip) actions.walk = mixer.clipAction(walkClip);
-      if (runClip) actions.chop = mixer.clipAction(runClip);
-
-      ud.glbMixer = mixer;
-      ud.glbActions = actions;
-      if (actions.walk) {
-        actions.walk.reset().play();
-        ud.glbActiveClipKey = 'walk';
-      } else if (actions.idle) {
-        actions.idle.reset().play();
-        ud.glbActiveClipKey = 'idle';
-      }
-
-      ud.glbLogAnchor.position.set(0, 1.05, -0.42);
-      ud.glbLoaded = true;
-      setPlayerGlbActive(workerRoot, true);
-    })
-    .catch((err) => {
-      console.warn('[TimberPort] Failed attaching Mixamo worker GLB:', err);
-    });
-}
-
 
 

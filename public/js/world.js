@@ -43,12 +43,6 @@ import {
   createCivicPromenadeModel,
   syncBuildingEvolution,
   createFisheryIslandModel,
-  createOcean3DModel,
-  updateOcean3D,
-  updateVesselBuoyancy,
-  createVehicleModel,
-  updateVehicleKinematics,
-  createInstancedGlbGroup,
   disposeObject3D
 } from './models.js';
 import { gameState, fleetMissionState, stormState, getUpgradeCost, UPGRADE_CATALOG } from './state.js';
@@ -78,23 +72,23 @@ export const SEA_BOUNDS = { minX: WORLD_BOUNDS.minX - 15, maxX: WORLD_BOUNDS.max
 export const AIR_BOUNDS = { minX: SEA_BOUNDS.minX - 20, maxX: SEA_BOUNDS.maxX + 20, minZ: WORLD_BOUNDS.minZ - 18, maxZ: 155, minY: 0.25, maxY: 34 };
 
 export const ZONES = {
-  hopper: new THREE.Vector3(-35, 0, -10.5),
-  sawOutput: new THREE.Vector3(-23, 0, -10.5),
-  vehicleSpawn: new THREE.Vector3(-27.0, 0, 7.8),
-  ferryPier: new THREE.Vector3(2.5, 0, 24.4),
-  harborExport: new THREE.Vector3(23.0, 0.5, 31.5),
-  canneryDock: new THREE.Vector3(-8.0, 0.5, 29.5),
-  yachtBerth: new THREE.Vector3(39.0, 0.5, 29.5),
-  deepPort: new THREE.Vector3(-24.0, 0.5, 29.5),
-  railDepot: new THREE.Vector3(30.0, 0, -10.5),
-  helipad: new THREE.Vector3(24.5, 0, 16.5),
-  runwayStart: new THREE.Vector3(43.5, 0.14, 11.5),
-  hqPlaza: new THREE.Vector3(24.5, 0, 7.5),
-  furnitureMill: new THREE.Vector3(-35.0, 0, 2.5),
-  lighthouse: new THREE.Vector3(-44.0, 0, 24.2),
+  hopper: new THREE.Vector3(-4, 0, -14),
+  sawOutput: new THREE.Vector3(8, 0, -14),
+  vehicleSpawn: new THREE.Vector3(-10, 0, 4),
+  ferryPier: new THREE.Vector3(2, 0, 22.6),
+  harborExport: new THREE.Vector3(8.5, 0.5, 31),
+  canneryDock: new THREE.Vector3(-6.5, 0.5, 29),
+  yachtBerth: new THREE.Vector3(14.5, 0.5, 29),
+  deepPort: new THREE.Vector3(-20, 0.5, 29),
+  railDepot: new THREE.Vector3(-17.2, 0, -10.5),
+  helipad: new THREE.Vector3(19.5, 0, 15.5),
+  runwayStart: new THREE.Vector3(30, 0.14, 13),
+  hqPlaza: new THREE.Vector3(15, 0, 7),
+  furnitureMill: new THREE.Vector3(16, 0, -24),
+  lighthouse: new THREE.Vector3(-30, 0, 26),
   islandDock: new THREE.Vector3(41, 0.5, 86),
   islandAirDrop: new THREE.Vector3(52, 12, 92),
-  harborAirDrop: new THREE.Vector3(23, 12, 32)
+  harborAirDrop: new THREE.Vector3(2, 12, 32)
 };
 
 export class WorldManager {
@@ -114,10 +108,6 @@ export class WorldManager {
     this.waterTex = null;
     this.groundMat = null;
     this.waterMat = null;
-    this.ocean3D = null;
-    this.roadTrucks = [];
-    this.cargoFreighterYaw = Math.PI / 2;
-    this._tugSmokeVec = new THREE.Vector3();
     this.sawmill = null;
     this.harbor = null;
     this.cargoFreighter = null;
@@ -157,7 +147,6 @@ export class WorldManager {
     this.forestLeaves = null;
     this.leafData = [];
     this._lifeDummy = new THREE.Object3D();
-    this.waterwheel = null;
     this.questRing = null;
     this.currentQuestTarget = ZONES.hopper;
 
@@ -165,11 +154,10 @@ export class WorldManager {
     this.buildHighlandTrails();
     this.regionalLife = new RegionalLife(this.worldGroup);
     this.buildLuxuryBoulevardsAndParking();
-    this.buildLoggingIndustryCompound();
-    this.buildResidentialTownGrid();
-    this.buildInfrastructureZone();
+    this.buildExecutivePlazaAndFountain();
     this.buildCoastalPromenadeAndFishery();
     this.buildForestEcology();
+    this.buildMountainWaterfallPond();
     this.buildLandmarksAndSignage();
     this.buildLivingWorldEffects();
     this.buildPerimeterNature();
@@ -183,7 +171,7 @@ export class WorldManager {
   }
 
   buildTerrainAndOcean() {
-    const grass = getGrassTexture('#5f8f45').clone();
+    const grass = getGrassTexture('#4d7c3f').clone();
     grass.repeat.set(360, 480);
     this.groundMat = new THREE.MeshStandardMaterial({
       map: grass,
@@ -195,45 +183,16 @@ export class WorldManager {
     const eastEdge = WORLD_BOUNDS.maxX + 20;
     const width = eastEdge - westEdge;
     const centerX = (westEdge + eastEdge) / 2;
+    const land = new THREE.Mesh(new THREE.BoxGeometry(width, 2, LAND_EDGE_Z - northEdge), this.groundMat);
+    land.position.set(centerX, -1, (LAND_EDGE_Z + northEdge) / 2);
+    land.receiveShadow = !this.lowSpec;
+    this.worldGroup.add(land);
 
-    // Split mainland terrain cleanly around the Southwest Recessed Irrigation Canal
-    // Canal cut: X = -48.0 .. -14.8, Z = +13.4 .. +17.0 (zero Z-fighting, real carved channel!)
-    const canalMinX = -48.0;
-    const canalMaxX = -14.8;
-    const canalMinZ = 13.4;
-    const canalMaxZ = 17.0;
-
-    // 1. Main Northern Mainland (Z = northEdge .. +13.4)
-    const landNorth = new THREE.Mesh(new THREE.BoxGeometry(width, 2, canalMinZ - northEdge), this.groundMat);
-    landNorth.position.set(centerX, -1, (canalMinZ + northEdge) / 2);
-    landNorth.receiveShadow = !this.lowSpec;
-
-    // 2. Far-West Strip beside Canal (X = westEdge .. -48.0, Z = 13.4 .. LAND_EDGE_Z)
-    const westW = canalMinX - westEdge;
-    const southD = LAND_EDGE_Z - canalMinZ;
-    const landWestCanal = new THREE.Mesh(new THREE.BoxGeometry(westW, 2, southD), this.groundMat);
-    landWestCanal.position.set((westEdge + canalMinX) / 2, -1, (canalMinZ + LAND_EDGE_Z) / 2);
-    landWestCanal.receiveShadow = !this.lowSpec;
-
-    // 3. Center & East Mainland South of Z = 13.4 (X = -14.8 .. eastEdge, Z = 13.4 .. LAND_EDGE_Z)
-    const eastW = eastEdge - canalMaxX;
-    const landEastCanal = new THREE.Mesh(new THREE.BoxGeometry(eastW, 2, southD), this.groundMat);
-    landEastCanal.position.set((canalMaxX + eastEdge) / 2, -1, (canalMinZ + LAND_EDGE_Z) / 2);
-    landEastCanal.receiveShadow = !this.lowSpec;
-
-    // 4. Southwest Agriculture-Ready Irrigated Terrace South of Canal (X = -48.0 .. -14.8, Z = 17.0 .. LAND_EDGE_Z)
-    const farmW = canalMaxX - canalMinX;
-    const farmD = LAND_EDGE_Z - canalMaxZ;
-    const landFarmTerrace = new THREE.Mesh(new THREE.BoxGeometry(farmW, 2, farmD), this.groundMat);
-    landFarmTerrace.position.set((canalMinX + canalMaxX) / 2, -1, (canalMaxZ + LAND_EDGE_Z) / 2);
-    landFarmTerrace.receiveShadow = !this.lowSpec;
-
-    // Crisp earthy-brown shoreline drop-off embankment along Z = LAND_EDGE_Z (no coplanar beach Z-fighting!)
-    const earthBankMat = new THREE.MeshStandardMaterial({ color: 0x8d6342, roughness: 0.94, metalness: 0.0 });
-    const shoreEmbankment = new THREE.Mesh(new THREE.BoxGeometry(width, 2.1, 0.6), earthBankMat);
-    shoreEmbankment.position.set(centerX, -1.04, LAND_EDGE_Z + 0.15);
-
-    this.worldGroup.add(landNorth, landWestCanal, landEastCanal, landFarmTerrace, shoreEmbankment);
+    const sandMat = new THREE.MeshStandardMaterial({ color: 0xe9cc90, roughness: 0.92, metalness: 0.0 });
+    const beach = new THREE.Mesh(new THREE.BoxGeometry(width, 0.4, 7), sandMat);
+    beach.position.set(centerX, -0.18, 24.5);
+    beach.receiveShadow = !this.lowSpec;
+    this.worldGroup.add(beach);
 
     const roadMat = new THREE.MeshStandardMaterial({
       map: getAsphaltTexture(),
@@ -243,31 +202,16 @@ export class WorldManager {
       polygonOffsetFactor: -1,
       polygonOffsetUnits: -1
     });
-    // EXACT REFERENCE LAYOUT: 2 Straight Parallel 2-Lane Dark Asphalt Avenues (N–S)
-    // West Main Ave (X = -11.5) & East Main Ave (X = +16.5) running cleanly from North (-34) to South Coast (+24.8)
-    const westAve = new THREE.Mesh(new THREE.PlaneGeometry(4.8, 59.2), roadMat);
-    westAve.rotation.x = -Math.PI / 2;
-    westAve.position.set(-11.5, 0.024, -4.6);
-    westAve.receiveShadow = !this.lowSpec;
+    const roadEW = new THREE.Mesh(new THREE.PlaneGeometry(51, 5.2), roadMat);
+    roadEW.rotation.x = -Math.PI / 2;
+    roadEW.position.set(0.5, 0.02, -4);
+    roadEW.receiveShadow = !this.lowSpec;
 
-    const eastAve = new THREE.Mesh(new THREE.PlaneGeometry(4.8, 59.2), roadMat);
-    eastAve.rotation.x = -Math.PI / 2;
-    eastAve.position.set(16.5, 0.024, -4.6);
-    eastAve.receiveShadow = !this.lowSpec;
-
-    // North Perimeter Connector Road behind the town (Z = -34.2) for clean truck circulation
-    const northAve = new THREE.Mesh(new THREE.PlaneGeometry(80, 4.4), roadMat);
-    northAve.rotation.x = -Math.PI / 2;
-    northAve.position.set(-4.5, 0.021, -34.2);
-    northAve.receiveShadow = !this.lowSpec;
-
-    // South-East Harbor Quay Access Apron linking East Main Ave straight to the Wooden Timber Piers
-    const harborApron = new THREE.Mesh(new THREE.PlaneGeometry(18.5, 4.6), roadMat);
-    harborApron.rotation.x = -Math.PI / 2;
-    harborApron.position.set(23.5, 0.026, 22.8);
-    harborApron.receiveShadow = !this.lowSpec;
-
-    this.worldGroup.add(westAve, eastAve, northAve, harborApron);
+    const roadNS = new THREE.Mesh(new THREE.PlaneGeometry(5.8, 30), roadMat);
+    roadNS.rotation.x = -Math.PI / 2;
+    roadNS.position.set(2, 0.025, 10);
+    roadNS.receiveShadow = !this.lowSpec;
+    this.worldGroup.add(roadEW, roadNS);
 
     this.waterTex = getWaterTexture('#0ea5e9');
     this.waterMat = new THREE.MeshStandardMaterial({
@@ -275,9 +219,11 @@ export class WorldManager {
       roughness: 0.22,
       metalness: 0.18
     });
-    // Ocean starts strictly at Z = 25.0 (centerZ = 135, depth = 220 -> north edge = 25.0), strictly below y = 0!
-    this.ocean3D = createOcean3DModel(width + 140, 220, centerX, 135, this.waterMat);
-    this.worldGroup.add(this.ocean3D);
+    const ocean = new THREE.Mesh(new THREE.PlaneGeometry(width + 140, 220), this.waterMat);
+    ocean.rotation.x = -Math.PI / 2;
+    ocean.position.set(centerX, -0.45, 130);
+    ocean.receiveShadow = false;
+    this.worldGroup.add(ocean);
 
     this.fisheryIsland = createFisheryIslandModel();
     this.fisheryIsland.rotation.y = Math.PI;
@@ -404,93 +350,110 @@ export class WorldManager {
       roughness: 0.2
     });
     this.streetLampMat = warmGlassMat;
+    const planterStoneMat = new THREE.MeshStandardMaterial({ color: 0xe2d6c3, roughness: 0.75 });
+    const hedgeMat = new THREE.MeshStandardMaterial({ color: 0x15803d, roughness: 0.84, flatShading: true });
 
-    // Clean Raised Sidewalks flanking the Twin Parallel Main Avenues (X = -11.5 & X = +16.5)
+    // Raised Travertine Sidewalks flanking EW & NS boulevards
     const walkDefs = [
-      { x: -14.3, z: -4.6, w: 0.9, d: 56.0 }, // West Ave west curb
-      { x: -8.7, z: -4.6, w: 0.95, d: 56.0 }, // West Ave east curb (Residential West)
-      { x: 13.7, z: -4.6, w: 0.95, d: 56.0 }, // East Ave west curb (Residential East)
-      { x: 19.3, z: -4.6, w: 0.9, d: 56.0 }   // East Ave east curb (Infrastructure West)
+      { x: -13.0, z: -7.45, w: 24.2, d: 1.7 }, // EW North-West
+      { x: 15.2, z: -7.45, w: 20.6, d: 1.7 },  // EW North-East
+      { x: -13.0, z: -0.55, w: 24.2, d: 1.7 }, // EW South-West
+      { x: 15.2, z: -0.55, w: 20.6, d: 1.7 },  // EW South-East
+      { x: -1.75, z: 10.45, w: 1.7, d: 20.3 }, // NS West
+      { x: 5.75, z: 10.45, w: 1.7, d: 20.3 },  // NS East
+      { x: 2.0, z: -8.1, w: 14.0, d: 1.4 },    // Sawmill Front Apron Connector
+      { x: 16.0, z: -13.8, w: 3.4, d: 11.4 }   // Furniture Factory Boulevard Path
     ];
     for (const s of walkDefs) {
-      const m = new THREE.Mesh(new THREE.BoxGeometry(s.w, 0.07, s.d), travMat);
-      m.position.set(s.x, 0.035, s.z);
+      const m = new THREE.Mesh(new THREE.BoxGeometry(s.w, 0.1, s.d), travMat);
+      m.position.set(s.x, 0.05, s.z);
+      m.receiveShadow = !this.lowSpec;
       this.worldGroup.add(m);
     }
 
-    // Crisp Dashed White Center Lines + Crosswalks on Twin Main Avenues (1 InstancedMesh draw call!)
-    const cwGeo = new THREE.BoxGeometry(0.28, 0.016, 1.55);
+    // Crosswalk stripes (InstancedMesh) at intersection & plaza crossings
+    const cwGeo = new THREE.BoxGeometry(0.45, 0.02, 1.35);
     const cwSpots = [];
-    for (let z = -31; z <= 23; z += 3.8) {
-      cwSpots.push({ x: -11.5, z, ry: 0 });
-      cwSpots.push({ x: 16.5, z, ry: 0 });
+    for (let dx = -1.6; dx <= 1.6; dx += 0.8) {
+      cwSpots.push({ x: 2 + dx, z: -7.1, ry: 0 });
+      cwSpots.push({ x: 2 + dx, z: -0.9, ry: 0 });
+      cwSpots.push({ x: 2 + dx, z: 7.0, ry: 0 });
+      cwSpots.push({ x: 2 + dx, z: 19.6, ry: 0 });
     }
-    for (let x = -42; x <= 32; x += 4.5) {
-      cwSpots.push({ x, z: -34.2, ry: Math.PI / 2 });
-    }
-    // Pedestrian crosswalks matching residential cross-lanes
-    for (const crossX of [-11.5, 16.5]) {
-      for (const crossZ of [-24.2, -16.8, 3.2, 13.0]) {
-        for (let dx = -1.35; dx <= 1.35; dx += 0.68) {
-          cwSpots.push({ x: crossX + dx, z: crossZ, ry: 0 });
-        }
-      }
+    for (let dz = -1.6; dz <= 1.6; dz += 0.8) {
+      cwSpots.push({ x: -1.3, z: -4 + dz, ry: Math.PI / 2 });
+      cwSpots.push({ x: 5.3, z: -4 + dz, ry: Math.PI / 2 });
     }
     const cwInst = new THREE.InstancedMesh(cwGeo, stripeMat, cwSpots.length);
     const dummy = new THREE.Object3D();
     cwSpots.forEach((p, idx) => {
-      dummy.position.set(p.x, 0.036, p.z);
+      dummy.position.set(p.x, 0.035, p.z);
       dummy.rotation.set(0, p.ry, 0);
       dummy.scale.set(1, 1, 1);
       dummy.updateMatrix();
       cwInst.setMatrixAt(idx, dummy.matrix);
     });
     cwInst.instanceMatrix.needsUpdate = true;
-    cwInst.computeBoundingSphere();
     this.worldGroup.add(cwInst);
 
-    // Commercial Vehicle Yard cleanly inside Logging Compound South Apron (-27.0, 0, 7.8)
-    const parkingCourt = new THREE.Mesh(new THREE.BoxGeometry(8.4, 0.08, 6.2), cobbleMat);
-    parkingCourt.position.set(-27.0, 0.04, 7.8);
+    // Commercial Parking Hub around ZONES.vehicleSpawn (-10, 0, 4)
+    const parkingCourt = new THREE.Mesh(new THREE.BoxGeometry(11.4, 0.09, 8.6), cobbleMat);
+    parkingCourt.position.set(-10, 0.045, 4.4);
+    parkingCourt.receiveShadow = !this.lowSpec;
     this.worldGroup.add(parkingCourt);
 
-    const bayLineGeo = new THREE.BoxGeometry(0.14, 0.02, 3.8);
-    [-30.0, -27.8, -25.6, -23.4].forEach((bx) => {
+    const bayLineGeo = new THREE.BoxGeometry(0.14, 0.02, 4.4);
+    [-14.6, -11.6, -8.4, -5.4].forEach((bx) => {
       const line = new THREE.Mesh(bayLineGeo, stallMat);
-      line.position.set(bx, 0.09, 7.8);
+      line.position.set(bx, 0.095, 4.3);
       this.worldGroup.add(line);
     });
-    const stopGeo = new THREE.BoxGeometry(1.6, 0.14, 0.22);
-    [-28.9, -26.7, -24.5].forEach((bx) => {
+    const stopGeo = new THREE.BoxGeometry(1.9, 0.16, 0.24);
+    [-13.1, -10.0, -6.9].forEach((bx) => {
       const stop = new THREE.Mesh(stopGeo, curbMat);
-      stop.position.set(bx, 0.14, 9.6);
+      stop.position.set(bx, 0.16, 6.2);
       this.worldGroup.add(stop);
     });
-    const canopyRoof = new THREE.Mesh(new THREE.BoxGeometry(7.8, 0.14, 1.8), timberMat);
-    canopyRoof.position.set(-27.0, 2.55, 10.3);
-    const canopyTrim = new THREE.Mesh(new THREE.BoxGeometry(7.9, 0.1, 0.14), warmGlassMat);
-    canopyTrim.position.set(-27.0, 2.44, 9.45);
+
+    // Sleek Parking Pergola Canopy along south edge of parking bays
+    const postGeo = new THREE.BoxGeometry(0.2, 2.7, 0.2);
+    [-14.4, -10.0, -5.6].forEach((px) => {
+      const post = new THREE.Mesh(postGeo, ironMat);
+      post.position.set(px, 1.4, 7.6);
+      post.castShadow = !this.lowSpec;
+      this.worldGroup.add(post);
+    });
+    const canopyRoof = new THREE.Mesh(new THREE.BoxGeometry(9.8, 0.16, 2.4), timberMat);
+    canopyRoof.position.set(-10.0, 2.78, 7.2);
+    canopyRoof.rotation.x = -0.1;
+    canopyRoof.castShadow = !this.lowSpec;
+    const canopyTrim = new THREE.Mesh(new THREE.BoxGeometry(9.9, 0.12, 0.18), warmGlassMat);
+    canopyTrim.position.set(-10.0, 2.66, 6.08);
     this.worldGroup.add(canopyRoof, canopyTrim);
 
-    // Classic Wooden Utility Poles / Avenue Lamps along West & East Main Avenues (matching reference image!)
+    // Classic Cast-Iron Warm Golden Streetlamps (InstancedMesh: 3 draw calls total!)
     const lampSpots = [
-      [-8.7, -28], [-8.7, -17], [-8.7, -5.5], [-8.7, 6.0], [-8.7, 17.5],
-      [13.7, -28], [13.7, -17], [13.7, -5.5], [13.7, 6.0], [13.7, 17.5],
-      [-14.3, -24], [-14.3, -10.5], [-14.3, 4.0], [-14.3, 19.5],
-      [19.3, -24], [19.3, -10.5], [19.3, 4.0], [19.3, 19.5]
+      [-21, -7.45], [-12, -7.45], [-3, -7.45], [7, -7.45], [16, -7.45], [24, -7.45],
+      [-21, -0.55], [-12, -0.55], [-3, -0.55], [7, -0.55], [16, -0.55],
+      [-1.75, 4.5], [-1.75, 11.5], [-1.75, 18.5],
+      [5.75, 4.5], [5.75, 11.5], [5.75, 18.5],
+      [-15.2, 1.2], [-4.8, 1.2],
+      [-28, 21.8], [-15, 21.8], [10, 21.8], [21, 21.8]
     ];
-    const lBaseGeo = new THREE.CylinderGeometry(0.1, 0.15, 3.3, 6);
+    const lBaseGeo = new THREE.CylinderGeometry(0.14, 0.22, 3.3, 7);
     lBaseGeo.translate(0, 1.65, 0);
-    const lHeadGeo = new THREE.BoxGeometry(0.95, 0.12, 0.16);
-    lHeadGeo.translate(0, 3.15, 0);
-    const lGlowGeo = new THREE.SphereGeometry(0.2, 6, 6);
-    lGlowGeo.translate(0, 3.38, 0);
+    const lHeadGeo = new THREE.CylinderGeometry(0.32, 0.22, 0.48, 6);
+    lHeadGeo.translate(0, 3.45, 0);
+    const lGlowGeo = new THREE.SphereGeometry(0.24, 8, 8);
+    lGlowGeo.translate(0, 3.22, 0);
 
-    const lampPosts = new THREE.InstancedMesh(lBaseGeo, timberMat, lampSpots.length);
+    const lampPosts = new THREE.InstancedMesh(lBaseGeo, ironMat, lampSpots.length);
     const lampCaps = new THREE.InstancedMesh(lHeadGeo, ironMat, lampSpots.length);
     const lampBulbs = new THREE.InstancedMesh(lGlowGeo, warmGlassMat, lampSpots.length);
+    lampPosts.castShadow = !this.lowSpec;
+
     lampSpots.forEach(([lx, lz], i) => {
-      dummy.position.set(lx, 0.06, lz);
+      dummy.position.set(lx, 0.08, lz);
       dummy.rotation.set(0, 0, 0);
       dummy.scale.set(1, 1, 1);
       dummy.updateMatrix();
@@ -501,19 +464,42 @@ export class WorldManager {
     lampPosts.instanceMatrix.needsUpdate = true;
     lampCaps.instanceMatrix.needsUpdate = true;
     lampBulbs.instanceMatrix.needsUpdate = true;
-    lampPosts.computeBoundingSphere();
-    lampCaps.computeBoundingSphere();
-    lampBulbs.computeBoundingSphere();
     this.worldGroup.add(lampPosts, lampCaps, lampBulbs);
 
-    // 3 Warm Boulevard PointLights (strictly gated OFF in Max-FPS lowSpec)
+    // Boulevard Ornamental Cypress Planters (InstancedMesh)
+    const cypressSpots = [
+      [-18, -7.8], [-9, -7.8], [11.5, -7.8], [21, -7.8],
+      [-18, -0.2], [-3.2, 2.0], [-3.2, 8.0], [-3.2, 14.5],
+      [13.5, 0.2], [19.5, 0.2]
+    ];
+    const pPotGeo = new THREE.BoxGeometry(0.95, 0.42, 0.95);
+    pPotGeo.translate(0, 0.21, 0);
+    const pTreeGeo = new THREE.ConeGeometry(0.48, 2.2, 7);
+    pTreeGeo.translate(0, 1.45, 0);
+    const pots = new THREE.InstancedMesh(pPotGeo, planterStoneMat, cypressSpots.length);
+    const trees = new THREE.InstancedMesh(pTreeGeo, hedgeMat, cypressSpots.length);
+    trees.castShadow = !this.lowSpec;
+
+    cypressSpots.forEach(([cx, cz], i) => {
+      dummy.position.set(cx, 0.06, cz);
+      dummy.rotation.set(0, i * 0.4, 0);
+      dummy.scale.set(1, 1, 1);
+      dummy.updateMatrix();
+      pots.setMatrixAt(i, dummy.matrix);
+      trees.setMatrixAt(i, dummy.matrix);
+    });
+    pots.instanceMatrix.needsUpdate = true;
+    trees.instanceMatrix.needsUpdate = true;
+    this.worldGroup.add(pots, trees);
+
+    // 3 Strategic Warm Boulevard PointLights (strictly gated OFF on <8GB RAM lowSpec)
     const warmLightPositions = [
-      [2.5, 4.4, -5.5],
-      [-29.0, 4.6, -10.5],
-      [23.0, 4.4, 24.0]
+      [2, 4.4, -4],
+      [8.5, 4.4, 7],
+      [2, 4.2, 20.5]
     ];
     for (const [wx, wy, wz] of warmLightPositions) {
-      const pl = new THREE.PointLight(0xfde68a, 1.75, 24, 1.65);
+      const pl = new THREE.PointLight(0xfde68a, 1.75, 22, 1.65);
       pl.position.set(wx, wy, wz);
       pl.visible = !this.lowSpec;
       this.worldGroup.add(pl);
@@ -521,398 +507,52 @@ export class WorldManager {
     }
   }
 
-  /**
-   * BAND 1 (WEST): Pure Logging Industry Zone (X = -46..-14.8, Z = -32..+12.2)
-   * + SOUTHWEST RECESSED IRRIGATION CANAL, SPINNING WATERWHEEL & AGRICULTURE-READY TERRACE!
-   * 100% pure industrial yard inside wooden fence (ZERO houses, ZERO random trees, ZERO square diorama slabs!)
-   */
-  buildLoggingIndustryCompound() {
-    const yardMat = new THREE.MeshStandardMaterial({ color: 0xcab89d, roughness: 0.92, metalness: 0.02 });
-    const concreteMat = new THREE.MeshStandardMaterial({ color: 0xbcb6aa, roughness: 0.88 });
-    const fenceWoodMat = new THREE.MeshStandardMaterial({ color: 0x7c4d25, roughness: 0.85 });
-    const logBarkMat = new THREE.MeshStandardMaterial({ color: 0xa85a28, roughness: 0.8 });
-    const wallBeigeMat = new THREE.MeshStandardMaterial({ color: 0xd8cbb8, roughness: 0.82 });
-    const roofGrayMat = new THREE.MeshStandardMaterial({ color: 0x6b7280, roughness: 0.65, metalness: 0.22 });
-    const roofTrimMat = new THREE.MeshStandardMaterial({ color: 0x475569, roughness: 0.55, metalness: 0.4 });
-    const doorDarkMat = new THREE.MeshStandardMaterial({ color: 0x334155, roughness: 0.5, metalness: 0.55 });
-    const skylightMat = new THREE.MeshStandardMaterial({ color: 0xe2e8f0, roughness: 0.35, metalness: 0.2 });
-    const stoneWallMat = new THREE.MeshStandardMaterial({ color: 0x7d8895, roughness: 0.85 });
-    const canalBedMat = new THREE.MeshStandardMaterial({ color: 0x1e4a63, roughness: 0.92 });
-    const canalWaterMat = new THREE.MeshStandardMaterial({
-      color: 0x26a6db,
-      emissive: 0x0369a1,
-      emissiveIntensity: 0.2,
-      roughness: 0.14,
-      metalness: 0.16
-    });
-
-    // Main Industrial Compound Gravel/Sandstone Yard Slab (X = -46..-14.8, Z = -31.8..+12.0)
-    const mainYard = new THREE.Mesh(new THREE.BoxGeometry(31.2, 0.07, 43.8), yardMat);
-    mainYard.position.set(-30.4, 0.035, -9.9);
-    this.worldGroup.add(mainYard);
-
-    // Concrete Sawmill Press & Warehouse Loading Aprons inside compound
-    const sawPad = new THREE.Mesh(new THREE.BoxGeometry(18.5, 0.09, 10.2), concreteMat);
-    sawPad.position.set(-29.0, 0.045, -10.5);
-    const millPad = new THREE.Mesh(new THREE.BoxGeometry(10.5, 0.09, 7.6), concreteMat);
-    millPad.position.set(-35.0, 0.045, 2.5);
-    const eastApron = new THREE.Mesh(new THREE.BoxGeometry(10.2, 0.08, 41.5), concreteMat);
-    eastApron.position.set(-20.4, 0.042, -9.9);
-    this.worldGroup.add(sawPad, millPad, eastApron);
-
-    // Continuous Instanced Wooden Plank Fence enclosing Logging Industry Zone (2 draw calls total!)
-    const fenceSegs = [];
-    // North fence (Z = -31.8, X = -46..-15)
-    for (let x = -45.0; x <= -15.5; x += 2.5) fenceSegs.push({ x, z: -31.8, ry: 0 });
-    // South fence right above the Recessed Canal (Z = +12.0, gate at -19.0 leading onto the wooden canal bridge!)
-    for (let x = -45.0; x <= -15.5; x += 2.5) {
-      if (x > -21.2 && x < -16.8) continue;
-      fenceSegs.push({ x, z: 12.0, ry: 0 });
-    }
-    // West fence facing the Harvestable Forest (X = -46.0, wide forest gate Z = -14.5..-6.5)
-    for (let z = -30.5; z <= 10.8; z += 2.5) {
-      if (z > -14.8 && z < -6.2) continue;
-      fenceSegs.push({ x: -46.0, z, ry: Math.PI / 2 });
-    }
-    // East fence facing West Main Ave (X = -14.8, wide road gates at Z=-10.5 and Z=7.8)
-    for (let z = -30.5; z <= 10.8; z += 2.5) {
-      if ((z > -14.0 && z < -7.0) || (z > 4.2 && z < 11.0)) continue;
-      fenceSegs.push({ x: -14.8, z, ry: Math.PI / 2 });
-    }
-
-    const panelGeo = new THREE.BoxGeometry(2.45, 1.35, 0.16);
-    panelGeo.translate(0, 0.68, 0);
-    const postGeo = new THREE.BoxGeometry(0.24, 1.55, 0.24);
-    postGeo.translate(0, 0.78, 0);
-    const panelsInst = new THREE.InstancedMesh(panelGeo, fenceWoodMat, fenceSegs.length);
-    const postsInst = new THREE.InstancedMesh(postGeo, fenceWoodMat, fenceSegs.length);
-    const dummy = new THREE.Object3D();
-    fenceSegs.forEach((f, idx) => {
-      dummy.position.set(f.x, 0.04, f.z);
-      dummy.rotation.set(0, f.ry, 0);
-      dummy.scale.set(1, 1, 1);
-      dummy.updateMatrix();
-      panelsInst.setMatrixAt(idx, dummy.matrix);
-      postsInst.setMatrixAt(idx, dummy.matrix);
-    });
-    panelsInst.instanceMatrix.needsUpdate = true;
-    postsInst.instanceMatrix.needsUpdate = true;
-    panelsInst.computeBoundingSphere();
-    postsInst.computeBoundingSphere();
-    this.worldGroup.add(panelsInst, postsInst);
-
-    // 3 Crisp Gabled Gray-Roofed Industrial Timber Warehouses (100% matching the 3 warehouses in reference image!)
-    const buildIndustrialWarehouse = (wx, wz, widthX, depthZ, heightY) => {
-      const wh = new THREE.Group();
-      wh.position.set(wx, 0.08, wz);
-      const body = new THREE.Mesh(new THREE.BoxGeometry(widthX, heightY, depthZ), wallBeigeMat);
-      body.position.y = heightY * 0.5;
-      wh.add(body);
-
-      // Pitched gabled roof (2 sloped roof slabs + ridge cap + skylights)
-      const roofSlopeW = widthX * 0.56;
-      const slopeAng = 0.36;
-      const roofY = heightY + Math.sin(slopeAng) * (roofSlopeW * 0.45);
-      const roofL = new THREE.Mesh(new THREE.BoxGeometry(roofSlopeW, 0.18, depthZ + 0.5), roofGrayMat);
-      roofL.position.set(-widthX * 0.25, roofY, 0);
-      roofL.rotation.z = slopeAng;
-      const roofR = new THREE.Mesh(new THREE.BoxGeometry(roofSlopeW, 0.18, depthZ + 0.5), roofGrayMat);
-      roofR.position.set(widthX * 0.25, roofY, 0);
-      roofR.rotation.z = -slopeAng;
-      const ridge = new THREE.Mesh(new THREE.BoxGeometry(0.45, 0.24, depthZ + 0.56), roofTrimMat);
-      ridge.position.y = heightY + Math.sin(slopeAng) * roofSlopeW * 0.9;
-      wh.add(roofL, roofR, ridge);
-
-      // Triangular gable fill front & back (3-sided prism via CylinderGeometry)
-      const gableH = Math.sin(slopeAng) * roofSlopeW * 0.88;
-      const gableGeo = new THREE.ConeGeometry(widthX * 0.52, gableH, 4);
-      gableGeo.rotateY(Math.PI / 4);
-      const gableFill = new THREE.Mesh(gableGeo, wallBeigeMat);
-      gableFill.scale.set(1.0, 1.0, (depthZ - 0.12) / (widthX * 0.72));
-      gableFill.position.y = heightY + gableH * 0.42;
-      wh.add(gableFill);
-
-      // Industrial skylight panels on roof
-      for (const sz of [-depthZ * 0.24, depthZ * 0.24]) {
-        const sky = new THREE.Mesh(new THREE.BoxGeometry(1.1, 0.08, 1.4), skylightMat);
-        sky.position.set(-widthX * 0.24, roofY + 0.12, sz);
-        sky.rotation.z = slopeAng;
-        wh.add(sky);
-      }
-      // Wide steel roll-up loading bay doors facing west into the timber yard
-      for (const dz of [-depthZ * 0.24, depthZ * 0.24]) {
-        const door = new THREE.Mesh(new THREE.BoxGeometry(0.14, heightY * 0.68, depthZ * 0.34), doorDarkMat);
-        door.position.set(-widthX * 0.5 - 0.03, heightY * 0.34, dz);
-        wh.add(door);
-      }
-      return wh;
-    };
-    this.worldGroup.add(
-      buildIndustrialWarehouse(-20.2, -25.2, 6.8, 9.6, 3.1),
-      buildIndustrialWarehouse(-20.2, -0.5, 6.8, 9.2, 3.1),
-      buildIndustrialWarehouse(-20.2, 7.8, 6.4, 6.4, 2.7)
-    );
-
-    // 2 Compact Industrial Dust-Collector / Boiler Machinery Pods (matching gray pods in reference image!)
-    const buildBoilerUnit = (bx, bz) => {
-      const pod = new THREE.Group();
-      pod.position.set(bx, 0.08, bz);
-      const base = new THREE.Mesh(new THREE.BoxGeometry(3.8, 1.9, 3.2), roofTrimMat);
-      base.position.y = 0.95;
-      const hopper = new THREE.Mesh(new THREE.BoxGeometry(2.0, 1.1, 2.2), wallBeigeMat);
-      hopper.position.set(-0.6, 2.4, 0);
-      const stack1 = new THREE.Mesh(new THREE.CylinderGeometry(0.24, 0.3, 2.6, 8), doorDarkMat);
-      stack1.position.set(1.0, 2.8, -0.6);
-      const stack2 = new THREE.Mesh(new THREE.CylinderGeometry(0.2, 0.25, 2.1, 8), doorDarkMat);
-      stack2.position.set(1.0, 2.55, 0.6);
-      pod.add(base, hopper, stack1, stack2);
-      return pod;
-    };
-    this.worldGroup.add(
-      buildBoilerUnit(-28.0, -21.5),
-      buildBoilerUnit(-41.2, 8.6)
-    );
-
-    // Neat Parallel Rows of Stacked Timber Log Yards inside West Half of Logging Compound (1 GPU draw call!)
-    const logGeo = new THREE.CylinderGeometry(0.25, 0.25, 3.6, 7);
-    logGeo.rotateZ(Math.PI / 2);
-    const logPileCenters = [
-      // North Timber Bays
-      [-40.5, -27.5], [-40.5, -23.5], [-34.5, -27.5], [-34.5, -23.5],
-      [-40.5, -18.0], [-34.5, -18.0],
-      // South Timber Bays (clean parallel rows with truck lanes between them!)
-      [-41.0, -3.5], [-41.0, 0.5], [-41.0, 4.5],
-      [-34.5, 8.8]
-    ];
-    const logMatrices = [];
-    for (const [px, pz] of logPileCenters) {
-      const offsets = [
-        [0, 0.29, -0.56], [0, 0.29, 0], [0, 0.29, 0.56],
-        [0, 0.72, -0.28], [0, 0.72, 0.28],
-        [0, 1.15, 0]
-      ];
-      for (const [ox, oy, oz] of offsets) {
-        logMatrices.push([px + ox, oy, pz + oz]);
-      }
-    }
-    const logYardInst = new THREE.InstancedMesh(logGeo, logBarkMat, logMatrices.length);
-    logMatrices.forEach(([lx, ly, lz], i) => {
-      dummy.position.set(lx, ly, lz);
-      dummy.rotation.set(0, 0, 0);
-      dummy.scale.set(1, 1, 1);
-      dummy.updateMatrix();
-      logYardInst.setMatrixAt(i, dummy.matrix);
-    });
-    logYardInst.instanceMatrix.needsUpdate = true;
-    logYardInst.computeBoundingSphere();
-    this.worldGroup.add(logYardInst);
-
-    // -----------------------------------------------------------------------
-    // SOUTHWEST RECESSED IRRIGATION CANAL, SPINNING WATERWHEEL & FARM TERRACE
-    // Sculpted directly into terrain (X = -48.0..-14.8, Z = +13.4..+17.0)
-    // ZERO square diorama blocks, ZERO Z-fighting, 100% ready for agriculture!
-    // -----------------------------------------------------------------------
-    const canalBed = new THREE.Mesh(new THREE.BoxGeometry(33.2, 0.2, 3.6), canalBedMat);
-    canalBed.position.set(-31.4, -0.82, 15.2);
-    const canalWater = new THREE.Mesh(new THREE.PlaneGeometry(33.0, 3.3), canalWaterMat);
-    canalWater.rotation.x = -Math.PI / 2;
-    canalWater.position.set(-31.4, -0.18, 15.2);
-
-    // Crisp stone-concrete retaining embankments lining the recessed canal walls
-    const canalWallN = new THREE.Mesh(new THREE.BoxGeometry(33.4, 1.08, 0.42), stoneWallMat);
-    canalWallN.position.set(-31.4, -0.34, 13.4);
-    const canalWallS = new THREE.Mesh(new THREE.BoxGeometry(33.4, 1.08, 0.42), stoneWallMat);
-    canalWallS.position.set(-31.4, -0.34, 17.0);
-    const canalCapE = new THREE.Mesh(new THREE.BoxGeometry(0.45, 1.08, 3.9), stoneWallMat);
-    canalCapE.position.set(-14.8, -0.34, 15.2);
-    const canalCapW = new THREE.Mesh(new THREE.BoxGeometry(0.45, 1.08, 3.9), stoneWallMat);
-    canalCapW.position.set(-48.0, -0.34, 15.2);
-    this.worldGroup.add(canalBed, canalWater, canalWallN, canalWallS, canalCapE, canalCapW);
-
-    // Sturdy Wooden Irrigation Bridge crossing the Canal at X = -19.0 (connects Yard to Agricultural Terrace!)
-    const bridgeDeck = new THREE.Mesh(new THREE.BoxGeometry(3.8, 0.18, 4.4), fenceWoodMat);
-    bridgeDeck.position.set(-19.0, 0.08, 15.2);
-    const bridgeRailL = new THREE.Mesh(new THREE.BoxGeometry(0.18, 0.72, 4.4), fenceWoodMat);
-    bridgeRailL.position.set(-20.8, 0.46, 15.2);
-    const bridgeRailR = new THREE.Mesh(new THREE.BoxGeometry(0.18, 0.72, 4.4), fenceWoodMat);
-    bridgeRailR.position.set(-17.2, 0.46, 15.2);
-    this.worldGroup.add(bridgeDeck, bridgeRailL, bridgeRailR);
-
-    // Spinning Wooden Waterwheel mounted cleanly in the Recessed Canal (-27.5, 0.78, 14.3)
-    const wheelHub = new THREE.Group();
-    wheelHub.position.set(-27.5, 0.78, 14.3);
-    const wheelRingMat = new THREE.MeshStandardMaterial({ color: 0x5c3618, roughness: 0.78 });
-    const wheelMetalMat = new THREE.MeshStandardMaterial({ color: 0x334155, roughness: 0.45, metalness: 0.65 });
-    const rim1 = new THREE.Mesh(new THREE.TorusGeometry(1.38, 0.1, 6, 16), wheelRingMat);
-    rim1.position.z = -0.34;
-    const rim2 = new THREE.Mesh(new THREE.TorusGeometry(1.38, 0.1, 6, 16), wheelRingMat);
-    rim2.position.z = 0.34;
-    const axle = new THREE.Mesh(new THREE.CylinderGeometry(0.16, 0.16, 1.35, 8), wheelMetalMat);
-    axle.rotation.x = Math.PI / 2;
-    wheelHub.add(rim1, rim2, axle);
-    const paddleGeo = new THREE.BoxGeometry(0.12, 0.45, 0.8);
-    const spokeGeo = new THREE.BoxGeometry(0.1, 2.7, 0.12);
-    for (let s = 0; s < 4; s++) {
-      const sp = new THREE.Mesh(spokeGeo, wheelRingMat);
-      sp.rotation.z = (s * Math.PI) / 4;
-      wheelHub.add(sp);
-    }
-    for (let p = 0; p < 10; p++) {
-      const a = (p / 10) * Math.PI * 2;
-      const pad = new THREE.Mesh(paddleGeo, fenceWoodMat);
-      pad.position.set(Math.cos(a) * 1.4, Math.sin(a) * 1.4, 0);
-      pad.rotation.z = a;
-      wheelHub.add(pad);
-    }
-    this.waterwheel = wheelHub;
-    this.worldGroup.add(wheelHub);
-
-    // Agriculture-Ready Irrigated Farm Plots South of Canal (X = -35.5..-23.5, Z = +18.2..+23.6)
-    const soilMat = new THREE.MeshStandardMaterial({ color: 0x5e3e24, roughness: 0.96 });
-    const furrowMat = new THREE.MeshStandardMaterial({ color: 0x482d18, roughness: 0.98 });
-    const irrChannel = new THREE.Mesh(new THREE.BoxGeometry(0.65, 0.12, 5.8), canalWaterMat);
-    irrChannel.position.set(-29.5, 0.01, 20.3);
-    const irrRimL = new THREE.Mesh(new THREE.BoxGeometry(0.16, 0.18, 5.8), stoneWallMat);
-    irrRimL.position.set(-29.9, 0.04, 20.3);
-    const irrRimR = new THREE.Mesh(new THREE.BoxGeometry(0.16, 0.18, 5.8), stoneWallMat);
-    irrRimR.position.set(-29.1, 0.04, 20.3);
-    this.worldGroup.add(irrChannel, irrRimL, irrRimR);
-
-    for (const bedX of [-33.0, -26.0]) {
-      const plotBed = new THREE.Mesh(new THREE.BoxGeometry(5.2, 0.1, 4.8), soilMat);
-      plotBed.position.set(bedX, 0.05, 20.9);
-      this.worldGroup.add(plotBed);
-      for (let fz = -1.6; fz <= 1.6; fz += 0.8) {
-        const furrow = new THREE.Mesh(new THREE.BoxGeometry(4.6, 0.08, 0.28), furrowMat);
-        furrow.position.set(bedX, 0.11, 20.9 + fz);
-        this.worldGroup.add(furrow);
-      }
-      // Neat wooden plot border frame
-      const borderN = new THREE.Mesh(new THREE.BoxGeometry(5.4, 0.16, 0.14), fenceWoodMat);
-      borderN.position.set(bedX, 0.08, 18.5);
-      const borderS = new THREE.Mesh(new THREE.BoxGeometry(5.4, 0.16, 0.14), fenceWoodMat);
-      borderS.position.set(bedX, 0.08, 23.3);
-      this.worldGroup.add(borderN, borderS);
-    }
-
-    // Charming Wooden Farm Pavilion / Gazebo right beside the Canal & West Ave (matching reference image!)
-    const pavilion = new THREE.Group();
-    pavilion.position.set(-18.5, 0.04, 20.0);
-    const pavFloor = new THREE.Mesh(new THREE.BoxGeometry(3.2, 0.18, 3.2), concreteMat);
-    pavFloor.position.y = 0.09;
-    const pavRoof = new THREE.Mesh(new THREE.ConeGeometry(2.65, 1.05, 4), wallBeigeMat);
-    pavRoof.rotation.y = Math.PI / 4;
-    pavRoof.position.y = 2.65;
-    pavilion.add(pavFloor, pavRoof);
-    for (const px of [-1.25, 1.25]) {
-      for (const pz of [-1.25, 1.25]) {
-        const pPost = new THREE.Mesh(new THREE.BoxGeometry(0.18, 2.05, 0.18), fenceWoodMat);
-        pPost.position.set(px, 1.15, pz);
-        pavilion.add(pPost);
-      }
-    }
-    this.worldGroup.add(pavilion);
-
-    // Individual Stylized Low-Poly Trees along the Far-Southwest Corner beside Canal (NO square diorama slabs!)
-    const swTreeSpots = [
-      [-45.8, 19.2, 1.05], [-43.2, 19.0, 0.92], [-40.6, 19.6, 1.0], [-38.0, 18.9, 0.88],
-      [-45.0, 21.8, 0.95], [-42.2, 22.4, 1.12], [-39.4, 22.0, 0.96], [-37.2, 23.2, 0.85],
-      [-46.2, 23.8, 0.9], [-40.8, 23.9, 1.02]
-    ];
-    const swTrunkGeo = new THREE.CylinderGeometry(0.16, 0.24, 1.35, 6);
-    swTrunkGeo.translate(0, 0.68, 0);
-    const swCrownGeo = new THREE.ConeGeometry(1.15, 2.9, 6);
-    swCrownGeo.translate(0, 2.55, 0);
-    const swTrunkMat = new THREE.MeshStandardMaterial({ color: 0x6b4226, roughness: 0.9 });
-    const swCrownMat = new THREE.MeshStandardMaterial({ color: 0x4d8b31, roughness: 0.82, flatShading: true });
-    const swTrunks = new THREE.InstancedMesh(swTrunkGeo, swTrunkMat, swTreeSpots.length);
-    const swCrowns = new THREE.InstancedMesh(swCrownGeo, swCrownMat, swTreeSpots.length);
-    const tColor = new THREE.Color();
-    swTreeSpots.forEach(([tx, tz, sc], i) => {
-      dummy.position.set(tx, 0.0, tz);
-      dummy.rotation.set(0, i * 0.8, 0);
-      dummy.scale.setScalar(sc);
-      dummy.updateMatrix();
-      swTrunks.setMatrixAt(i, dummy.matrix);
-      swCrowns.setMatrixAt(i, dummy.matrix);
-      tColor.setHex(i % 2 === 0 ? 0x5c9c38 : 0x3b7a2c);
-      swCrowns.setColorAt(i, tColor);
-    });
-    swTrunks.instanceMatrix.needsUpdate = true;
-    swCrowns.instanceMatrix.needsUpdate = true;
-    if (swCrowns.instanceColor) swCrowns.instanceColor.needsUpdate = true;
-    swTrunks.computeBoundingSphere();
-    swCrowns.computeBoundingSphere();
-    this.worldGroup.add(swTrunks, swCrowns);
-  }
-
-  /**
-   * BAND 2 (CENTER): Symmetrical 5-Row Residential Town Grid & Wide-Open Central Square Park
-   * (X = -8.5..+13.5, Z = -32..+23.8) — 100% matching reference image grid!
-   * Strictly separated from Logging Industry (West) and Infrastructure (East).
-   */
-  buildResidentialTownGrid() {
-    const cobbleMat = new THREE.MeshStandardMaterial({ map: getGraniteCobbleTexture(6, 5), roughness: 0.78, metalness: 0.04 });
-    const lawnMat = new THREE.MeshStandardMaterial({ color: 0x6ca84b, roughness: 0.92 });
+  buildExecutivePlazaAndFountain() {
+    const plazaMat = new THREE.MeshStandardMaterial({ map: getGraniteCobbleTexture(6, 5), roughness: 0.74, metalness: 0.06 });
     const travMat = new THREE.MeshStandardMaterial({ map: getTravertineTexture(4, 4), roughness: 0.72 });
     const marbleMat = new THREE.MeshStandardMaterial({ color: 0xf1f5f9, roughness: 0.42, metalness: 0.08 });
     const poolWaterMat = new THREE.MeshStandardMaterial({
       color: 0x0ea5e9,
       emissive: 0x0369a1,
-      emissiveIntensity: 0.32,
+      emissiveIntensity: 0.35,
       roughness: 0.14,
-      metalness: 0.22
+      metalness: 0.25
     });
     const brassMat = new THREE.MeshStandardMaterial({ color: 0xf59e0b, roughness: 0.24, metalness: 0.85 });
-    const hedgeMat = new THREE.MeshStandardMaterial({ color: 0x358238, roughness: 0.86, flatShading: true });
+    const hedgeMat = new THREE.MeshStandardMaterial({ color: 0x15803d, roughness: 0.84, flatShading: true });
     const timberMat = new THREE.MeshStandardMaterial({ color: 0x92400e, roughness: 0.65 });
     const ironMat = new THREE.MeshStandardMaterial({ color: 0x1e293b, roughness: 0.45, metalness: 0.65 });
 
-    // Clean manicured green residential base terrace between Twin Main Avenues
-    const townLawn = new THREE.Mesh(new THREE.BoxGeometry(21.6, 0.05, 55.6), lawnMat);
-    townLawn.position.set(2.5, 0.025, -4.0);
-    this.worldGroup.add(townLawn);
+    // Paved Executive Courtyard connecting Road NS (x=5.0) to HQ Tower (x=15, z=7)
+    const courtyard = new THREE.Mesh(new THREE.BoxGeometry(14.6, 0.09, 12.4), plazaMat);
+    courtyard.position.set(12.8, 0.045, 7.0);
+    courtyard.receiveShadow = !this.lowSpec;
+    this.worldGroup.add(courtyard);
 
-    // Symmetrical Cobblestone Pedestrian Grid dividing the 5 Rows & Central Park
-    const laneDefs = [
-      { x: 2.5, z: -24.2, w: 21.6, d: 2.0 }, // Between Row 1 & Row 2
-      { x: 2.5, z: -16.6, w: 21.6, d: 2.0 }, // North Edge of Central Park
-      { x: 2.5, z: -5.5, w: 21.6, d: 2.0 },  // Center Park East-West Promenade
-      { x: 2.5, z: 3.6, w: 21.6, d: 2.0 },   // South Edge of Central Park
-      { x: 2.5, z: 13.0, w: 21.6, d: 2.0 },  // Between Row 4 (Villas) & Row 5 (Harbor Cottages)
-      { x: 2.5, z: 22.0, w: 21.6, d: 2.6 },  // South Waterfront Promenade
-      { x: 2.5, z: -4.0, w: 2.2, d: 55.2 },  // Central North-South Spine
-      { x: -3.2, z: -4.0, w: 1.5, d: 55.2 }, // West Interior Footpath
-      { x: 8.2, z: -4.0, w: 1.5, d: 55.2 }   // East Interior Footpath
-    ];
-    for (const l of laneDefs) {
-      const m = new THREE.Mesh(new THREE.BoxGeometry(l.w, 0.07, l.d), cobbleMat);
-      m.position.set(l.x, 0.036, l.z);
-      this.worldGroup.add(m);
-    }
-
-    // Central Square Park Plaza at (2.5, 0, -5.5)
-    const parkPlaza = new THREE.Mesh(new THREE.BoxGeometry(9.6, 0.085, 9.6), cobbleMat);
-    parkPlaza.position.set(2.5, 0.044, -5.5);
-    this.worldGroup.add(parkPlaza);
-
-    // Tiered Marble Fountain at the Heart of Central Square Park (2.5, 0.09, -5.5)
+    // Tiered Marble Fountain centered at (7.7, 0.09, 7.0) — clear of Road NS and HQ stairs
     const fountain = new THREE.Group();
-    fountain.position.set(2.5, 0.09, -5.5);
-    const outerBasin = new THREE.Mesh(new THREE.CylinderGeometry(1.7, 1.85, 0.44, 8), travMat);
+    fountain.position.set(7.7, 0.09, 7.0);
+
+    const outerBasin = new THREE.Mesh(new THREE.CylinderGeometry(1.62, 1.78, 0.44, 8), travMat);
     outerBasin.position.y = 0.22;
-    const waterPool = new THREE.Mesh(new THREE.CylinderGeometry(1.44, 1.44, 0.14, 14), poolWaterMat);
+    outerBasin.castShadow = !this.lowSpec;
+    outerBasin.receiveShadow = !this.lowSpec;
+
+    const waterPool = new THREE.Mesh(new THREE.CylinderGeometry(1.36, 1.36, 0.14, 16), poolWaterMat);
     waterPool.position.y = 0.36;
+
     const pedestal = new THREE.Mesh(new THREE.CylinderGeometry(0.28, 0.42, 1.25, 8), marbleMat);
     pedestal.position.y = 0.74;
-    const midBowl = new THREE.Mesh(new THREE.CylinderGeometry(0.84, 0.36, 0.3, 10), marbleMat);
+    const midBowl = new THREE.Mesh(new THREE.CylinderGeometry(0.82, 0.36, 0.3, 12), marbleMat);
     midBowl.position.y = 1.2;
     const topSpire = new THREE.Mesh(new THREE.CylinderGeometry(0.12, 0.2, 0.6, 8), brassMat);
     topSpire.position.y = 1.58;
     const finial = new THREE.Mesh(new THREE.OctahedronGeometry(0.22, 0), brassMat);
     finial.position.y = 1.98;
+
     fountain.add(outerBasin, waterPool, pedestal, midBowl, topSpire, finial);
 
+    // Animated water jets & ripple ring (gated OFF on <8GB RAM lowSpec)
     const jetMat = new THREE.MeshBasicMaterial({ color: 0xbae6fd, transparent: true, opacity: 0.72 });
     const jetGeo = new THREE.CylinderGeometry(0.045, 0.075, 0.7, 6);
     for (let i = 0; i < 4; i++) {
@@ -925,7 +565,7 @@ export class WorldManager {
       this.fountainJets.push(jet);
     }
     this.fountainRipple = new THREE.Mesh(
-      new THREE.RingGeometry(0.82, 0.98, 18),
+      new THREE.RingGeometry(0.82, 0.98, 20),
       new THREE.MeshBasicMaterial({ color: 0xe0f2fe, transparent: true, opacity: 0.55, side: THREE.DoubleSide })
     );
     this.fountainRipple.rotation.x = -Math.PI / 2;
@@ -934,23 +574,47 @@ export class WorldManager {
     fountain.add(this.fountainJetsGroup);
     this.worldGroup.add(fountain);
 
-    // 4 Park Benches facing Central Square Fountain (2.5, -5.5)
+    // 3D Maritime Compass Monument Sign at Plaza NW Corner with Glowing Plaque
+    const monument = new THREE.Group();
+    monument.position.set(7.2, 0.09, 1.95);
+    monument.rotation.y = -0.32;
+    const monPlinth = new THREE.Mesh(new THREE.BoxGeometry(2.3, 0.65, 0.85), travMat);
+    monPlinth.position.y = 0.325;
+    monPlinth.castShadow = !this.lowSpec;
+    const monSlab = new THREE.Mesh(new THREE.BoxGeometry(2.08, 1.05, 0.24), ironMat);
+    monSlab.position.y = 1.15;
+    const monSignTex = getIlluminatedSignTexture('TIMBERPORT PLAZA', 'TÀI CHÍNH · THƯƠNG MẠI');
+    const monSignMat = new THREE.MeshStandardMaterial({
+      map: monSignTex,
+      emissiveMap: monSignTex,
+      emissive: new THREE.Color(0xffffff),
+      emissiveIntensity: 0.68,
+      roughness: 0.35
+    });
+    const monFace = new THREE.Mesh(new THREE.PlaneGeometry(1.94, 0.88), monSignMat);
+    monFace.position.set(0, 1.15, 0.13);
+    const monFrame = new THREE.Mesh(new THREE.BoxGeometry(2.16, 0.14, 0.3), brassMat);
+    monFrame.position.y = 1.7;
+    const emblem = new THREE.Mesh(new THREE.TorusGeometry(0.22, 0.05, 6, 16), brassMat);
+    emblem.position.set(0, 1.96, 0);
+    monument.add(monPlinth, monSlab, monFace, monFrame, emblem);
+    this.worldGroup.add(monument);
+
+    // Park Benches flanking Fountain Courtyard (preserving clear central walkway)
     const benchPositions = [
-      [2.5, -8.8, 0],
-      [2.5, -2.2, Math.PI],
-      [-0.8, -5.5, Math.PI / 2],
-      [5.8, -5.5, -Math.PI / 2]
+      [7.7, 3.8, 0],
+      [7.7, 10.2, Math.PI]
     ];
     for (const [bx, bz, ry] of benchPositions) {
       const bGroup = new THREE.Group();
       bGroup.position.set(bx, 0.09, bz);
       bGroup.rotation.y = ry;
-      const seat = new THREE.Mesh(new THREE.BoxGeometry(1.75, 0.1, 0.56), timberMat);
+      const seat = new THREE.Mesh(new THREE.BoxGeometry(1.85, 0.1, 0.58), timberMat);
       seat.position.y = 0.42;
-      const back = new THREE.Mesh(new THREE.BoxGeometry(1.75, 0.38, 0.09), timberMat);
-      back.position.set(0, 0.66, -0.23);
-      const legGeo = new THREE.BoxGeometry(0.11, 0.42, 0.48);
-      [-0.7, 0.7].forEach((lx) => {
+      const back = new THREE.Mesh(new THREE.BoxGeometry(1.85, 0.4, 0.09), timberMat);
+      back.position.set(0, 0.68, -0.24);
+      const legGeo = new THREE.BoxGeometry(0.12, 0.42, 0.5);
+      [-0.74, 0.74].forEach((lx) => {
         const leg = new THREE.Mesh(legGeo, ironMat);
         leg.position.set(lx, 0.21, 0);
         bGroup.add(leg);
@@ -959,260 +623,33 @@ export class WorldManager {
       this.worldGroup.add(bGroup);
     }
 
-    // TimberPort Town Square Monument Plaque at Park South-East Corner
-    const monument = new THREE.Group();
-    monument.position.set(6.4, 0.09, -1.6);
-    monument.rotation.y = -0.38;
-    const monPlinth = new THREE.Mesh(new THREE.BoxGeometry(2.0, 0.54, 0.72), travMat);
-    monPlinth.position.y = 0.27;
-    const monSlab = new THREE.Mesh(new THREE.BoxGeometry(1.86, 0.9, 0.2), ironMat);
-    monSlab.position.y = 1.0;
-    const monSignTex = getIlluminatedSignTexture('TIMBERPORT TOWN', 'QUẢNG TRƯỜNG TRUNG TÂM');
-    const monSignMat = new THREE.MeshStandardMaterial({
-      map: monSignTex,
-      emissiveMap: monSignTex,
-      emissive: new THREE.Color(0xffffff),
-      emissiveIntensity: 0.65,
-      roughness: 0.35
+    // Manicured Hedges & Ornamental Flowers around Courtyard (Flowers gated in landDetailGroup)
+    [[11.0, 1.5], [16.5, 1.5], [11.0, 12.5], [16.5, 12.5]].forEach(([hx, hz]) => {
+      const boxBorder = new THREE.Mesh(new THREE.BoxGeometry(3.8, 0.32, 0.9), travMat);
+      boxBorder.position.set(hx, 0.24, hz);
+      const hedge = new THREE.Mesh(new THREE.BoxGeometry(3.5, 0.48, 0.62), hedgeMat);
+      hedge.position.set(hx, 0.56, hz);
+      this.worldGroup.add(boxBorder, hedge);
     });
-    const monFace = new THREE.Mesh(new THREE.PlaneGeometry(1.74, 0.78), monSignMat);
-    monFace.position.set(0, 1.0, 0.11);
-    monument.add(monPlinth, monSlab, monFace);
-    this.worldGroup.add(monument);
 
-    // -----------------------------------------------------------------------
-    // 18 Perfectly Grid-Aligned GitHub GLB Houses in 4 GPU Draw Calls Total!
-    // Exact 4 Columns: X = -6.0, -0.4, +5.4, +10.8 (each inside its own square lot!)
-    // -----------------------------------------------------------------------
-    // Row 1 (North Terrace, Z = -28.0): 4 Alpine Timber Houses (nhatuyet_opt.glb)
-    const nhatuyetGroup = createInstancedGlbGroup(
-      '/models/nhatuyet_opt.glb',
-      [
-        { x: -6.0, y: 0.05, z: -28.0, ry: 0 },
-        { x: -0.4, y: 0.05, z: -28.0, ry: 0 },
-        { x: 5.4, y: 0.05, z: -28.0, ry: 0 },
-        { x: 10.8, y: 0.05, z: -28.0, ry: 0 }
-      ],
-      { targetHeight: 3.45, sinkY: 0.04 }
-    );
-    // Row 2 (Upper Town, Z = -20.4) + 2 Park Corner Cottages: 6 Cozy Wooden Cottages (nhacap4_opt.glb)
-    const nhacap4Group = createInstancedGlbGroup(
-      '/models/nhacap4_opt.glb',
-      [
-        { x: -6.0, y: 0.05, z: -20.4, ry: 0 },
-        { x: -0.4, y: 0.05, z: -20.4, ry: 0 },
-        { x: 5.4, y: 0.05, z: -20.4, ry: 0 },
-        { x: 10.8, y: 0.05, z: -20.4, ry: 0 },
-        { x: -6.0, y: 0.05, z: -12.6, ry: Math.PI / 2 },
-        { x: 10.8, y: 0.05, z: -12.6, ry: -Math.PI / 2 }
-      ],
-      { targetHeight: 2.85, sinkY: 0.03 }
-    );
-    // Row 4 (Lower Town Villas, Z = +8.4): 4 Stately 2-Story Gray-Roofed Townhomes (bietthu_opt.glb)
-    const bietthuGroup = createInstancedGlbGroup(
-      '/models/bietthu_opt.glb',
-      [
-        { x: -6.0, y: 0.05, z: 8.4, ry: 0 },
-        { x: -0.4, y: 0.05, z: 8.4, ry: 0 },
-        { x: 5.4, y: 0.05, z: 8.4, ry: 0 },
-        { x: 10.8, y: 0.05, z: 8.4, ry: 0 }
-      ],
-      { targetHeight: 4.15, sinkY: 0.04 }
-    );
-    // Row 5 (South Harborfront Cottages, Z = +17.5): 4 Cozy Gabled Cottages (nhasan_opt.glb)
-    const nhasanGroup = createInstancedGlbGroup(
-      '/models/nhasan_opt.glb',
-      [
-        { x: -6.0, y: 0.05, z: 17.5, ry: 0 },
-        { x: -0.4, y: 0.05, z: 17.5, ry: 0 },
-        { x: 5.4, y: 0.05, z: 17.5, ry: 0 },
-        { x: 10.8, y: 0.05, z: 17.5, ry: 0 }
-      ],
-      { targetHeight: 3.05, sinkY: 0.03 }
-    );
-    this.worldGroup.add(nhatuyetGroup, nhacap4Group, bietthuGroup, nhasanGroup);
-
-    // Instanced Neat Green Yard Hedges framing every house row & park lawn cleanly (1 draw call!)
-    const hedgeSpots = [];
-    for (const hz of [-30.6, -25.4, -22.8, -17.8, 5.4, 11.4, 14.6, 20.2]) {
-      for (const hx of [-6.0, -0.4, 5.4, 10.8]) {
-        hedgeSpots.push([hx, hz, 3.8, 0.42]);
-      }
-    }
-    // Park lawn perimeter hedges
-    hedgeSpots.push(
-      [-6.0, -9.2, 3.8, 0.42], [10.8, -9.2, 3.8, 0.42],
-      [-6.0, 2.2, 3.8, 0.42], [10.8, 2.2, 3.8, 0.42]
-    );
-    const hGeo = new THREE.BoxGeometry(1, 0.52, 1);
-    hGeo.translate(0, 0.26, 0);
-    const hedgesInst = new THREE.InstancedMesh(hGeo, hedgeMat, hedgeSpots.length);
+    // High-spec decorative golden/coral flower clusters inside planters
+    const flowerGeo = new THREE.DodecahedronGeometry(0.18, 0);
+    const flowerMat = new THREE.MeshStandardMaterial({ color: 0xf43f5e, roughness: 0.7, flatShading: true });
+    const flowerCoords = [];
+    [[11.0, 1.5], [16.5, 1.5], [11.0, 12.5], [16.5, 12.5]].forEach(([hx, hz]) => {
+      for (let ox = -1.2; ox <= 1.2; ox += 0.8) flowerCoords.push([hx + ox, 0.84, hz]);
+    });
+    const flowers = new THREE.InstancedMesh(flowerGeo, flowerMat, flowerCoords.length);
     const dummy = new THREE.Object3D();
-    hedgeSpots.forEach(([hx, hz, sx, sz], i) => {
-      dummy.position.set(hx, 0.05, hz);
-      dummy.rotation.set(0, 0, 0);
-      dummy.scale.set(sx, 1, sz);
+    flowerCoords.forEach(([fx, fy, fz], idx) => {
+      dummy.position.set(fx, fy, fz);
+      dummy.rotation.set(0, idx * 0.7, 0);
+      dummy.scale.set(1, 0.8, 1);
       dummy.updateMatrix();
-      hedgesInst.setMatrixAt(i, dummy.matrix);
+      flowers.setMatrixAt(idx, dummy.matrix);
     });
-    hedgesInst.instanceMatrix.needsUpdate = true;
-    hedgesInst.computeBoundingSphere();
-    this.worldGroup.add(hedgesInst);
-
-    // Ornamental Low-Poly Park Trees inside Central Square Park Quadrants (2 InstancedMesh draw calls)
-    const parkTreeCoords = [
-      [-6.4, -7.2], [-6.4, -3.4], [-6.4, 0.4],
-      [11.0, -7.2], [11.0, -3.4], [11.0, 0.4],
-      [-0.8, -12.6], [5.8, -12.6]
-    ];
-    const pkTrunkGeo = new THREE.CylinderGeometry(0.11, 0.16, 1.1, 6);
-    pkTrunkGeo.translate(0, 0.55, 0);
-    const pkCrownGeo = new THREE.DodecahedronGeometry(0.75, 0);
-    pkCrownGeo.translate(0, 1.65, 0);
-    const pkTrunks = new THREE.InstancedMesh(pkTrunkGeo, timberMat, parkTreeCoords.length);
-    const pkCrowns = new THREE.InstancedMesh(pkCrownGeo, hedgeMat, parkTreeCoords.length);
-    parkTreeCoords.forEach(([tx, tz], i) => {
-      dummy.position.set(tx, 0.05, tz);
-      dummy.rotation.set(0, i * 0.9, 0);
-      dummy.scale.setScalar(0.92 + (i % 3) * 0.1);
-      dummy.updateMatrix();
-      pkTrunks.setMatrixAt(i, dummy.matrix);
-      pkCrowns.setMatrixAt(i, dummy.matrix);
-    });
-    pkTrunks.instanceMatrix.needsUpdate = true;
-    pkCrowns.instanceMatrix.needsUpdate = true;
-    pkTrunks.computeBoundingSphere();
-    pkCrowns.computeBoundingSphere();
-    this.worldGroup.add(pkTrunks, pkCrowns);
-  }
-
-  /**
-   * BAND 3 (EAST): Pure Infrastructure Zone (X = +19.5..+31.5, Z = -32..+20)
-   * North Utility Station, Power Substation, Twin-Basin Water Treatment Plant,
-   * Storage Silos & Circular Blue Tank Yard + Pine Buffer cleanly flanking the East Railway (X = +33.5)!
-   */
-  buildInfrastructureZone() {
-    const padMat = new THREE.MeshStandardMaterial({ color: 0xcbd5e1, roughness: 0.84 });
-    const steelMat = new THREE.MeshStandardMaterial({ color: 0x475569, roughness: 0.48, metalness: 0.62 });
-    const siloMat = new THREE.MeshStandardMaterial({ color: 0xe2e8f0, roughness: 0.36, metalness: 0.45 });
-    const basinWaterMat = new THREE.MeshStandardMaterial({
-      color: 0x38bdf8,
-      emissive: 0x0284c7,
-      emissiveIntensity: 0.28,
-      roughness: 0.14,
-      metalness: 0.2
-    });
-    const accentMat = new THREE.MeshStandardMaterial({ color: 0xf59e0b, roughness: 0.45 });
-    const dummy = new THREE.Object3D();
-
-    // 0. North Utility Control Building at (24.5, 0, -29.0) (matching top-right of reference image!)
-    const utilPad = new THREE.Mesh(new THREE.BoxGeometry(8.6, 0.09, 5.8), padMat);
-    utilPad.position.set(24.5, 0.045, -29.0);
-    const utilBldgA = new THREE.Mesh(new THREE.BoxGeometry(3.4, 1.9, 3.6), siloMat);
-    utilBldgA.position.set(22.4, 1.02, -29.0);
-    const utilRoofA = new THREE.Mesh(new THREE.BoxGeometry(3.6, 0.18, 3.8), steelMat);
-    utilRoofA.position.set(22.4, 2.04, -29.0);
-    const utilBldgB = new THREE.Mesh(new THREE.BoxGeometry(2.6, 1.4, 3.0), siloMat);
-    utilBldgB.position.set(26.6, 0.78, -28.8);
-    const utilTank = new THREE.Mesh(new THREE.CylinderGeometry(0.75, 0.75, 1.5, 10), basinWaterMat);
-    utilTank.position.set(26.6, 1.65, -28.8);
-    this.worldGroup.add(utilPad, utilBldgA, utilRoofA, utilBldgB, utilTank);
-
-    // 1. Power Substation Compound at (24.5, 0, -21.0)
-    const subPad = new THREE.Mesh(new THREE.BoxGeometry(8.6, 0.09, 6.8), padMat);
-    subPad.position.set(24.5, 0.045, -21.0);
-    this.worldGroup.add(subPad);
-
-    const transGeo = new THREE.BoxGeometry(1.5, 1.35, 1.2);
-    transGeo.translate(0, 0.68, 0);
-    const transInst = new THREE.InstancedMesh(transGeo, steelMat, 3);
-    [-2.2, 0, 2.2].forEach((ox, i) => {
-      dummy.position.set(24.5 + ox, 0.09, -21.8);
-      dummy.rotation.set(0, 0, 0);
-      dummy.scale.set(1, 1, 1);
-      dummy.updateMatrix();
-      transInst.setMatrixAt(i, dummy.matrix);
-    });
-    transInst.instanceMatrix.needsUpdate = true;
-    transInst.computeBoundingSphere();
-
-    const pylonGeo = new THREE.CylinderGeometry(0.14, 0.34, 4.4, 4);
-    pylonGeo.translate(0, 2.2, 0);
-    const pylonInst = new THREE.InstancedMesh(pylonGeo, steelMat, 4);
-    [[-2.8, -19.2], [0, -19.2], [2.8, -19.2], [2.8, -22.8]].forEach(([ox, pz], i) => {
-      dummy.position.set(24.5 + ox, 0.09, pz);
-      dummy.rotation.set(0, Math.PI / 4, 0);
-      dummy.scale.set(1, 1, 1);
-      dummy.updateMatrix();
-      pylonInst.setMatrixAt(i, dummy.matrix);
-    });
-    pylonInst.instanceMatrix.needsUpdate = true;
-    pylonInst.computeBoundingSphere();
-    this.worldGroup.add(transInst, pylonInst);
-
-    // 2. Twin-Basin Water Treatment Plant at (24.5, 0, -12.0)
-    const wtPad = new THREE.Mesh(new THREE.BoxGeometry(8.6, 0.1, 7.2), padMat);
-    wtPad.position.set(24.5, 0.05, -12.0);
-    const basin1 = new THREE.Mesh(new THREE.BoxGeometry(3.2, 0.22, 4.6), basinWaterMat);
-    basin1.position.set(22.5, 0.14, -12.0);
-    const basin2 = new THREE.Mesh(new THREE.BoxGeometry(3.2, 0.22, 4.6), basinWaterMat);
-    basin2.position.set(26.5, 0.14, -12.0);
-    const filterHouse = new THREE.Mesh(new THREE.BoxGeometry(2.6, 1.8, 1.5), siloMat);
-    filterHouse.position.set(24.5, 0.95, -14.7);
-    const filterRoof = new THREE.Mesh(new THREE.BoxGeometry(2.8, 0.22, 1.7), steelMat);
-    filterRoof.position.set(24.5, 1.92, -14.7);
-    this.worldGroup.add(wtPad, basin1, basin2, filterHouse, filterRoof);
-
-    // 3. Storage Silos & Circular Blue Tank Yard at (24.5, 0, -2.5)
-    const siloPad = new THREE.Mesh(new THREE.BoxGeometry(8.6, 0.09, 7.2), padMat);
-    siloPad.position.set(24.5, 0.045, -2.5);
-    const roundRim = new THREE.Mesh(new THREE.CylinderGeometry(1.85, 1.95, 0.72, 14), siloMat);
-    roundRim.position.set(22.6, 0.4, -2.5);
-    const roundWater = new THREE.Mesh(new THREE.CylinderGeometry(1.62, 1.62, 0.14, 14), basinWaterMat);
-    roundWater.position.set(22.6, 0.72, -2.5);
-    this.worldGroup.add(siloPad, roundRim, roundWater);
-
-    // 3 Tall Metallic Storage Silos (1 InstancedMesh)
-    const siloGeo = new THREE.CylinderGeometry(0.85, 0.88, 3.6, 10);
-    siloGeo.translate(0, 1.8, 0);
-    const silosInst = new THREE.InstancedMesh(siloGeo, siloMat, 3);
-    [[26.3, -4.1], [26.3, -2.1], [26.3, -0.1]].forEach(([sx, sz], i) => {
-      dummy.position.set(sx, 0.09, sz);
-      dummy.rotation.set(0, 0, 0);
-      dummy.scale.set(1, i === 1 ? 1.15 : 0.95, 1);
-      dummy.updateMatrix();
-      silosInst.setMatrixAt(i, dummy.matrix);
-    });
-    silosInst.instanceMatrix.needsUpdate = true;
-    silosInst.computeBoundingSphere();
-
-    const safetyStripe = new THREE.Mesh(new THREE.BoxGeometry(8.4, 0.06, 0.25), accentMat);
-    safetyStripe.position.set(24.5, 0.1, 1.0);
-    this.worldGroup.add(silosInst, safetyStripe);
-
-    // Neat Green Low-Poly Pine Buffer along East Infrastructure Greenbelt (matching reference image!)
-    const infraTrees = [
-      [29.5, -2.0], [30.2, 0.5], [29.4, 2.8], [30.5, 5.2], [29.8, 12.2], [30.4, 15.0]
-    ];
-    const iTrunkGeo = new THREE.CylinderGeometry(0.14, 0.2, 1.1, 6);
-    iTrunkGeo.translate(0, 0.55, 0);
-    const iCrownGeo = new THREE.ConeGeometry(0.95, 2.5, 6);
-    iCrownGeo.translate(0, 2.25, 0);
-    const iTrunks = new THREE.InstancedMesh(iTrunkGeo, new THREE.MeshStandardMaterial({ color: 0x6b4226, roughness: 0.9 }), infraTrees.length);
-    const iCrowns = new THREE.InstancedMesh(iCrownGeo, new THREE.MeshStandardMaterial({ color: 0x4d8b31, roughness: 0.82, flatShading: true }), infraTrees.length);
-    infraTrees.forEach(([tx, tz], i) => {
-      dummy.position.set(tx, 0, tz);
-      dummy.rotation.set(0, i * 0.7, 0);
-      dummy.scale.setScalar(0.9 + (i % 3) * 0.12);
-      dummy.updateMatrix();
-      iTrunks.setMatrixAt(i, dummy.matrix);
-      iCrowns.setMatrixAt(i, dummy.matrix);
-    });
-    iTrunks.instanceMatrix.needsUpdate = true;
-    iCrowns.instanceMatrix.needsUpdate = true;
-    iTrunks.computeBoundingSphere();
-    iCrowns.computeBoundingSphere();
-    this.worldGroup.add(iTrunks, iCrowns);
+    flowers.instanceMatrix.needsUpdate = true;
+    this.landDetailGroup.add(flowers);
   }
 
   buildCoastalPromenadeAndFishery() {
@@ -1220,49 +657,140 @@ export class WorldManager {
     const boardwalkMat = new THREE.MeshStandardMaterial({ map: getBoardwalkPlankTexture(14, 1), roughness: 0.76 });
     const postWoodMat = new THREE.MeshStandardMaterial({ color: 0x78350f, roughness: 0.86 });
     const ropeMat = new THREE.MeshStandardMaterial({ color: 0xd6b37c, roughness: 0.88 });
+    const crateMat = new THREE.MeshStandardMaterial({ color: 0xc28546, roughness: 0.74 });
+    const iceBoxMat = new THREE.MeshStandardMaterial({ color: 0x0284c7, roughness: 0.42 });
+    const barrelMat = new THREE.MeshStandardMaterial({ color: 0x92400e, roughness: 0.68 });
+    const palmTrunkMat = new THREE.MeshStandardMaterial({ color: 0x78350f, roughness: 0.88 });
+    const palmLeafMat = new THREE.MeshStandardMaterial({ color: 0x16a34a, roughness: 0.78, flatShading: true });
 
-    // Clean Stone Seawall Coping along the Center Residential Waterfront ONLY (zero clutter in farm/canal or harbor!)
-    const centerSeawall = new THREE.Mesh(new THREE.BoxGeometry(22.4, 0.36, 0.75), stoneWallMat);
-    centerSeawall.position.set(2.5, 0.12, 24.5);
-    centerSeawall.receiveShadow = !this.lowSpec;
+    // Stone Seawall Edge separating grass from beach (West & East wings around central Harbor Road)
+    const wallW = new THREE.Mesh(new THREE.BoxGeometry(41, 0.42, 0.85), stoneWallMat);
+    wallW.position.set(-21.5, 0.14, 20.6);
+    wallW.receiveShadow = !this.lowSpec;
+    const wallE = new THREE.Mesh(new THREE.BoxGeometry(37, 0.42, 0.85), stoneWallMat);
+    wallE.position.set(23.5, 0.14, 20.6);
+    wallE.receiveShadow = !this.lowSpec;
+    this.worldGroup.add(wallW, wallE);
 
-    // Clean Wooden Boardwalk Deck along Center Residential Waterfront
-    const centerBoardwalk = new THREE.Mesh(new THREE.BoxGeometry(21.6, 0.14, 2.0), boardwalkMat);
-    centerBoardwalk.position.set(2.5, 0.07, 23.3);
-    centerBoardwalk.receiveShadow = !this.lowSpec;
-    this.worldGroup.add(centerSeawall, centerBoardwalk);
+    // Teak Timber Boardwalk Promenade along coastline
+    const bwWest = new THREE.Mesh(new THREE.BoxGeometry(36, 0.16, 2.3), boardwalkMat);
+    bwWest.position.set(-19.0, 0.08, 22.0);
+    bwWest.receiveShadow = !this.lowSpec;
+    const bwEast = new THREE.Mesh(new THREE.BoxGeometry(19.5, 0.16, 2.3), boardwalkMat);
+    bwEast.position.set(14.8, 0.08, 22.0);
+    bwEast.receiveShadow = !this.lowSpec;
+    this.worldGroup.add(bwWest, bwEast);
 
-    // Neat Wooden Post & Rope Railings along Center Waterfront (open gap at Ferry Pier X = 2.5)
-    const fencePostsX = [-7.5, -5.0, -2.5, 0.0, 5.0, 7.5, 10.0, 12.5];
-    const postGeo = new THREE.CylinderGeometry(0.09, 0.11, 0.86, 6);
-    postGeo.translate(0, 0.43, 0);
+    // Wooden Post & Nautical Rope Fencing along boardwalk outer edge (InstancedMesh)
+    const fencePostsX = [];
+    for (let x = -35; x <= -10; x += 2.5) fencePostsX.push(x);
+    for (let x = 6.5; x <= 23.5; x += 2.5) fencePostsX.push(x);
+
+    const postGeo = new THREE.CylinderGeometry(0.1, 0.12, 0.92, 6);
+    postGeo.translate(0, 0.46, 0);
     const postsInst = new THREE.InstancedMesh(postGeo, postWoodMat, fencePostsX.length);
-    const railSegments = [-6.25, -3.75, -1.25, 6.25, 8.75, 11.25];
-    const ropeGeo = new THREE.CylinderGeometry(0.04, 0.04, 2.5, 5);
+    postsInst.castShadow = !this.lowSpec;
+
+    const railSegments = [];
+    for (let i = 0; i < fencePostsX.length - 1; i++) {
+      const x1 = fencePostsX[i];
+      const x2 = fencePostsX[i + 1];
+      if (Math.abs(x2 - x1) < 3.0) railSegments.push((x1 + x2) * 0.5);
+    }
+    const ropeGeo = new THREE.CylinderGeometry(0.045, 0.045, 2.5, 5);
     ropeGeo.rotateZ(Math.PI / 2);
     const ropesInst = new THREE.InstancedMesh(ropeGeo, ropeMat, railSegments.length);
 
     const dummy = new THREE.Object3D();
     fencePostsX.forEach((fx, i) => {
-      dummy.position.set(fx, 0.08, 24.15);
+      dummy.position.set(fx, 0.08, 23.05);
       dummy.rotation.set(0, 0, 0);
       dummy.scale.set(1, 1, 1);
       dummy.updateMatrix();
       postsInst.setMatrixAt(i, dummy.matrix);
     });
     postsInst.instanceMatrix.needsUpdate = true;
-    postsInst.computeBoundingSphere();
 
     railSegments.forEach((rx, i) => {
-      dummy.position.set(rx, 0.68, 24.15);
+      dummy.position.set(rx, 0.72, 23.05);
       dummy.rotation.set(0, 0, 0);
       dummy.scale.set(1, 1, 1);
       dummy.updateMatrix();
       ropesInst.setMatrixAt(i, dummy.matrix);
     });
     ropesInst.instanceMatrix.needsUpdate = true;
-    ropesInst.computeBoundingSphere();
     this.worldGroup.add(postsInst, ropesInst);
+
+    // Coastal Cargo Crates, Fish Ice Boxes & Oak Barrels near Cannery & West Beach (clear of pads)
+    const crateCoords = [
+      [-12.5, 0.35, 24.4], [-13.4, 0.35, 24.4], [-12.95, 1.0, 24.4],
+      [-23.5, 0.35, 24.5], [-24.4, 0.35, 24.8], [10.8, 0.35, 24.4]
+    ];
+    const crateGeo = new THREE.BoxGeometry(0.82, 0.72, 0.82);
+    const cratesInst = new THREE.InstancedMesh(crateGeo, crateMat, crateCoords.length);
+    cratesInst.castShadow = !this.lowSpec;
+    crateCoords.forEach(([cx, cy, cz], i) => {
+      dummy.position.set(cx, cy, cz);
+      dummy.rotation.set(0, (i % 3) * 0.25, 0);
+      dummy.scale.set(1, 1, 1);
+      dummy.updateMatrix();
+      cratesInst.setMatrixAt(i, dummy.matrix);
+    });
+    cratesInst.instanceMatrix.needsUpdate = true;
+
+    const iceCoords = [
+      [-9.2, 0.32, 24.3], [-10.3, 0.32, 24.6], [-8.4, 0.32, 24.9]
+    ];
+    const iceGeo = new THREE.BoxGeometry(0.95, 0.56, 0.62);
+    const iceInst = new THREE.InstancedMesh(iceGeo, iceBoxMat, iceCoords.length);
+    iceCoords.forEach(([ix, iy, iz], i) => {
+      dummy.position.set(ix, iy, iz);
+      dummy.rotation.set(0, i * 0.3, 0);
+      dummy.scale.set(1, 1, 1);
+      dummy.updateMatrix();
+      iceInst.setMatrixAt(i, dummy.matrix);
+    });
+    iceInst.instanceMatrix.needsUpdate = true;
+
+    const barrelCoords = [
+      [-14.3, 0.42, 24.7], [-14.9, 0.42, 24.2], [11.7, 0.42, 24.6], [-22.6, 0.42, 24.3]
+    ];
+    const barrelGeo = new THREE.CylinderGeometry(0.32, 0.34, 0.82, 8);
+    const barrelsInst = new THREE.InstancedMesh(barrelGeo, barrelMat, barrelCoords.length);
+    barrelCoords.forEach(([bx, by, bz], i) => {
+      dummy.position.set(bx, by, bz);
+      dummy.rotation.set(0, 0, 0);
+      dummy.scale.set(1, 1, 1);
+      dummy.updateMatrix();
+      barrelsInst.setMatrixAt(i, dummy.matrix);
+    });
+    barrelsInst.instanceMatrix.needsUpdate = true;
+    this.worldGroup.add(cratesInst, iceInst, barrelsInst);
+
+    // Coastal Beach Palms (InstancedMesh)
+    const palmSpots = [
+      [-26.5, 22.8], [-17.5, 23.6], [19.5, 23.6], [23.2, 22.6], [-35.5, 23.2]
+    ];
+    const pTrunkGeo = new THREE.CylinderGeometry(0.16, 0.28, 3.8, 6);
+    pTrunkGeo.translate(0, 1.9, 0);
+    const pCrownGeo = new THREE.DodecahedronGeometry(1.35, 0);
+    pCrownGeo.scale(1.25, 0.6, 1.25);
+    pCrownGeo.translate(0, 3.9, 0);
+    const pTrunks = new THREE.InstancedMesh(pTrunkGeo, palmTrunkMat, palmSpots.length);
+    const pCrowns = new THREE.InstancedMesh(pCrownGeo, palmLeafMat, palmSpots.length);
+    pTrunks.castShadow = !this.lowSpec;
+    pCrowns.castShadow = !this.lowSpec;
+    palmSpots.forEach(([px, pz], i) => {
+      dummy.position.set(px, 0, pz);
+      dummy.rotation.set(0.06, i * 1.1, (i % 2 === 0 ? 1 : -1) * 0.08);
+      dummy.scale.set(1, 0.9 + (i % 3) * 0.12, 1);
+      dummy.updateMatrix();
+      pTrunks.setMatrixAt(i, dummy.matrix);
+      pCrowns.setMatrixAt(i, dummy.matrix);
+    });
+    pTrunks.instanceMatrix.needsUpdate = true;
+    pCrowns.instanceMatrix.needsUpdate = true;
+    this.worldGroup.add(pTrunks, pCrowns);
   }
 
   buildForestEcology() {
@@ -1271,17 +799,20 @@ export class WorldManager {
       roughness: 0.94,
       metalness: 0.0
     });
-    const forestPad = new THREE.Mesh(new THREE.CylinderGeometry(12.5, 13.5, 0.04, 12), forestPadMat);
-    forestPad.scale.set(0.85, 1, 1.45);
-    forestPad.position.set(-51, 0.012, -8);
+    const forestPad = new THREE.Mesh(new THREE.CylinderGeometry(14.5, 15.2, 0.04, 14), forestPadMat);
+    forestPad.scale.set(1.06, 1, 0.86);
+    forestPad.position.set(-26, 0.012, -25);
+    forestPad.receiveShadow = !this.lowSpec;
     this.worldGroup.add(forestPad);
 
     const dummy = new THREE.Object3D();
+    // Mossy forest boulders along edge & clearings
     const rockGeo = new THREE.DodecahedronGeometry(0.75, 0);
     const rockMat = new THREE.MeshStandardMaterial({ color: 0x64748b, roughness: 0.9, flatShading: true });
     const rockSpots = [
-      [-58.0, -24.0, 1.15], [-59.0, -10.0, 1.05], [-58.5, 4.0, 0.95],
-      [-48.0, -28.0, 0.9], [-46.0, 14.0, 0.85], [-55.0, -18.0, 0.65]
+      [-40.2, -35.0, 1.1], [-36.5, -36.5, 0.9], [-28.0, -36.8, 1.2], [-19.5, -36.2, 0.85],
+      [-40.5, -26.0, 1.25], [-40.0, -18.0, 0.95], [-34.0, -13.2, 0.8], [-22.5, -13.5, 0.9],
+      [-31.5, -28.0, 0.55], [-24.5, -21.5, 0.52], [-14.2, -32.0, 0.72]
     ];
     const forestRocks = new THREE.InstancedMesh(rockGeo, rockMat, rockSpots.length);
     rockSpots.forEach(([rx, rz, sc], i) => {
@@ -1292,8 +823,56 @@ export class WorldManager {
       forestRocks.setMatrixAt(i, dummy.matrix);
     });
     forestRocks.instanceMatrix.needsUpdate = true;
-    forestRocks.computeBoundingSphere();
     this.worldGroup.add(forestRocks);
+
+    // Forest ferns & low shrubs (InstancedMesh)
+    const fernGeo = new THREE.DodecahedronGeometry(0.55, 0);
+    const fernMat = new THREE.MeshStandardMaterial({ color: 0x166534, roughness: 0.86, flatShading: true });
+    const fernSpots = [
+      [-39.2, -33.2], [-34.5, -35.8], [-25.0, -36.0], [-16.5, -35.2],
+      [-39.6, -23.0], [-39.0, -15.5], [-29.0, -13.0], [-19.0, -13.2],
+      [-35.0, -25.5], [-26.5, -31.0], [-21.0, -19.5], [-13.8, -28.5],
+      [-14.5, -40.5], [-8.0, -40.0], [-16.5, -43.5], [-6.5, -44.2]
+    ];
+    const ferns = new THREE.InstancedMesh(fernGeo, fernMat, fernSpots.length);
+    fernSpots.forEach(([fx, fz], i) => {
+      dummy.position.set(fx, 0.24, fz);
+      dummy.rotation.set(0, i * 0.85, 0);
+      const s = 0.8 + (i % 3) * 0.22;
+      dummy.scale.set(s * 1.25, s * 0.65, s * 1.15);
+      dummy.updateMatrix();
+      ferns.setMatrixAt(i, dummy.matrix);
+    });
+    ferns.instanceMatrix.needsUpdate = true;
+    this.worldGroup.add(ferns);
+
+    // Wildflower blossoms in forest & lakeside (gated in landDetailGroup for <8GB RAM)
+    const wildGeo = new THREE.DodecahedronGeometry(0.16, 0);
+    const wildMat = new THREE.MeshStandardMaterial({ color: 0xfacc15, roughness: 0.7, flatShading: true });
+    const wildSpots = [];
+    for (let i = 0; i < 32; i++) {
+      const ang = (i / 32) * Math.PI * 2;
+      const rx = -26 + Math.cos(ang) * (11.5 + (i % 3) * 1.4);
+      const rz = -25 + Math.sin(ang) * (9.5 + (i % 2) * 1.3);
+      wildSpots.push([rx, 0.16, rz]);
+    }
+    for (let i = 0; i < 10; i++) {
+      wildSpots.push([-16.5 + i * 1.15, 0.16, -38.8 - (i % 2) * 0.9]);
+    }
+    const wildflowers = new THREE.InstancedMesh(wildGeo, wildMat, wildSpots.length);
+    const flowerColor = new THREE.Color();
+    wildSpots.forEach(([wx, wy, wz], i) => {
+      dummy.position.set(wx, wy, wz);
+      dummy.rotation.set(0, i * 0.6, 0);
+      dummy.scale.set(1, 0.75, 1);
+      dummy.updateMatrix();
+      wildflowers.setMatrixAt(i, dummy.matrix);
+      flowerColor.setHex(i % 3 === 0 ? 0xfbbf24 : i % 3 === 1 ? 0xf8fafc : 0xfb7185);
+      wildflowers.setColorAt(i, flowerColor);
+    });
+    wildflowers.instanceMatrix.needsUpdate = true;
+    if (wildflowers.instanceColor) wildflowers.instanceColor.needsUpdate = true;
+    this.landDetailGroup.add(wildflowers);
   }
 
   buildMountainWaterfallPond() {
@@ -1377,29 +956,29 @@ export class WorldManager {
       roughness: 0.25
     });
 
-    // 1. Harbor Gateway Archway at South-East Harbor Entrance (16.5, 0, 21.8) spanning East Main Ave cleanly
+    // 1. Harbor Gateway Archway at (2.0, 0, 19.8) spanning Road NS cleanly
     const archGroup = new THREE.Group();
-    archGroup.position.set(16.5, 0, 21.8);
+    archGroup.position.set(2.0, 0, 19.8);
 
-    [-3.4, 3.4].forEach((px) => {
-      const pierBase = new THREE.Mesh(new THREE.BoxGeometry(1.2, 0.7, 1.2), travMat);
+    [-3.75, 3.75].forEach((px) => {
+      const pierBase = new THREE.Mesh(new THREE.BoxGeometry(1.3, 0.7, 1.3), travMat);
       pierBase.position.set(px, 0.35, 0);
-      const pierCol = new THREE.Mesh(new THREE.BoxGeometry(0.92, 5.0, 0.92), travMat);
+      const pierCol = new THREE.Mesh(new THREE.BoxGeometry(0.96, 5.0, 0.96), travMat);
       pierCol.position.set(px, 2.8, 0);
       pierCol.castShadow = !this.lowSpec;
-      const collar = new THREE.Mesh(new THREE.BoxGeometry(1.08, 0.24, 1.08), brassMat);
+      const collar = new THREE.Mesh(new THREE.BoxGeometry(1.12, 0.24, 1.12), brassMat);
       collar.position.set(px, 5.2, 0);
       const sconce = new THREE.Mesh(new THREE.BoxGeometry(0.24, 0.42, 0.22), warmLightMat);
       sconce.position.set(px, 3.2, -0.56);
       archGroup.add(pierBase, pierCol, collar, sconce);
     });
 
-    const archBeam = new THREE.Mesh(new THREE.BoxGeometry(8.0, 0.72, 1.15), slateMat);
+    const archBeam = new THREE.Mesh(new THREE.BoxGeometry(8.8, 0.72, 1.15), slateMat);
     archBeam.position.set(0, 5.58, 0);
     archBeam.castShadow = !this.lowSpec;
-    const archRoof = new THREE.Mesh(new THREE.BoxGeometry(8.4, 0.28, 1.45), timberMat);
+    const archRoof = new THREE.Mesh(new THREE.BoxGeometry(9.2, 0.28, 1.45), timberMat);
     archRoof.position.set(0, 6.08, 0);
-    const archTrim = new THREE.Mesh(new THREE.BoxGeometry(8.48, 0.12, 1.52), brassMat);
+    const archTrim = new THREE.Mesh(new THREE.BoxGeometry(9.28, 0.12, 1.52), brassMat);
     archTrim.position.set(0, 5.22, 0);
     archGroup.add(archBeam, archRoof, archTrim);
 
@@ -1411,17 +990,17 @@ export class WorldManager {
       emissiveIntensity: 0.75,
       roughness: 0.32
     });
-    const signNorth = new THREE.Mesh(new THREE.PlaneGeometry(5.4, 1.0), harborSignMat);
+    const signNorth = new THREE.Mesh(new THREE.PlaneGeometry(5.6, 1.05), harborSignMat);
     signNorth.position.set(0, 5.62, -0.6);
     signNorth.rotation.y = Math.PI;
-    const signSouth = new THREE.Mesh(new THREE.PlaneGeometry(5.4, 1.0), harborSignMat);
+    const signSouth = new THREE.Mesh(new THREE.PlaneGeometry(5.6, 1.05), harborSignMat);
     signSouth.position.set(0, 5.62, 0.6);
     archGroup.add(signNorth, signSouth);
     this.worldGroup.add(archGroup);
 
-    // 2. Plaza Clock Tower cleanly at South-West Corner of Central Square Park (-1.5, 0.09, -1.6)
+    // 2. Plaza Clock Tower at SW Executive Plaza (7.5, 0.09, 12.1)
     const clockTower = new THREE.Group();
-    clockTower.position.set(-1.5, 0.09, -1.6);
+    clockTower.position.set(7.5, 0.09, 12.1);
 
     const cBase = new THREE.Mesh(new THREE.BoxGeometry(1.75, 1.15, 1.75), travMat);
     cBase.position.y = 0.575;
@@ -1501,9 +1080,9 @@ export class WorldManager {
     const poleMat = new THREE.MeshStandardMaterial({ color: 0xe2e8f0, metalness: 0.75, roughness: 0.28 });
     const flagColors = [0xf59e0b, 0x0ea5e9, 0x10b981];
     const flagCoords = [
-      [6.4, 0.09, -9.2, 4.4],
-      [13.1, 5.4, 21.8, 2.8],
-      [19.9, 5.4, 21.8, 2.8]
+      [9.4, 0.09, 1.8, 4.4],
+      [-1.75, 5.4, 19.8, 2.8],
+      [5.75, 5.4, 19.8, 2.8]
     ];
     flagCoords.forEach(([fx, fy, fz, h], idx) => {
       const pole = new THREE.Mesh(new THREE.CylinderGeometry(0.05, 0.08, h, 6), poleMat);
@@ -1528,16 +1107,16 @@ export class WorldManager {
     for (let i = 0; i < smokeCount; i++) {
       const atMill = i >= 7;
       this.smokeData.push({
-        baseX: atMill ? -27.0 : -40.2,
-        baseY: atMill ? 4.4 : 4.4,
-        baseZ: atMill ? -21.5 : 8.6,
+        baseX: atMill ? 17.8 : 1.5,
+        baseY: atMill ? 4.8 : 6.1,
+        baseZ: atMill ? -27.5 : -14.2,
         phase: (i % 7) / 7,
         speed: 0.22 + (i % 3) * 0.03
       });
     }
     this.ambientLifeGroup.add(this.smokePuffs);
 
-    // 4. Drifting Forest Leaves strictly in the West Harvestable Forest (X = -65..-49)
+    // 4. Drifting Forest Leaves (InstancedMesh, Zero-GC)
     const leafGeo = new THREE.BoxGeometry(0.24, 0.04, 0.16);
     const leafMat = new THREE.MeshBasicMaterial({ color: 0xfbbf24 });
     const leafCount = 26;
@@ -1545,8 +1124,8 @@ export class WorldManager {
     const leafColor = new THREE.Color();
     for (let i = 0; i < leafCount; i++) {
       this.leafData.push({
-        x: -64 + (i % 5) * 3.4 + Math.random() * 1.2,
-        z: -26 + Math.floor(i / 5) * 6.2 + Math.random() * 1.2,
+        x: -37 + (i % 6) * 4.3 + Math.random() * 1.5,
+        z: -34 + Math.floor(i / 6) * 4.5 + Math.random() * 1.5,
         y: 0.6 + Math.random() * 5.2,
         fallSpeed: 0.55 + (i % 4) * 0.14,
         phase: i * 0.7
@@ -1562,31 +1141,70 @@ export class WorldManager {
     const dummy = new THREE.Object3D();
     const color = new THREE.Color();
 
-    // Clean Stylized Distant Northern Horizon Hills (NO square diorama slabs!)
-    const hillMat = new THREE.MeshStandardMaterial({ color: 0x3b6e42, roughness: 0.9, flatShading: true });
-    [[-34, -56, 14, 9], [0, -60, 18, 11], [34, -56, 15, 9.5]].forEach(([hx, hz, hr, hh]) => {
-      const hill = new THREE.Mesh(new THREE.ConeGeometry(hr, hh, 7), hillMat);
-      hill.position.set(hx, hh * 0.42, hz);
-      this.worldGroup.add(hill);
-    });
+    // 3-Tier Layered Low-Poly Mountain Ranges framing North, West & East Horizon
+    const mtnGeo = new THREE.ConeGeometry(11.5, 18.0, 7);
+    mtnGeo.translate(0, 9.0, 0);
+    const mtnMat = new THREE.MeshStandardMaterial({ color: 0x475569, roughness: 0.9, flatShading: true });
 
-    // Lean Granite Perimeter Rocks (kept cleanly outside the 3-band town & airport)
-    const rockGeo = new THREE.DodecahedronGeometry(2.8, 0);
+    const mtnSpots = [
+      // Far North Grand Ridge (leaving central waterfall canyon open around x=-16..-6)
+      [-82, -62, 1.45, 1.35], [-64, -60, 1.35, 1.25], [-46, -61, 1.5, 1.4], [-30, -58, 1.25, 1.15],
+      [6, -59, 1.35, 1.25], [24, -61, 1.5, 1.4], [44, -60, 1.35, 1.25], [64, -62, 1.45, 1.35], [82, -60, 1.3, 1.2],
+      // Mid North Foothills
+      [-55, -50, 0.95, 0.85], [-38, -49, 0.9, 0.8], [-22, -49, 0.85, 0.75],
+      [0, -49, 0.9, 0.8], [16, -50, 0.95, 0.85], [34, -49, 0.9, 0.82], [52, -50, 1.0, 0.88],
+      // Flanking West & East Coastal Cliffs
+      [-62, -32, 1.15, 0.95], [-60, -10, 1.05, 0.85], [-64, 10, 0.95, 0.75],
+      [62, -32, 1.15, 0.95], [60, -10, 1.05, 0.85], [64, 10, 0.95, 0.75]
+    ];
+    const mountains = new THREE.InstancedMesh(mtnGeo, mtnMat, mtnSpots.length);
+    mtnSpots.forEach(([mx, mz, sx, sy], i) => {
+      // Frame the outer edge so the former horizon opens into walkable land.
+      const edgeX = mz > -49
+        ? (mx < 0 ? WORLD_BOUNDS.minX - 10 : WORLD_BOUNDS.maxX + 10)
+        : mx * 55 + 40;
+      const edgeZ = mz > -49 ? mz : WORLD_BOUNDS.minZ + mz + 42;
+      dummy.position.set(edgeX, -0.4, edgeZ);
+      dummy.rotation.set(0, i * 0.8, 0);
+      dummy.scale.set(sx, sy, sx * 0.9);
+      dummy.updateMatrix();
+      mountains.setMatrixAt(i, dummy.matrix);
+      color.setHSL(0.58, 0.14, 0.28 + (i % 4) * 0.045);
+      mountains.setColorAt(i, color);
+    });
+    mountains.instanceMatrix.needsUpdate = true;
+    if (mountains.instanceColor) mountains.instanceColor.needsUpdate = true;
+    mountains.computeBoundingSphere();
+    this.worldGroup.add(mountains);
+
+    // Granite perimeter rocks
+    const rockGeo = new THREE.DodecahedronGeometry(3.2, 0);
     const rockMat = new THREE.MeshStandardMaterial({ color: 0x64748b, roughness: 0.88, flatShading: true });
-    const rockCount = this.lowSpec ? 10 : 20;
+    const rockCount = this.lowSpec ? 16 : 30;
     const rocks = new THREE.InstancedMesh(rockGeo, rockMat, rockCount);
 
     for (let i = 0; i < rockCount; i++) {
-      const side = i % 2;
-      const rx = side === 0 ? -62 - Math.random() * 10 : 58 + Math.random() * 10;
-      const rz = -42 + (i / rockCount) * 60;
-      dummy.position.set(rx, 0.7 + Math.random() * 1.1, rz);
+      const side = i % 3;
+      let rx = 0, rz = 0;
+      if (side === 0) {
+        rx = -46 + (i / rockCount) * 92;
+        if (rx > -18 && rx < -5) rx -= 14; // keep waterfall lake vista clear
+        rz = -47 - Math.random() * 10;
+      } else if (side === 1) {
+        rx = -48 - Math.random() * 12;
+        rz = -42 + Math.random() * 58;
+      } else {
+        rx = 48 + Math.random() * 12;
+        rz = -42 + Math.random() * 58;
+      }
+
+      dummy.position.set(rx, 0.7 + Math.random() * 1.2, rz);
       dummy.rotation.set(Math.random(), Math.random() * Math.PI, Math.random());
-      const s = 0.75 + Math.random() * 1.1;
-      dummy.scale.set(s * 1.25, s * 0.85, s);
+      const s = 0.75 + Math.random() * 1.3;
+      dummy.scale.set(s * 1.3, s * 0.9, s);
       dummy.updateMatrix();
       rocks.setMatrixAt(i, dummy.matrix);
-      color.setHSL(0.6, 0.1, 0.38 + Math.random() * 0.12);
+      color.setHSL(0.6, 0.1, 0.36 + Math.random() * 0.14);
       rocks.setColorAt(i, color);
     }
     rocks.instanceMatrix.needsUpdate = true;
@@ -1594,8 +1212,8 @@ export class WorldManager {
     rocks.computeBoundingSphere();
     this.worldGroup.add(rocks);
 
-    // Lean InstancedMesh Perimeter Pines framing the far West & East boundaries (Max-FPS optimized)
-    const count = this.lowSpec ? 24 : 56;
+    // InstancedMesh perimeter pines (scaled cleanly for <8GB RAM laptops)
+    const count = this.lowSpec ? 44 : 96;
     const trunkGeo = new THREE.CylinderGeometry(0.24, 0.35, 2.2, 6);
     trunkGeo.translate(0, 1.1, 0);
     const crownGeo = new THREE.ConeGeometry(1.55, 3.6, 6);
@@ -1606,20 +1224,33 @@ export class WorldManager {
 
     const trunks = new THREE.InstancedMesh(trunkGeo, trunkMat, count);
     const crowns = new THREE.InstancedMesh(crownGeo, crownMat, count);
+    trunks.castShadow = !this.lowSpec;
+    crowns.castShadow = !this.lowSpec;
 
-    const half = Math.floor(count / 2);
+    const northCount = Math.floor(count * 0.44);
+    const westCount = Math.floor((count - northCount) / 2);
+
     for (let i = 0; i < count; i++) {
-      const isWest = i < half;
-      const t = (i % half) / Math.max(1, half);
-      const tx = isWest ? -61 - Math.random() * 12 : 55 + Math.random() * 12;
-      const tz = -42 + t * 62;
-      const scale = 0.85 + Math.random() * 0.3;
+      let tx = 0, tz = 0;
+      if (i < northCount) {
+        tx = -58 + (i / northCount) * 116 + (Math.random() - 0.5) * 3;
+        if (tx > -19 && tx < -4) tx += 17; // avoid spawning pines inside pond/waterfall
+        tz = -45 - Math.random() * 14;
+      } else if (i < northCount + westCount) {
+        tx = -46 - Math.random() * 16;
+        tz = -40 + ((i - northCount) / westCount) * 58;
+      } else {
+        tx = 46 + Math.random() * 16;
+        tz = -40 + ((i - northCount - westCount) / Math.max(1, count - northCount - westCount)) * 58;
+      }
+      const scale = 0.85 + Math.random() * 0.32;
       dummy.position.set(tx, 0, tz);
       dummy.rotation.set(0, Math.random() * Math.PI * 2, 0);
       dummy.scale.setScalar(scale);
       dummy.updateMatrix();
       trunks.setMatrixAt(i, dummy.matrix);
       crowns.setMatrixAt(i, dummy.matrix);
+
       color.setHSL(0.36 + (Math.random() - 0.5) * 0.04, 0.52, 0.25 + Math.random() * 0.12);
       crowns.setColorAt(i, color);
     }
@@ -1639,87 +1270,40 @@ export class WorldManager {
   }
 
   buildSawmillAndHarbor() {
-    // Open-air Sawmill Conveyor Press strictly inside West Logging Compound
     this.sawmill = createSawmillModel();
-    this.sawmill.position.set(-29.0, 0, -10.5);
+    this.sawmill.position.set(2, 0, -14);
     this.worldGroup.add(this.sawmill);
 
-    // South-East Wooden Timber Harbor with 4 finger piers & 3 docked timber ships (100% matching reference image!)
     this.harbor = createHarborStructure();
-    this.harbor.position.set(23.0, 0, 25.0);
+    this.harbor.position.set(2, 0, 24);
     this.worldGroup.add(this.harbor);
 
-    // Pre-built animated Cargo Tug (Azure Sailor Tug HQ) cruising the outer bay lane
+    // Pre-built animated Cargo Freighter cruising the outer bay lane
     this.cargoFreighter = createCargoFreighterModel(this.lowSpec);
     this.cargoFreighter.position.set(-40, 0.05, 62);
     this.worldGroup.add(this.cargoFreighter);
 
-    // Live Timber Logistics Trucks (from trucks_collection.glb) looping cleanly along West & East Main Avenues
-    const truckRoutes = [
-      {
-        type: 'flatbed_truck',
-        speed: 4.9,
-        waypoints: [
-          { x: -10.3, z: -33.2 },
-          { x: -10.3, z: 22.0 },
-          { x: -12.7, z: 22.0 },
-          { x: -12.7, z: -33.2 }
-        ]
-      },
-      {
-        type: 'timber_truck',
-        speed: 4.5,
-        waypoints: [
-          { x: 15.3, z: -33.2 },
-          { x: 15.3, z: 22.4 },
-          { x: 17.7, z: 22.4 },
-          { x: 17.7, z: -33.2 }
-        ]
-      }
-    ];
-    for (let i = 0; i < truckRoutes.length; i++) {
-      const cfg = truckRoutes[i];
-      const truck = createVehicleModel(cfg.type, this.lowSpec);
-      const wp0 = cfg.waypoints[0];
-      const wp1 = cfg.waypoints[1];
-      const startYaw = Math.atan2(wp1.x - wp0.x, wp1.z - wp0.z);
-      truck.position.set(wp0.x, 0.03, wp0.z);
-      truck.rotation.y = startYaw;
-      this.worldGroup.add(truck);
-      this.roadTrucks.push({
-        mesh: truck,
-        waypoints: cfg.waypoints,
-        wpIdx: 1,
-        speed: cfg.speed,
-        curSpeed: cfg.speed,
-        yaw: startYaw,
-        pauseTimer: 0,
-        carrying: true,
-        exhaustTimer: i * 0.45
-      });
-    }
-
     // Subtle pier point light gated OFF on <8GB RAM low-spec laptops
     this.harborBeaconLight = new THREE.PointLight(0xfef08a, 1.8, 26, 1.6);
-    this.harborBeaconLight.position.set(23.0, 6.2, 34);
+    this.harborBeaconLight.position.set(8.5, 6.2, 34);
     this.harborBeaconLight.visible = !this.lowSpec;
     this.worldGroup.add(this.harborBeaconLight);
 
-    // Pre-built VIP Yacht (boat.glb) docked cleanly at Far-East Yacht Berth (39, 33.5)
+    // Pre-built VIP Yacht docked at East Bay Berth (zero runtime allocation)
     this.vipYacht = createVipYachtModel(this.lowSpec);
-    this.vipYacht.position.set(41.5, 0.05, 33.5);
+    this.vipYacht.position.set(22, 0.05, 31.5);
     this.vipYacht.rotation.y = Math.PI * 0.14;
     this.worldGroup.add(this.vipYacht);
     this.syncYachtTier(gameState.yachtTier || 0);
 
-    // Pre-built Harbor Gantry Container Crane beside South-East Harbor Quay
+    // Pre-built Harbor Gantry Container Crane
     this.gantryCrane = createGantryCraneModel(this.lowSpec);
-    this.gantryCrane.position.set(17.5, 0.62, 28.8);
+    this.gantryCrane.position.set(-1.5, 0.72, 29.5);
     this.worldGroup.add(this.gantryCrane);
 
-    // Pre-built Airport Runway & Hangar (Cleanly placed East of the Railway at x=43.5, z=-4)
+    // Pre-built Airport Runway & Hangar (East Peninsula x=30, z=-2)
     this.airport = createAirportRunwayModel(this.lowSpec);
-    this.airport.position.set(43.5, 0, -4);
+    this.airport.position.set(30, 0, -2);
     this.worldGroup.add(this.airport);
     this.syncAirportTier(gameState.airportTier || 0);
 
@@ -1730,37 +1314,37 @@ export class WorldManager {
     this.syncIslandTier(gameState.islandStationTier || 0);
     this.syncResortTier(gameState.islandResortTier || 0);
 
-    // Pre-built Corporate HQ Tower at East Infrastructure Plaza (24.5, 0, 7.5)
+    // Pre-built Corporate HQ Tower at East Plaza (15, 0, 7)
     this.corporateHq = createCorporateHqModel(this.lowSpec);
     this.corporateHq.position.copy(ZONES.hqPlaza);
     this.corporateHq.rotation.y = -Math.PI * 0.5;
     this.worldGroup.add(this.corporateHq);
     this.syncHqTier(gameState.hqTier || 0);
 
-    // Pre-built Luxury Furniture Factory inside West Logging Zone (-35.0, 0, 2.5)
+    // Pre-built Luxury Furniture Factory (16, 0, -24)
     this.furnitureFactory = createFurnitureFactoryModel(this.lowSpec);
     this.furnitureFactory.position.copy(ZONES.furnitureMill);
     this.worldGroup.add(this.furnitureFactory);
     this.syncFurnitureMillTier(gameState.furnitureMillTier || 0);
 
-    // Pre-built Coastal Maritime Lighthouse (-44.0, 0, 24.2)
+    // Pre-built Coastal Maritime Lighthouse (-30, 0, 26)
     this.lighthouse = createLighthouseModel(this.lowSpec);
     this.lighthouse.position.copy(ZONES.lighthouse);
     this.worldGroup.add(this.lighthouse);
     this.syncLighthouseTier(gameState.lighthouseTier || 0);
 
-    // Pre-built Deep-Water Container Pier, Mega Ship, Gantry Crane & Green Solar Microgrid (-24.0, 0, 31.5)
+    // Pre-built Deep-Water Container Pier, Mega Ship, Gantry Crane & Green Solar Microgrid (-20, 0, 31)
     this.deepContainerPort = createDeepContainerPortModel(this.lowSpec);
-    this.deepContainerPort.position.set(-24.0, 0, 31.5);
+    this.deepContainerPort.position.set(-20, 0, 31);
     this.worldGroup.add(this.deepContainerPort);
     this.syncDeepPortTier(gameState.deepPortTier || 0, gameState.greenEnergyTier || 0);
 
-    // Phase 8: Pre-built Industrial Railway Track, Depot & Diesel-Electric Freight Train (East Band X=+33.5)
+    // Phase 8: Pre-built Industrial Railway Track, Depot & Diesel-Electric Freight Train
     this.railwaySystem = createRailwayAndTrainModel(this.lowSpec);
     this.worldGroup.add(this.railwaySystem);
     this.syncRailwayTier(gameState.railwayTier || 0);
 
-    // Phase 8: Pre-built Illuminated Helipad at East Corporate Plaza (24.5, 0, 16.5)
+    // Phase 8: Pre-built Illuminated Helipad at East Corporate Plaza (19.5, 0, 15.5)
     this.helipad = createHelipadModel(this.lowSpec);
     this.helipad.position.copy(ZONES.helipad);
     this.worldGroup.add(this.helipad);
@@ -1989,13 +1573,11 @@ export class WorldManager {
 
   buildHarvestableForest() {
     const spots = [];
-    // Harvestable Pine & Oak Forest STRICTLY OUTSIDE the West Logging Compound Fence (X = -65..-49.5, Z = -28..+8)
-    // ZERO random trees inside the industrial yard or residential blocks!
-    for (let row = 0; row < 6; row++) {
-      for (let col = 0; col < 4; col++) {
+    for (let row = 0; row < 4; row++) {
+      for (let col = 0; col < 6; col++) {
         spots.push({
-          x: -64.5 + col * 4.8 + (Math.random() - 0.5) * 0.9,
-          z: -26.5 + row * 6.4 + (Math.random() - 0.5) * 0.9
+          x: -37 + col * 4.4 + (Math.random() - 0.5) * 1.1,
+          z: -33 + row * 5.2 + (Math.random() - 0.5) * 1.1
         });
       }
     }
@@ -2033,10 +1615,10 @@ export class WorldManager {
 
   buildArcadePads() {
     const padDefs = [
-      { id: 'axeTier', pos: new THREE.Vector3(-42.5, 0, -10.5), color: '#f59e0b', label: 'Nâng cấp Rìu' },
-      { id: 'sawSpeedTier', pos: new THREE.Vector3(-29.0, 0, -16.5), color: '#ef4444', label: 'Tốc độ Máy Cưa' },
-      { id: 'lumberjacks', pos: new THREE.Vector3(-37.0, 0, -15.5), color: '#10b981', label: 'Thuê Thợ Rừng' },
-      { id: 'fishingBoats', pos: new THREE.Vector3(-12.5, 0.5, 29.5), color: '#0ea5e9', label: 'Mua Tàu Đánh Cá' }
+      { id: 'axeTier', pos: new THREE.Vector3(-16, 0, -24), color: '#f59e0b', label: 'Nâng cấp Rìu' },
+      { id: 'sawSpeedTier', pos: new THREE.Vector3(2, 0, -24), color: '#ef4444', label: 'Tốc độ Máy Cưa' },
+      { id: 'lumberjacks', pos: new THREE.Vector3(-16, 0, -6), color: '#10b981', label: 'Thuê Thợ Rừng' },
+      { id: 'fishingBoats', pos: new THREE.Vector3(-12, 0.5, 29), color: '#0ea5e9', label: 'Mua Tàu Đánh Cá' }
     ];
 
     const ringGeo = new THREE.RingGeometry(1.52, 1.72, 28);
@@ -2143,9 +1725,6 @@ export class WorldManager {
       this.waterTex = getWaterTexture(branch.waterColor);
       this.waterMat.map = this.waterTex;
       this.waterMat.needsUpdate = true;
-    }
-    if (this.ocean3D) {
-      updateOcean3D(this.ocean3D, 0, stormState.active ? 1 : 0, branch.waterColor);
     }
   }
 
@@ -2341,107 +1920,18 @@ export class WorldManager {
       }
     }
 
-    const stormFactor = stormState.active ? 1.0 : 0.0;
-    if (this.ocean3D) {
-      updateOcean3D(this.ocean3D, elapsed, stormFactor);
-    }
-
     if (this.cargoFreighter) {
       const phase = elapsed * 0.11;
       const fx = Math.sin(phase) * 58;
-      const fz = 62 + Math.cos(phase) * 14;
-      const vx = Math.cos(phase) * 58 * 0.11;
-      const vz = -Math.sin(phase) * 14 * 0.11;
-      const speed = Math.hypot(vx, vz);
-      const targetYaw = Math.atan2(vx, vz);
-      let yawDiff = targetYaw - this.cargoFreighterYaw;
-      while (yawDiff > Math.PI) yawDiff -= Math.PI * 2;
-      while (yawDiff < -Math.PI) yawDiff += Math.PI * 2;
-      this.cargoFreighterYaw += yawDiff * Math.min(1, dt * 3.2);
-      updateVesselBuoyancy(
-        this.cargoFreighter,
-        fx,
-        fz,
-        this.cargoFreighterYaw,
-        speed,
-        THREE.MathUtils.clamp(yawDiff * 1.4, -0.6, 0.6),
-        elapsed,
-        stormFactor,
-        dt,
-        0.05
-      );
-      // Gentle diesel funnel exhaust puffs
-      const cfUd = this.cargoFreighter.userData;
-      if (cfUd && cfUd.funnelAnchor) {
-        cfUd.smokeTimer = (cfUd.smokeTimer || 0) + dt;
-        if (cfUd.smokeTimer >= (this.lowSpec ? 0.55 : 0.28)) {
-          cfUd.smokeTimer = 0;
-          cfUd.funnelAnchor.getWorldPosition(this._tugSmokeVec);
-          this.spawnParticles(this._tugSmokeVec, 0xe2e8f0, 1);
-        }
-      }
-    }
-
-    if (this.waterwheel) {
-      this.waterwheel.rotation.z -= dt * 1.15;
+      const fz = 60 + Math.cos(phase * 0.5) * 8;
+      const dx = Math.cos(phase) * 58 * 0.11;
+      this.cargoFreighter.position.set(fx, 0.05 + Math.sin(elapsed * 1.2) * 0.12, fz);
+      this.cargoFreighter.rotation.y = dx >= 0 ? 0 : Math.PI;
     }
 
     if (this.vipYacht && this.vipYacht.visible) {
-      updateVesselBuoyancy(
-        this.vipYacht,
-        41.5,
-        33.5,
-        Math.PI * 0.14,
-        0,
-        0,
-        elapsed,
-        stormFactor,
-        dt,
-        0.04
-      );
-    }
-
-    // Animated Island Timber Logistics Trucks (real wheel spin, front steering, suspension)
-    for (let i = 0; i < this.roadTrucks.length; i++) {
-      const tr = this.roadTrucks[i];
-      const target = tr.waypoints[tr.wpIdx];
-      const dx = target.x - tr.mesh.position.x;
-      const dz = target.z - tr.mesh.position.z;
-      const dist = Math.hypot(dx, dz);
-
-      if (tr.pauseTimer > 0) {
-        tr.pauseTimer -= dt;
-        tr.curSpeed = THREE.MathUtils.lerp(tr.curSpeed, 0, Math.min(1, dt * 6));
-        updateVehicleKinematics(tr.mesh, dt, tr.curSpeed, 0, tr.carrying, elapsed, true);
-        continue;
-      }
-
-      if (dist < 1.35) {
-        tr.wpIdx = (tr.wpIdx + 1) % tr.waypoints.length;
-        // Brief realistic loading/unloading pause at sawmill/harbor ends
-        if (tr.wpIdx === 0 || tr.wpIdx === 2) {
-          tr.pauseTimer = 1.6;
-          tr.carrying = tr.wpIdx === 0;
-        }
-        continue;
-      }
-
-      const slowNearCorner = dist < 4.5 ? THREE.MathUtils.clamp(dist / 4.5, 0.42, 1.0) : 1.0;
-      const desiredSpeed = tr.speed * slowNearCorner;
-      tr.curSpeed = THREE.MathUtils.lerp(tr.curSpeed, desiredSpeed, Math.min(1, dt * 4.5));
-
-      const desiredYaw = Math.atan2(dx, dz);
-      let yawDiff = desiredYaw - tr.yaw;
-      while (yawDiff > Math.PI) yawDiff -= Math.PI * 2;
-      while (yawDiff < -Math.PI) yawDiff += Math.PI * 2;
-      const steerInput = THREE.MathUtils.clamp(yawDiff * 1.15, -0.48, 0.48);
-      tr.yaw += yawDiff * Math.min(1, dt * 4.2);
-
-      tr.mesh.position.x += Math.sin(tr.yaw) * tr.curSpeed * dt;
-      tr.mesh.position.z += Math.cos(tr.yaw) * tr.curSpeed * dt;
-      tr.mesh.rotation.y = tr.yaw;
-
-      updateVehicleKinematics(tr.mesh, dt, tr.curSpeed, steerInput, tr.carrying, elapsed, true);
+      this.vipYacht.position.y = 0.05 + Math.sin(elapsed * 1.55) * 0.11;
+      this.vipYacht.rotation.z = Math.sin(elapsed * 1.1) * 0.025;
     }
 
     if (this.gantryCrane && !this.lowSpec && this.gantryCrane.userData.trolley) {
@@ -2574,7 +2064,7 @@ export class WorldManager {
         if (this.trainSmokeTimer <= 0) {
           this.trainSmokeTimer = (gameState.trainBoostTimer || 0) > 0 ? 0.25 : 0.48;
           this.spawnParticles(
-            { x: 33.5, y: 2.2, z: trainZ + 1.2 },
+            { x: -19.5, y: 2.2, z: trainZ + 1.2 },
             (gameState.trainBoostTimer || 0) > 0 ? 0xfacc15 : 0x94a3b8,
             1
           );
