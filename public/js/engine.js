@@ -122,7 +122,7 @@ import {
   applyLiveryToModel,
   disposeObject3D
 } from './models.js';
-import { WorldManager, WORLD_BOUNDS, LAND_EDGE_Z, SEA_BOUNDS, AIR_BOUNDS, ZONES } from './world.js';
+import { WorldManager, WORLD_BOUNDS, LAND_EDGE_Z, SEA_BOUNDS, AIR_BOUNDS, ZONES, MAP_ZONES, DELIVERY_DROPOFFS, FISHING_PIER_DOCKS } from './world.js';
 import { UIManager } from './ui.js';
 
 // ---------------------------------------------------------------------------
@@ -130,88 +130,88 @@ import { UIManager } from './ui.js';
 // ---------------------------------------------------------------------------
 const ISLAND_WAYPOINTS = {
   plaza_center: {
-    id: 'plaza_center', x: 0.5, z: 4.5, isShelter: false,
-    buildingId: 'plaza', buildingLabel: 'Quảng Trường Trung Tâm',
-    interactAction: '🏛️ Ngắm Quảng trường Đế Chế', pose: 'photo',
-    lookAt: { x: 0, z: -8 },
-    neighbors: ['sawmill_walk', 'hq_plaza', 'boardwalk_center', 'rail_station']
+    id: 'plaza_center', x: 5.0, z: -46.0, isShelter: false,
+    buildingId: 'plaza', buildingLabel: 'Công Viên Trung Tâm Khu Dân Cư',
+    interactAction: '🏛️ Dạo chơi Công Viên Trung Tâm', pose: 'photo',
+    lookAt: { x: 5.0, z: -54.0 },
+    neighbors: ['sawmill_walk', 'east_avenue', 'boardwalk_center', 'furniture_walk']
   },
   sawmill_walk: {
-    id: 'sawmill_walk', x: 5.2, z: -3.2, isShelter: true,
-    buildingId: 'sawmill', buildingLabel: 'Xưởng Cưa Công Nghiệp',
+    id: 'sawmill_walk', x: -58.0, z: -42.0, isShelter: true,
+    buildingId: 'sawmill', buildingLabel: 'Khu Công Nghiệp Gỗ & Xưởng Cưa',
     interactAction: '🪵 Kiểm định dây chuyền Xưởng Cưa', pose: 'inspect',
-    lookAt: { x: 1.5, z: -11.5 },
-    neighbors: ['plaza_center', 'hq_plaza', 'furniture_walk']
+    lookAt: { x: -76.0, z: -42.0 },
+    neighbors: ['furniture_walk', 'boardwalk_west']
   },
   hq_plaza: {
-    id: 'hq_plaza', x: 13.5, z: -9.8, isShelter: true,
-    buildingId: 'hq', buildingLabel: 'Tháp Trụ Sở Tập Đoàn',
-    interactAction: '📊 Xem bảng cổ phiếu Trụ sở HQ', pose: 'point_up',
-    lookAt: { x: 15.0, z: -14.5 },
-    neighbors: ['plaza_center', 'sawmill_walk', 'east_avenue']
+    id: 'hq_plaza', x: 68.0, z: -46.0, isShelter: true,
+    buildingId: 'hq', buildingLabel: 'Khu Hạ Tầng & Trụ Sở Tập Đoàn',
+    interactAction: '📊 Xem bảng điều phối Khu Hạ Tầng', pose: 'point_up',
+    lookAt: { x: 76.0, z: -46.0 },
+    neighbors: ['east_avenue', 'rail_station', 'helipad_plaza']
   },
   east_avenue: {
-    id: 'east_avenue', x: 18.5, z: -4.0, isShelter: false,
-    buildingId: 'avenue', buildingLabel: 'Đại Lộ Thương Mại Đông',
+    id: 'east_avenue', x: 45.0, z: -46.0, isShelter: false,
+    buildingId: 'avenue', buildingLabel: 'Đại Lộ Phân Khu Đông',
     interactAction: '🌳 Dạo mát Đại lộ Đông', pose: 'sip_coffee',
-    lookAt: { x: 24.0, z: -4.0 },
-    neighbors: ['hq_plaza', 'airport_terminal', 'furniture_walk']
+    lookAt: { x: 74.0, z: -46.0 },
+    neighbors: ['plaza_center', 'hq_plaza', 'boardwalk_east']
   },
   furniture_walk: {
-    id: 'furniture_walk', x: 12.8, z: 4.8, isShelter: true,
-    buildingId: 'furniture', buildingLabel: 'Nhà Máy Nội Thất Cao Cấp',
-    interactAction: '🛋️ Xem Showroom Nội thất xuất khẩu', pose: 'inspect',
-    lookAt: { x: 16.0, z: 2.5 },
-    neighbors: ['sawmill_walk', 'east_avenue', 'helipad_plaza', 'boardwalk_center']
+    id: 'furniture_walk', x: -34.0, z: -22.0, isShelter: true,
+    buildingId: 'furniture', buildingLabel: 'Đại Lộ Phân Khu Tây & Xưởng Nội Thất',
+    interactAction: '🛋️ Xem Xưởng Nội thất xuất khẩu', pose: 'inspect',
+    lookAt: { x: -60.0, z: -18.0 },
+    neighbors: ['plaza_center', 'sawmill_walk', 'boardwalk_west', 'boardwalk_center']
   },
   rail_station: {
-    id: 'rail_station', x: -14.5, z: -2.5, isShelter: true,
-    buildingId: 'railway', buildingLabel: 'Ga Tàu Hỏa Logistics',
+    id: 'rail_station', x: 96.0, z: -42.0, isShelter: true,
+    buildingId: 'railway', buildingLabel: 'Ga Tàu Hỏa Logistics Đông',
     interactAction: '🚂 Kiểm tra toa hàng Ga Đường Sắt', pose: 'wave_ship',
-    lookAt: { x: -19.5, z: -2.5 },
-    neighbors: ['plaza_center', 'boardwalk_west']
+    lookAt: { x: 106.0, z: -42.0 },
+    neighbors: ['hq_plaza', 'helipad_plaza', 'airport_terminal']
   },
   boardwalk_west: {
-    id: 'boardwalk_west', x: -9.5, z: 17.2, isShelter: true,
-    buildingId: 'deep_port', buildingLabel: 'Bến Cảng Tây & Nhà Máy Cá',
-    interactAction: '🏗️ Quan sát Cẩu Container Cảng Sâu', pose: 'photo',
-    lookAt: { x: -18.0, z: 26.0 },
-    neighbors: ['rail_station', 'boardwalk_center']
+    id: 'boardwalk_west', x: -58.0, z: 21.0, isShelter: true,
+    buildingId: 'deep_port', buildingLabel: 'Bờ Kè & Cầu Tàu Cá Tây',
+    interactAction: '🎣 Ngắm tàu cá neo đậu bến Tây', pose: 'photo',
+    lookAt: { x: -58.0, z: 32.0 },
+    neighbors: ['sawmill_walk', 'furniture_walk', 'boardwalk_center']
   },
   boardwalk_center: {
-    id: 'boardwalk_center', x: 1.5, z: 17.2, isShelter: true,
-    buildingId: 'promenade', buildingLabel: 'Phố Đi Bộ & Café Bến Cảng',
-    interactAction: '☕ Thưởng thức Cà phê Phố Đi Bộ', pose: 'sip_coffee',
-    lookAt: { x: 2.0, z: 26.0 },
+    id: 'boardwalk_center', x: 5.0, z: 20.5, isShelter: true,
+    buildingId: 'promenade', buildingLabel: 'Bờ Kè & Đường Đi Bộ Ven Biển',
+    interactAction: '☕ Thưởng thức Cà phê Ven Biển', pose: 'sip_coffee',
+    lookAt: { x: 5.0, z: 32.0 },
     neighbors: ['plaza_center', 'furniture_walk', 'boardwalk_west', 'harbor_pier', 'boardwalk_east']
   },
   harbor_pier: {
-    id: 'harbor_pier', x: 2.0, z: 22.6, isShelter: false,
-    buildingId: 'harbor', buildingLabel: 'Cầu Tàu Xuất Khẩu Quốc Tế',
-    interactAction: '🚢 Vẫy chào tàu viễn dương cập cảng', pose: 'wave_ship',
-    lookAt: { x: 2.0, z: 32.0 },
+    id: 'harbor_pier', x: 5.0, z: 29.0, isShelter: false,
+    buildingId: 'harbor', buildingLabel: 'Cầu Gỗ Neo Đậu Tàu Cá Trung Tâm',
+    interactAction: '⛵ Vẫy chào tàu cá cập bến', pose: 'wave_ship',
+    lookAt: { x: 5.0, z: 38.0 },
     neighbors: ['boardwalk_center']
   },
   boardwalk_east: {
-    id: 'boardwalk_east', x: 12.8, z: 18.8, isShelter: true,
-    buildingId: 'yacht', buildingLabel: 'Bến Du Thuyền VIP',
-    interactAction: '📸 Chụp ảnh Bến Du Thuyền VIP', pose: 'photo',
-    lookAt: { x: 16.0, z: 28.0 },
-    neighbors: ['boardwalk_center', 'helipad_plaza']
+    id: 'boardwalk_east', x: 52.0, z: 21.0, isShelter: true,
+    buildingId: 'yacht', buildingLabel: 'Bến Neo Đậu Tàu Cá & Du Thuyền Đông',
+    interactAction: '📸 Chụp ảnh Bến Tàu Đông', pose: 'photo',
+    lookAt: { x: 52.0, z: 32.0 },
+    neighbors: ['boardwalk_center', 'east_avenue', 'helipad_plaza']
   },
   helipad_plaza: {
-    id: 'helipad_plaza', x: 17.2, z: 12.2, isShelter: false,
+    id: 'helipad_plaza', x: 66.0, z: -12.0, isShelter: false,
     buildingId: 'helipad', buildingLabel: 'Sân Đáp Trực Thăng VIP (H)',
     interactAction: '🚁 Chiêm ngưỡng Trực thăng Chuyên cơ', pose: 'photo',
-    lookAt: { x: 19.5, z: 15.5 },
-    neighbors: ['furniture_walk', 'boardwalk_east', 'airport_terminal']
+    lookAt: { x: 74.0, z: -12.0 },
+    neighbors: ['hq_plaza', 'rail_station', 'boardwalk_east', 'airport_terminal']
   },
   airport_terminal: {
-    id: 'airport_terminal', x: 23.2, z: 3.5, isShelter: true,
-    buildingId: 'airport', buildingLabel: 'Nhà Ga Sân Bay Đông',
+    id: 'airport_terminal', x: 122.0, z: 4.0, isShelter: true,
+    buildingId: 'airport', buildingLabel: 'Nhà Ga Đường Băng Đông',
     interactAction: '✈️ Xem lịch bay tại Nhà ga Hàng không', pose: 'inspect',
-    lookAt: { x: 30.0, z: 5.0 },
-    neighbors: ['east_avenue', 'helipad_plaza']
+    lookAt: { x: 132.0, z: 4.0 },
+    neighbors: ['rail_station', 'helipad_plaza']
   },
   // Offshore Luxury Resort Island Loop
   resort_west: {
@@ -245,13 +245,12 @@ const RESORT_WP_KEYS = ['resort_west', 'resort_plaza', 'resort_lighthouse'];
 
 // Soft circular building obstacle colliders so pedestrians never clip into structures while steering
 const BUILDING_COLLIDERS = [
-  { x: 0.0, z: -11.5, radius: 5.4 },   // Main Sawmill complex
-  { x: 15.0, z: -14.2, radius: 3.8 },  // Corporate HQ Tower
-  { x: 16.2, z: 1.5, radius: 3.2 },    // Luxury Furniture Mill
-  { x: -19.5, z: -3.5, radius: 2.8 },  // West Railway Depot
-  { x: -7.5, z: 22.0, radius: 2.8 },   // Harbor Cannery Building
-  { x: -5.8, z: 11.2, radius: 1.65 },  // Civic Tourist Kiosk
-  { x: 5.8, z: 11.2, radius: 1.65 }    // Civic Golden Monument
+  { x: -76.0, z: -42.0, radius: 6.5 },   // Main Sawmill complex (Logging Zone)
+  { x: -60.0, z: -18.0, radius: 3.8 },   // Furniture Mill (Logging Zone)
+  { x: 5.0, z: -52.0, radius: 3.4 },     // Central Park Fountain (Residential Zone)
+  { x: 76.0, z: -46.0, radius: 4.2 },    // Corporate HQ Tower (Infrastructure Zone)
+  { x: 101.6, z: -42.0, radius: 3.2 },   // East Railway Station (Infrastructure Zone)
+  { x: -92.0, z: 23.0, radius: 2.6 }     // Coastal Lighthouse (West Waterfront)
 ];
 
 // ---------------------------------------------------------------------------
@@ -388,17 +387,20 @@ class TimberPortEngine {
     this._arcStart = new THREE.Vector3();
     this._arcEnd = new THREE.Vector3();
 
-    // Player & simulation state
-    this.playerPos = new THREE.Vector3(0, 0, 2);
+    // Player & simulation state (spawn on South Avenue facing Residential Park, with Logging West & Infrastructure East)
+    this.playerPos = new THREE.Vector3(5, 0, 10);
     const checkpoint = gameState.checkpoint;
     if (checkpoint) {
       const { x, z } = DISTRICTS[checkpoint.row][checkpoint.column];
       this.playerPos.set(x, 0, z);
     }
     this.vehicleHome = null;
+    this.activeYardVehicle = null;
+    this.activeBoardedBoat = null;
     this.playerYaw = 0;
     this.inVehicle = false;
-    this.controlMode = 'foot'; // 'foot' | 'land' | 'yacht' | 'plane' | 'heli'
+    this.controlMode = 'foot'; // 'foot' | 'land' | 'yard_vehicle' | 'yacht' | 'plane' | 'heli'
+    this.syncYardVehicleDrivers();
     this.vehicleSpeed = 0;
     this.planePitch = 0;
     this.planeBank = 0;
@@ -601,7 +603,9 @@ class TimberPortEngine {
       onLiveryChange: () => this.applyFleetLiveries(),
       onPlaneChange: () => this.rebuildAirSeaFleet(),
       onAutoFleetChange: () => this.rebuildAirSeaFleet(),
-      onBoardYacht: () => this.boardYacht(),
+      onQuickYardTruck: () => this.quickBoardYardTruck(),
+      onHireOrToggleDriver: () => this.hireOrToggleYardDriver(),
+      onBoardYacht: () => this.boardYacht(null, true),
       onBoardPlane: () => this.boardPlane(),
       onBoardHeli: () => this.boardHeli(),
       onBoardStormVehicle: () => {
@@ -609,7 +613,7 @@ class TimberPortEngine {
           if ((gameState.heliTier || 0) >= 1) this.boardHeli();
           else this.boardPlane();
         } else {
-          this.boardYacht();
+          this.boardYacht(null, true);
         }
       },
       onDisembark: () => this.disembarkFleet(),
@@ -1128,7 +1132,7 @@ class TimberPortEngine {
     while (this.aiWorkers.length < (gameState.lumberjacks || 0)) {
       const idx = this.aiWorkers.length;
       const mesh = createWorkerModel('lumberjack');
-      const startPos = new THREE.Vector3(-18 - idx * 2.5, 0, -14 + idx * 2);
+      const startPos = new THREE.Vector3(-82 - idx * 2.5, 0, -68 + idx * 2);
       mesh.position.copy(startPos);
       this.scene.add(mesh);
       this.aiWorkers.push({
@@ -1150,7 +1154,7 @@ class TimberPortEngine {
       const idx = this.aiForklifts.length;
       const mesh = createVehicleModel('forklift', low);
       mesh.scale.setScalar(0.84);
-      const startPos = new THREE.Vector3(6 + idx * 2.4, 0, -6 + idx * 3);
+      const startPos = new THREE.Vector3(-66 + idx * 2.4, 0, -34 + idx * 2.5);
       mesh.position.copy(startPos);
       this.scene.add(mesh);
       this.aiForklifts.push({
@@ -1191,14 +1195,14 @@ class TimberPortEngine {
   rebuildAirSeaFleet() {
     const low = this.activeProfile === 'low';
 
-    // Drivable Yacht
+    // Drivable Boat / Yacht (always available from coastal fishing piers even at Tier 0)
     if (this.drivableYacht) {
       this.scene.remove(this.drivableYacht);
       disposeObject3D(this.drivableYacht);
       this.drivableYacht = null;
     }
-    if ((gameState.yachtTier || 0) >= 1) {
-      const yTier = gameState.yachtTier || 1;
+    {
+      const yTier = Math.max(1, gameState.yachtTier || 0);
       this.drivableYacht = createDrivableYachtModel(yTier, low);
       this.drivableYacht.visible = this.controlMode === 'yacht';
       if (this.controlMode === 'yacht') {
@@ -1208,9 +1212,11 @@ class TimberPortEngine {
       this.scene.add(this.drivableYacht);
       attachGlbToPersonalBoat(this.drivableYacht, {
         yawOffset: 0,
-        scaleMult: 0.92 + yTier * 0.08
+        scaleMult: (gameState.yachtTier || 0) >= 1 ? (0.92 + yTier * 0.08) : 0.92
       });
-      this.ensureDockedPersonalBoatGlb();
+      if ((gameState.yachtTier || 0) >= 1) {
+        this.ensureDockedPersonalBoatGlb();
+      }
     }
 
     // Drivable Airplane parked on Runway (or active in flight)
@@ -1226,7 +1232,7 @@ class TimberPortEngine {
         this.drivablePlane.position.copy(this.playerPos);
         this.drivablePlane.rotation.y = this.playerYaw;
       } else {
-        this.drivablePlane.position.set(30, 0.14, 13);
+        this.drivablePlane.position.copy(ZONES.runwayStart);
         this.drivablePlane.rotation.set(0, Math.PI, 0);
       }
       this.scene.add(this.drivablePlane);
@@ -1245,7 +1251,7 @@ class TimberPortEngine {
         this.drivableHeli.position.copy(this.playerPos);
         this.drivableHeli.rotation.y = this.playerYaw;
       } else {
-        this.drivableHeli.position.set(19.5, 0.25, 15.5);
+        this.drivableHeli.position.set(ZONES.helipad.x, 0.25, ZONES.helipad.z);
         this.drivableHeli.rotation.set(0, -Math.PI * 0.25, 0);
       }
       this.scene.add(this.drivableHeli);
@@ -1379,6 +1385,12 @@ class TimberPortEngine {
         this.greetNearbyCitizen(true);
         return;
       }
+      if (code === 'KeyF') {
+        if (!this.ui.isAnyModalOpen()) {
+          this.hireOrToggleYardDriver();
+        }
+        return;
+      }
       const isAircraft = this.controlMode === 'plane' || this.controlMode === 'heli';
       if (code === 'KeyE' || (code === 'Space' && !isAircraft)) {
         if (!this.ui.isAnyModalOpen()) {
@@ -1479,8 +1491,262 @@ class TimberPortEngine {
   // -------------------------------------------------------------------------
   // 4. Contextual Interactions (Land Vehicles, Yachts, Airplanes, Helicopter, Train, Harbor)
   // -------------------------------------------------------------------------
+  findNearestYardVehicle(maxDist = 7.2) {
+    const list = this.world?.yardVehicles || [];
+    let best = null;
+    let bestD = maxDist;
+    for (const v of list) {
+      const d = Math.hypot(this.playerPos.x - v.pos.x, this.playerPos.z - v.pos.z);
+      if (d < bestD) {
+        bestD = d;
+        best = v;
+      }
+    }
+    return best;
+  }
+
+  findNearestBoatDock(maxDist = 11.0) {
+    let bestDock = null;
+    let bestD = maxDist;
+    for (const dock of FISHING_PIER_DOCKS) {
+      const d = Math.hypot(this.playerPos.x - dock.pierX, this.playerPos.z - dock.pierZ);
+      if (d < bestD) {
+        bestD = d;
+        bestDock = dock;
+      }
+    }
+    let bestMoored = null;
+    let bestMooredD = maxDist + 2.5;
+    for (const b of this.world?.mooredFishingBoats || []) {
+      if (!b.group.visible) continue;
+      const d = Math.hypot(this.playerPos.x - b.x, this.playerPos.z - b.z);
+      if (d < bestMooredD) {
+        bestMooredD = d;
+        bestMoored = b;
+      }
+    }
+    if (!bestDock && bestMoored) {
+      bestDock = FISHING_PIER_DOCKS.find((d) => d.id === bestMoored.pierId) || FISHING_PIER_DOCKS[1];
+    }
+    if (!bestDock) return null;
+    if (!bestMoored) {
+      bestMoored = (this.world?.mooredFishingBoats || []).find((b) => b.pierId === bestDock.id && b.group.visible) || null;
+    }
+    return { dock: bestDock, mooredBoat: bestMoored };
+  }
+
+  syncYardVehicleDrivers() {
+    const saved = gameState.yardDrivers || {};
+    for (const v of this.world?.yardVehicles || []) {
+      const hired = Boolean(saved[v.id]);
+      v.driverHired = hired;
+      if (v.driverVisual) v.driverVisual.visible = hired;
+      if (v.cargoVisual) v.cargoVisual.visible = v.cargoWood > 0;
+      if (hired && v.state === 'parked') {
+        if (v.cargoWood <= 0) v.cargoWood = Math.max(4, Math.floor(v.cargoCapacity * 0.7));
+        if (v.cargoVisual) v.cargoVisual.visible = true;
+        v.state = 'delivering';
+        v.wpIdx = 0;
+      }
+    }
+  }
+
+  quickBoardYardTruck() {
+    if (this.controlMode === 'yard_vehicle') {
+      this.exitYardVehicle();
+      return;
+    }
+    if (this.controlMode !== 'foot') {
+      this.ui.toast('Hãy rời phương tiện hiện tại (Phím E) trước khi lên xe gỗ.');
+      return;
+    }
+    const list = this.world?.yardVehicles || [];
+    if (!list.length) return;
+    // Prefer nearest vehicle, or first timber truck in Logging Zone
+    let chosen = this.findNearestYardVehicle(12);
+    if (!chosen) {
+      chosen = list.find((v) => v.kind === 'truck' && !v.driverHired) || list.find((v) => v.kind === 'truck') || list[0];
+    }
+    this.boardYardVehicle(chosen);
+  }
+
+  boardYardVehicle(v) {
+    if (!v) return;
+    if (this.controlMode !== 'foot') {
+      this.ui.toast('Hãy xuống phương tiện hiện tại trước (Phím E).');
+      return;
+    }
+    this.activeYardVehicle = v;
+    v.state = 'player';
+    this.controlMode = 'yard_vehicle';
+    this.vehicleSpeed = 0;
+    this.playerPos.set(v.pos.x, 0, v.pos.z);
+    this.playerYaw = v.yaw;
+    this.playerModel.visible = false;
+    if (this.petModel) this.petModel.visible = false;
+    if (v.groundRing) v.groundRing.visible = false;
+
+    // Auto-load timber if parked inside Logging Zone
+    if (
+      v.cargoWood < v.cargoCapacity &&
+      v.pos.x >= MAP_ZONES.logging.minX && v.pos.x <= MAP_ZONES.logging.maxX &&
+      v.pos.z >= MAP_ZONES.logging.minZ && v.pos.z <= MAP_ZONES.logging.maxZ
+    ) {
+      this.loadWoodIntoYardVehicle(v, false);
+    }
+
+    sound.playUpgrade();
+    this.ui.toast(`🚛 Đang lái ${v.name}! Chở gỗ sang Khu Dân Cư, Khu Hạ Tầng hoặc Bến Tàu Cá · Phím F thuê tài xế AI!`);
+  }
+
+  exitYardVehicle() {
+    const v = this.activeYardVehicle;
+    if (!v) {
+      this.controlMode = 'foot';
+      return;
+    }
+    // Place player safely beside vehicle on land
+    const sideX = Math.cos(v.yaw) * 2.9;
+    const sideZ = -Math.sin(v.yaw) * 2.9;
+    this.playerPos.set(
+      THREE.MathUtils.clamp(v.pos.x + sideX, WORLD_BOUNDS.minX + 2, WORLD_BOUNDS.maxX - 2),
+      0,
+      THREE.MathUtils.clamp(v.pos.z + sideZ, WORLD_BOUNDS.minZ + 2, LAND_EDGE_Z - 1.5)
+    );
+    if (v.groundRing) v.groundRing.visible = true;
+    this.activeYardVehicle = null;
+    this.controlMode = 'foot';
+    this.vehicleSpeed = 0;
+    this.playerModel.position.copy(this.playerPos);
+    this.playerModel.visible = true;
+    if (this.petModel) this.petModel.visible = true;
+
+    if (v.driverHired) {
+      v.state = v.cargoWood > 0 ? 'delivering' : 'returning';
+      v.wpIdx = 0;
+      this.ui.toast(`🤖 Tài xế AI đã tiếp quản ${v.name} để tiếp tục giao gỗ!`);
+    } else {
+      v.state = 'parked';
+      this.ui.toast(`Đã xuống ${v.name}. Nhấn E để lái lại hoặc F để thuê tài xế AI.`);
+    }
+    this.ui.updateVehicleHud({ mode: 'foot' });
+  }
+
+  hireOrToggleYardDriver(explicitVehicle = null) {
+    const v = explicitVehicle || this.activeYardVehicle || this.findNearestYardVehicle(10.5);
+    if (!v) {
+      this.ui.toast('Hãy đứng gần xe tải/xe nâng trong Xưởng Gỗ (hoặc đang lái xe) rồi nhấn F để thuê tài xế!');
+      return;
+    }
+    if (!v.driverHired) {
+      if (gameState.cash < v.driverCost) {
+        this.ui.toast(`Cần $${v.driverCost.toLocaleString()} để thuê tài xế AI lái ${v.name}!`);
+        return;
+      }
+      gameState.cash -= v.driverCost;
+      v.driverHired = true;
+      if (!gameState.yardDrivers) gameState.yardDrivers = {};
+      gameState.yardDrivers[v.id] = true;
+      if (v.driverVisual) v.driverVisual.visible = true;
+      if (v.cargoWood <= 0) this.loadWoodIntoYardVehicle(v, true);
+      sound.playUpgrade();
+      this.world.spawnParticles(v.pos, 0x38bdf8, 8);
+      saveGameServer();
+
+      if (this.activeYardVehicle === v) {
+        this.exitYardVehicle();
+      } else {
+        v.state = 'delivering';
+        v.wpIdx = 0;
+      }
+      const drop = DELIVERY_DROPOFFS[v.targetIdx % DELIVERY_DROPOFFS.length];
+      this.ui.toast(`👷 Đã thuê tài xế lái ${v.name}! Xe đang tự chạy giao gỗ tới ${drop.name}!`);
+      this.ui.refreshHUD();
+      return;
+    }
+
+    // Driver already hired
+    if (this.activeYardVehicle === v) {
+      this.exitYardVehicle();
+      return;
+    }
+    v.targetIdx = (v.targetIdx + 1) % DELIVERY_DROPOFFS.length;
+    v.state = v.cargoWood > 0 ? 'delivering' : 'returning';
+    v.wpIdx = 0;
+    const nextDrop = DELIVERY_DROPOFFS[v.targetIdx];
+    this.ui.toast(`🚛 Đã đổi tuyến ${v.name} sang giao gỗ tại ${nextDrop.name}!`);
+  }
+
+  loadWoodIntoYardVehicle(v, isAi = false) {
+    const space = v.cargoCapacity - v.cargoWood;
+    if (space <= 0) return;
+    let loaded = 0;
+    // Use processed planks first for premium payout, then logs, then yard timber stock so trucks never sit idle
+    if (gameState.planks > 0) {
+      const take = Math.min(space, gameState.planks);
+      gameState.planks -= take;
+      loaded += take;
+    }
+    if (loaded < space && gameState.logs > 0 && !isAi) {
+      const take = Math.min(space - loaded, gameState.logs);
+      gameState.logs -= take;
+      loaded += take;
+    }
+    // Top up remaining truck capacity from Logging Yard timber stacks
+    const fromYard = space - loaded;
+    v.cargoWood = v.cargoCapacity;
+    v.premiumLoad = loaded > 0;
+    if (v.cargoVisual) v.cargoVisual.visible = true;
+    if (!isAi) {
+      this.spawnWorldText(v.pos, `🪵 Đã chất ${v.cargoWood} gỗ lên ${v.name}!`, 'gem');
+      this.world.spawnParticles(v.pos, 0xf59e0b, 5);
+    }
+    if (fromYard > 0 && loaded > 0) {
+      this.syncSawmillVisuals();
+    }
+  }
+
+  completeYardWoodDelivery(v, dropoff, isAi = false) {
+    if (!v || v.cargoWood <= 0) return;
+    const basePerUnit = v.premiumLoad ? 42 : 28;
+    const earn = Math.round(v.cargoWood * basePerUnit * dropoff.mult * getRevenueMultiplier());
+    gameState.cash += earn;
+    gameState.yardDeliveriesCompleted = (gameState.yardDeliveriesCompleted || 0) + 1;
+    recordRevenue('sawmill', earn);
+    addVipXp(isAi ? 6 : 14);
+    addSeasonXp(isAi ? 5 : 12);
+    v.cargoWood = 0;
+    v.premiumLoad = false;
+    if (v.cargoVisual) v.cargoVisual.visible = false;
+
+    this.world.spawnParticles(new THREE.Vector3(dropoff.x, 1.2, dropoff.z), dropoff.color, isAi ? 4 : 8);
+    this.spawnWorldText(
+      new THREE.Vector3(dropoff.x, 2.2, dropoff.z),
+      `${isAi ? '🤖' : '🚛'} +$${earn.toLocaleString()} (${dropoff.shortName})`,
+      'cash'
+    );
+    if (!isAi) {
+      sound.playCash();
+      this.ui.toast(`✅ Đã giao gỗ tại ${dropoff.name}! Thu về +$${earn.toLocaleString()} — Quay về Xưởng Gỗ để chất thêm!`);
+      saveGameServer();
+    }
+  }
+
   getContextPromptState() {
+    if (this.controlMode === 'yard_vehicle' && this.activeYardVehicle) {
+      const v = this.activeYardVehicle;
+      const driverHint = v.driverHired ? 'F: Giao tài xế AI' : `F: Thuê tài xế ($${v.driverCost})`;
+      return { action: 'exit_yard_vehicle', key: 'E', label: `Xuống ${v.name} · ${driverHint}` };
+    }
     if (this.vehicleHome) {
+      if (this.controlMode === 'yacht') {
+        const nearPier = FISHING_PIER_DOCKS.find(
+          (d) => Math.hypot(this.playerPos.x - d.pierX, this.playerPos.z - d.seaZ) < 18
+        );
+        if (nearPier) {
+          return { action: 'disembark', key: 'E', label: `Cập bến & Lên ${nearPier.name}` };
+        }
+      }
       return { action: 'disembark', key: 'E', label: this.getParkingStatus().label };
     }
 
@@ -1490,11 +1756,37 @@ class TimberPortEngine {
       return { action: 'regional_vehicle', key: 'E', label: 'Nhận ' + labels[station.mode] + ' tại ' + station.name, station };
     }
 
+    // Check interactive Logging Yard Trucks & Forklifts first
+    const nearYardVeh = this.findNearestYardVehicle(7.2);
+    if (nearYardVeh) {
+      const driverTag = nearYardVeh.driverHired
+        ? ' · F: Đổi tuyến AI'
+        : ` · F: Thuê tài xế ($${nearYardVeh.driverCost})`;
+      return {
+        action: 'board_yard_vehicle',
+        key: 'E',
+        label: `Lái ${nearYardVeh.name}${driverTag}`,
+        yardVehicle: nearYardVeh
+      };
+    }
+
+    // Check all 3 Coastal Fishing Boat Piers & moored boats (always drivable!)
+    const nearBoat = this.findNearestBoatDock(10.5);
+    if (nearBoat) {
+      const boatName = (gameState.yachtTier || 0) >= 1 ? 'Du thuyền' : 'Tàu cá';
+      return {
+        action: 'board_yacht',
+        key: 'E',
+        label: `Lái ${boatName} tại ${nearBoat.dock.name}`,
+        boatDock: nearBoat.dock,
+        mooredBoat: nearBoat.mooredBoat
+      };
+    }
+
     const distToHarbor = this.playerPos.distanceTo(ZONES.harborExport);
     const distToSawOut = this.playerPos.distanceTo(ZONES.sawOutput);
     const distToFurniture = this.playerPos.distanceTo(ZONES.furnitureMill);
     const distToVeh = this.playerPos.distanceTo(this.vehiclePos);
-    const distToYachtBerth = this.playerPos.distanceTo(ZONES.yachtBerth);
     const distToRunway = this.playerPos.distanceTo(ZONES.runwayStart);
     const distToHelipad = ZONES.helipad ? this.playerPos.distanceTo(ZONES.helipad) : 999;
     const distToRailDepot = ZONES.railDepot ? this.playerPos.distanceTo(ZONES.railDepot) : 999;
@@ -1514,16 +1806,13 @@ class TimberPortEngine {
     if (this.inVehicle) {
       return { action: 'vehicle', key: 'E', label: 'Xuống xe' };
     }
-    if (distToHelipad < 4.2 && (gameState.heliTier || 0) >= 1) {
+    if (distToHelipad < 4.8 && (gameState.heliTier || 0) >= 1) {
       return { action: 'board_heli', key: 'E', label: 'Lên Lái Trực Thăng VIP' };
     }
-    if (distToYachtBerth < 3.6 && (gameState.yachtTier || 0) >= 1) {
-      return { action: 'board_yacht', key: 'E', label: 'Lái Du thuyền VIP' };
-    }
-    if (distToRunway < 4.2 && (gameState.airportTier || 0) >= 1 && (gameState.unlockedPlanes?.length || 0) > 0) {
+    if (distToRunway < 4.8 && (gameState.airportTier || 0) >= 1 && (gameState.unlockedPlanes?.length || 0) > 0) {
       return { action: 'board_plane', key: 'E', label: 'Lên Máy bay cất cánh' };
     }
-    if (distToVeh < 4.2) {
+    if (distToVeh < 4.5) {
       const veh = VEHICLES.find((v) => v.id === (gameState.equippedVehicle || 'forklift')) || VEHICLES[0];
       return { action: 'vehicle', key: 'E', label: `Lái ${veh.name}` };
     }
@@ -1538,10 +1827,15 @@ class TimberPortEngine {
   handleContextAction(preferSpace = false) {
     const prompt = this.getContextPromptState();
     if (!prompt) {
-      if (this.inVehicle && !preferSpace) this.toggleVehicle();
+      if (this.controlMode === 'yard_vehicle' && !preferSpace) this.exitYardVehicle();
+      else if (this.inVehicle && !preferSpace) this.toggleVehicle();
       return;
     }
-    if (prompt.action === 'disembark') {
+    if (prompt.action === 'exit_yard_vehicle') {
+      if (!preferSpace) this.exitYardVehicle();
+    } else if (prompt.action === 'board_yard_vehicle') {
+      if (!preferSpace) this.boardYardVehicle(prompt.yardVehicle);
+    } else if (prompt.action === 'disembark') {
       if (!preferSpace) this.disembarkFleet();
     } else if (prompt.action === 'regional_vehicle') {
       if (preferSpace) return;
@@ -1551,7 +1845,7 @@ class TimberPortEngine {
       else if (station.mode === 'plane') this.boardPlane(station);
       else this.boardHeli(station);
     }
-    else if (prompt.action === 'board_yacht') this.boardYacht();
+    else if (prompt.action === 'board_yacht') this.boardYacht(null, false, prompt.boatDock, prompt.mooredBoat);
     else if (prompt.action === 'board_plane') this.boardPlane();
     else if (prompt.action === 'board_heli') this.boardHeli();
     else if (prompt.action === 'train_express') this.triggerTrainBoost();
@@ -1563,6 +1857,9 @@ class TimberPortEngine {
   }
 
   getParkingStatus() {
+    if (this.controlMode === 'yard_vehicle') {
+      return { ready: true, label: 'Rời xe tại vị trí hiện tại' };
+    }
     return parkingStatus(this.vehicleHome, this.playerPos, this.vehicleSpeed);
   }
 
@@ -1590,19 +1887,57 @@ class TimberPortEngine {
     this.ui.toast('Đã lưu vị trí tại ' + district.name);
   }
 
-  boardYacht(station) {
-    if ((gameState.yachtTier || 0) <= 0) {
-      this.ui.openHub('locker');
-      this.ui.toast('🚤 Hãy mở khóa Bến Du Thuyền VIP Cấp 1 trong Showroom Hạm đội!');
+  boardYacht(station = null, fromQuickBtn = false, boatDock = null, mooredBoat = null) {
+    if (this.controlMode !== 'foot') {
+      this.ui.toast('Hãy rời phương tiện hiện tại (Phím E) trước khi lái tàu.');
       return;
     }
-    const home = this.selectVehicleHome('yacht', station, { mode: 'yacht', x: ZONES.yachtBerth.x, z: ZONES.yachtBerth.z, y: 0.05, parkZ: 31 });
-    if (!home) return;
+    if (!this.drivableYacht) {
+      this.rebuildAirSeaFleet();
+    }
+
+    let home;
+    if (station) {
+      home = this.selectVehicleHome('yacht', station, station);
+      if (!home) return;
+    } else {
+      let dock = boatDock;
+      if (!dock) {
+        dock = FISHING_PIER_DOCKS.reduce((best, d) => {
+          const dist = Math.hypot(this.playerPos.x - d.pierX, this.playerPos.z - d.pierZ);
+          return !best || dist < best.dist ? { dock: d, dist } : best;
+        }, null).dock;
+      }
+      const distToDock = Math.hypot(this.playerPos.x - dock.pierX, this.playerPos.z - dock.pierZ);
+      if (!fromQuickBtn && distToDock > 16) {
+        this.ui.toast('⛵ Hãy đi ra một trong 3 cầu gỗ ven biển để lên tàu cá (hoặc bấm nút Tàu cá)!');
+        return;
+      }
+      home = {
+        mode: 'yacht',
+        x: dock.pierX,
+        z: dock.pierZ,
+        y: 0.05,
+        parkZ: dock.seaZ,
+        name: dock.name
+      };
+      if (!mooredBoat) {
+        mooredBoat = (this.world?.mooredFishingBoats || []).find((b) => b.pierId === dock.id && b.group.visible) || null;
+      }
+    }
+
+    if (mooredBoat && mooredBoat.group) {
+      mooredBoat.group.visible = false;
+      this.activeBoardedBoat = mooredBoat;
+    } else {
+      this.activeBoardedBoat = null;
+    }
+
     this.vehicleHome = home;
     this.controlMode = 'yacht';
     this.vehicleSpeed = 0;
     this.playerPos.set(home.x, home.y, home.parkZ);
-    this.playerYaw = 0.25;
+    this.playerYaw = 0;
     this.playerModel.visible = false;
     if (this.petModel) this.petModel.visible = false;
     if (this.world.vipYacht) this.world.vipYacht.visible = false;
@@ -1613,7 +1948,8 @@ class TimberPortEngine {
     }
     if (!fleetMissionState.sea) spawnFleetMission('sea');
     sound.playSplash();
-    this.ui.toast('🚤 Đã rời bến! Săn Kho Báu Vàng & Giao đơn Hàng Hải!');
+    const label = (gameState.yachtTier || 0) >= 1 ? 'Du thuyền' : 'Tàu cá';
+    this.ui.toast(`🚤 Đã rời ${home.name || 'bến'} trên ${label}! Dùng WASD/Joystick để lái · Cập cầu gỗ nhấn E để lên bờ!`);
   }
 
   boardPlane(station) {
@@ -1737,8 +2073,52 @@ class TimberPortEngine {
   }
 
   disembarkFleet() {
+    if (this.controlMode === 'yard_vehicle') {
+      this.exitYardVehicle();
+      return;
+    }
     const home = this.vehicleHome;
     if (!home) return;
+
+    if (home.mode === 'yacht') {
+      // Allow smooth docking at ANY of the 3 coastal wooden fishing piers or original berth
+      let dockTarget = null;
+      for (const d of FISHING_PIER_DOCKS) {
+        if (Math.hypot(this.playerPos.x - d.pierX, this.playerPos.z - d.seaZ) < 18) {
+          dockTarget = { x: d.pierX, y: 0.62, z: d.pierZ, name: d.name };
+          break;
+        }
+      }
+      if (!dockTarget && Math.hypot(this.playerPos.x - home.x, this.playerPos.z - (home.parkZ ?? home.z)) < 16) {
+        dockTarget = { x: home.x, y: home.z > LAND_EDGE_Z ? 0.62 : 0, z: home.z, name: home.name || 'Cầu Tàu Cá' };
+      }
+      if (!dockTarget) {
+        const nearest = FISHING_PIER_DOCKS.reduce((best, d) => {
+          const dist = Math.hypot(this.playerPos.x - d.pierX, this.playerPos.z - d.seaZ);
+          return !best || dist < best.dist ? { d, dist } : best;
+        }, null);
+        this.ui.toast(`⛵ Hãy lái tàu lại gần ${nearest.d.name} (còn ${Math.ceil(nearest.dist)}m) để cập bến lên bờ!`);
+        return;
+      }
+      if (this.drivableYacht) this.drivableYacht.visible = false;
+      if (this.activeBoardedBoat?.group) {
+        this.activeBoardedBoat.group.visible = true;
+        this.activeBoardedBoat = null;
+      }
+      this.world.syncYachtTier(gameState.yachtTier || 0);
+      this.playerPos.set(dockTarget.x, dockTarget.y, dockTarget.z);
+      sound.playSplash();
+      this.controlMode = 'foot';
+      this.vehicleHome = null;
+      this.vehicleSpeed = 0;
+      this.playerModel.position.copy(this.playerPos);
+      this.playerModel.visible = true;
+      if (this.petModel) this.petModel.visible = true;
+      this.ui.toast(`⚓ Đã neo đậu tàu và bước lên ${dockTarget.name}!`);
+      this.ui.updateVehicleHud({ mode: 'foot' });
+      return;
+    }
+
     const parking = this.getParkingStatus();
     if (!parking.ready) {
       this.ui.toast(parking.label);
@@ -1751,11 +2131,6 @@ class TimberPortEngine {
       this.parkedVehicle.position.copy(this.vehiclePos);
       this.parkedVehicle.rotation.y = this.vehicleYaw;
       this.inVehicle = false;
-    } else if (home.mode === 'yacht') {
-      if (this.drivableYacht) this.drivableYacht.visible = false;
-      this.world.syncYachtTier(gameState.yachtTier || 0);
-      this.playerPos.set(home.x, home.z > LAND_EDGE_Z ? 0.5 : 0, home.z);
-      sound.playSplash();
     } else {
       const aircraft = home.mode === 'heli' ? this.drivableHeli : this.drivablePlane;
       if (aircraft) {
@@ -1766,7 +2141,7 @@ class TimberPortEngine {
         aircraft.rotation.set(0, this.playerYaw, 0);
       }
     }
-    if (home.mode !== 'yacht') this.playerPos.y = 0;
+    this.playerPos.y = 0;
     this.controlMode = 'foot';
     this.vehicleHome = null;
     this.vehicleSpeed = 0;
@@ -2080,6 +2455,7 @@ class TimberPortEngine {
     this.updateSawmillAndCannery(dt);
     this.updateArcadePads(dt);
     this.updateWorkforceAI(dt);
+    this.updateYardVehiclesAI(dt);
     this.updateCitizensAI(dt);
     this.world.regionalLife.update(this.playerPos, this.elapsed, this.activeProfile === 'low', this.vehicleHome);
     this.updatePet(dt);
@@ -2113,7 +2489,8 @@ class TimberPortEngine {
           fleetMissionState,
           citizens: this.aiCitizens,
           regionalCitizens: this.world.regionalLife.people,
-          vehicleHome: this.vehicleHome
+          vehicleHome: this.vehicleHome,
+          yardVehicles: this.world.yardVehicles
         }
       );
     }
@@ -2484,17 +2861,37 @@ class TimberPortEngine {
   }
 
   buildVehicleTelemetry() {
+    if (this.controlMode === 'yard_vehicle' && this.activeYardVehicle) {
+      const v = this.activeYardVehicle;
+      const nearestDrop = DELIVERY_DROPOFFS.reduce((best, d) => {
+        const dist = Math.hypot(d.x - this.playerPos.x, d.z - this.playerPos.z);
+        return !best || dist < best.dist ? { d, dist } : best;
+      }, null);
+      const missionText = v.cargoWood > 0
+        ? `Giao gỗ → ${nearestDrop.d.shortName} (${Math.round(nearestDrop.dist)}m)`
+        : 'Quay về Khu Xưởng Gỗ để chất gỗ lên xe';
+      return {
+        mode: 'yard_vehicle',
+        title: `${v.kind === 'truck' ? '🚛' : '🚜'} ${v.name}`,
+        speedDisplay: `${Math.round(this.vehicleSpeed * 3.6)} km/h`,
+        altDisplay: `🪵 ${v.cargoWood}/${v.cargoCapacity} gỗ`,
+        missionText,
+        parkingLabel: 'Nhấn E để xuống xe',
+        driverBtnLabel: v.driverHired ? '🤖 Giao tài xế AI (F)' : `👷 Thuê tài xế $${v.driverCost} (F)`
+      };
+    }
     if (this.controlMode === 'yacht') {
+      const isStarterBoat = (gameState.yachtTier || 0) <= 0;
       const yDef = YACHT_TIERS.find((y) => y.tier === (gameState.yachtTier || 1)) || YACHT_TIERS[0];
       const sm = fleetMissionState.sea;
       const dist = sm ? Math.round(Math.hypot(sm.targetX - this.playerPos.x, sm.targetZ - this.playerPos.z)) : 0;
       return {
-        parkingLabel: this.getParkingStatus().label,
+        parkingLabel: 'Cập gần một trong 3 cầu tàu gỗ rồi nhấn E để lên bờ',
         mode: 'yacht',
-        title: `🚤 ${yDef.name}`,
+        title: isStarterBoat ? '⛵ Tàu Cá Ven Biển' : `🚤 ${yDef.name}`,
         speedDisplay: `${Math.round(this.vehicleSpeed * 1.94)} kts`,
         altDisplay: 'Mặt biển',
-        missionText: sm ? `${sm.targetLabel} (${dist}m)` : 'Tìm Rương Kho Báu Vàng'
+        missionText: sm ? `${sm.targetLabel} (${dist}m)` : 'Tự do lái tàu · Cập cầu gỗ nhấn E lên bờ'
       };
     }
     if (this.controlMode === 'plane') {
@@ -2554,6 +2951,11 @@ class TimberPortEngine {
       }
     }
 
+    if (this.controlMode === 'yard_vehicle') {
+      this.updateYardVehicleDriving(dt, ix, iy);
+      this.sendNetPose(dt, this.vehicleSpeed > 0.5, false);
+      return;
+    }
     if (this.controlMode === 'yacht') {
       this.updateYachtControl(dt, ix, iy);
       this.sendNetPose(dt, true, false);
@@ -2602,11 +3004,15 @@ class TimberPortEngine {
       this.playerPos.x = THREE.MathUtils.clamp(this.playerPos.x, WORLD_BOUNDS.minX, WORLD_BOUNDS.maxX);
       this.playerPos.z = THREE.MathUtils.clamp(this.playerPos.z, WORLD_BOUNDS.minZ, WORLD_BOUNDS.maxZ);
 
-      const onPier = this.playerPos.z > 24.5 && Math.abs(this.playerPos.x - 2) < 13.5;
+      // Walkable across all 3 coastal wooden fishing piers (West -58, Center 5, East 52)
+      const onWestPier = this.playerPos.z > 23.5 && this.playerPos.z <= 36.2 && Math.abs(this.playerPos.x + 58) < 4.0;
+      const onCenterPier = this.playerPos.z > 23.5 && this.playerPos.z <= 36.2 && Math.abs(this.playerPos.x - 5) < 5.6;
+      const onEastPier = this.playerPos.z > 23.5 && this.playerPos.z <= 36.2 && Math.abs(this.playerPos.x - 52) < 4.0;
+      const onPier = onWestPier || onCenterPier || onEastPier;
       if (!onPier && this.playerPos.z > LAND_EDGE_Z) {
         this.playerPos.z = LAND_EDGE_Z;
       }
-      this.playerPos.y = onPier ? 0.72 : 0;
+      this.playerPos.y = onPier ? 0.62 : 0;
 
       const targetYaw = Math.atan2(this._moveDir.x, this._moveDir.z);
       let diff = targetYaw - this.playerYaw;
@@ -2703,12 +3109,9 @@ class TimberPortEngine {
     this.playerPos.x = THREE.MathUtils.clamp(this.playerPos.x, SEA_BOUNDS.minX, SEA_BOUNDS.maxX);
     this.playerPos.z = THREE.MathUtils.clamp(this.playerPos.z, SEA_BOUNDS.minZ, SEA_BOUNDS.maxZ);
 
-    // Keep clear of main Harbor wooden pier & West Deep-Water Container Terminal
-    if (this.playerPos.z < 33.5 && Math.abs(this.playerPos.x - 2) < 12.2) {
-      this.playerPos.z = 33.5;
-    }
-    if (this.playerPos.z < 44 && Math.abs(this.playerPos.x + 20) < 10.5) {
-      this.playerPos.z = 44;
+    // Keep clear of the 3 coastal wooden fishing piers (West -58, Center 5, East 52)
+    if (this.playerPos.z < 36.5 && (Math.abs(this.playerPos.x - 5) < 6.5 || Math.abs(this.playerPos.x + 58) < 6.5 || Math.abs(this.playerPos.x - 52) < 6.5)) {
+      this.playerPos.z = 36.5;
     }
     const waveAmp = stormState.active ? 0.24 : 0.1;
     const waveFreq = stormState.active ? 4.4 : 2.2;
@@ -2780,6 +3183,134 @@ class TimberPortEngine {
           this.world.spawnParticles(this.playerPos, 0xf43f5e, 6);
           this.ui.triggerCelebration('Cứu Hộ Bão Biển Thành Công!', `+$${res.rewardCash.toLocaleString()} · +${res.rewardGems} 💎`);
           saveGameServer();
+        }
+      }
+    }
+  }
+
+  updateYardVehicleDriving(dt, ix, iy) {
+    const v = this.activeYardVehicle;
+    if (!v) {
+      this.controlMode = 'foot';
+      return;
+    }
+    const maxSpeed = v.speed * (gameState.boostTimer > 0 ? 1.25 : 1.0);
+    const len = Math.hypot(ix, iy);
+    const moving = len > 0.08;
+
+    if (moving) {
+      const nx = ix / Math.max(1, len);
+      const ny = iy / Math.max(1, len);
+      this._vecForward.set(-Math.sin(this.camYaw), 0, -Math.cos(this.camYaw));
+      this._vecRight.set(Math.cos(this.camYaw), 0, -Math.sin(this.camYaw));
+      this._moveDir.set(0, 0, 0)
+        .addScaledVector(this._vecForward, -ny)
+        .addScaledVector(this._vecRight, nx)
+        .normalize();
+
+      const targetYaw = Math.atan2(this._moveDir.x, this._moveDir.z);
+      let diff = targetYaw - this.playerYaw;
+      while (diff > Math.PI) diff -= Math.PI * 2;
+      while (diff < -Math.PI) diff += Math.PI * 2;
+      this.playerYaw += diff * Math.min(1, dt * 6.5);
+      this.vehicleSpeed = THREE.MathUtils.lerp(this.vehicleSpeed, maxSpeed, Math.min(1, dt * 5.0));
+    } else {
+      this.vehicleSpeed = THREE.MathUtils.lerp(this.vehicleSpeed, 0, Math.min(1, dt * 6.0));
+    }
+
+    this._vecForward.set(Math.sin(this.playerYaw), 0, Math.cos(this.playerYaw));
+    this.playerPos.addScaledVector(this._vecForward, this.vehicleSpeed * dt);
+    this.playerPos.x = THREE.MathUtils.clamp(this.playerPos.x, WORLD_BOUNDS.minX + 2, WORLD_BOUNDS.maxX - 2);
+    this.playerPos.z = THREE.MathUtils.clamp(this.playerPos.z, WORLD_BOUNDS.minZ + 2, LAND_EDGE_Z - 2.0);
+    this.playerPos.y = 0;
+
+    v.pos.set(this.playerPos.x, 0.06, this.playerPos.z);
+    v.yaw = this.playerYaw;
+    v.mesh.position.copy(v.pos);
+    v.mesh.rotation.y = v.yaw;
+    for (const w of v.wheels || []) {
+      w.rotation.x += this.vehicleSpeed * dt * 1.9;
+    }
+
+    // Auto-reload wood when driving back inside Logging Industry Zone
+    if (
+      v.cargoWood < v.cargoCapacity &&
+      v.pos.x >= MAP_ZONES.logging.minX && v.pos.x <= MAP_ZONES.logging.maxX &&
+      v.pos.z >= MAP_ZONES.logging.minZ && v.pos.z <= MAP_ZONES.logging.maxZ
+    ) {
+      this.loadWoodIntoYardVehicle(v, false);
+    }
+
+    // Auto-deliver wood when driving into any Zone Drop-off Ring
+    if (v.cargoWood > 0) {
+      for (const drop of DELIVERY_DROPOFFS) {
+        if (Math.hypot(v.pos.x - drop.x, v.pos.z - drop.z) < 7.8) {
+          this.completeYardWoodDelivery(v, drop, false);
+          break;
+        }
+      }
+    }
+  }
+
+  updateYardVehiclesAI(dt) {
+    const list = this.world?.yardVehicles || [];
+    if (!list.length) return;
+    const speedBonus = 1 + getManagerBonus('contractBonus') * 0.5;
+
+    for (const v of list) {
+      if (!v.driverHired || v.state === 'player') continue;
+
+      if (v.driverVisual) {
+        v.driverVisual.visible = true;
+        v.driverVisual.rotation.y += dt * 2.2;
+      }
+
+      if (v.waitTimer > 0) {
+        v.waitTimer -= dt;
+        continue;
+      }
+
+      const drop = DELIVERY_DROPOFFS[v.targetIdx % DELIVERY_DROPOFFS.length];
+      if (v.state === 'parked') {
+        v.state = v.cargoWood > 0 ? 'delivering' : 'returning';
+        v.wpIdx = 0;
+      }
+
+      const route = v.state === 'delivering' ? drop.routeFromYard : drop.routeToYard;
+      const wp = route[Math.min(v.wpIdx, route.length - 1)];
+      const dx = wp[0] - v.pos.x;
+      const dz = wp[1] - v.pos.z;
+      const dist = Math.hypot(dx, dz);
+
+      if (dist > 1.8) {
+        const moveSpeed = v.speed * 0.72 * speedBonus;
+        const step = Math.min(dist, moveSpeed * dt);
+        v.pos.x += (dx / dist) * step;
+        v.pos.z += (dz / dist) * step;
+        const targetYaw = Math.atan2(dx, dz);
+        let diff = targetYaw - v.yaw;
+        while (diff > Math.PI) diff -= Math.PI * 2;
+        while (diff < -Math.PI) diff += Math.PI * 2;
+        v.yaw += diff * Math.min(1, dt * 6.5);
+        v.mesh.position.copy(v.pos);
+        v.mesh.rotation.y = v.yaw;
+        for (const w of v.wheels || []) {
+          w.rotation.x += moveSpeed * dt * 1.8;
+        }
+      } else {
+        v.wpIdx += 1;
+        if (v.wpIdx >= route.length) {
+          v.wpIdx = 0;
+          if (v.state === 'delivering') {
+            this.completeYardWoodDelivery(v, drop, true);
+            v.waitTimer = 1.4;
+            v.state = 'returning';
+          } else {
+            this.loadWoodIntoYardVehicle(v, true);
+            v.waitTimer = 1.2;
+            v.targetIdx = (v.targetIdx + 1) % DELIVERY_DROPOFFS.length;
+            v.state = 'delivering';
+          }
         }
       }
     }
@@ -4092,7 +4623,9 @@ class TimberPortEngine {
       ? Math.max(this.camDist, 23.5)
       : this.controlMode === 'yacht'
         ? Math.max(this.camDist, 21.5)
-        : this.camDist;
+        : this.controlMode === 'yard_vehicle'
+          ? Math.max(this.camDist, 19.5)
+          : this.camDist;
 
     const targetFov = isAir
       ? 48 + Math.min(8, (this.vehicleSpeed / 46) * 8)
@@ -4112,20 +4645,20 @@ class TimberPortEngine {
       this._camDesired.set(this.playerPos.x + 17, 50, this.playerPos.z + 31);
       this._camLook.set(this.playerPos.x, 0.8, this.playerPos.z + 2);
     } else if (this.cameraMode === 'orbit' && this.controlMode === 'foot') {
-      // Smooth 360-degree cinematic showcase around the Empire center
-      this.orbitAngle += dt * 0.28;
-      const rad = 28;
+      // Smooth 360-degree cinematic showcase around the 3-zone city center
+      this.orbitAngle += dt * 0.24;
+      const rad = 52;
       this._camDesired.set(
-        Math.sin(this.orbitAngle) * rad,
-        16.5,
-        8 + Math.cos(this.orbitAngle) * rad
+        5 + Math.sin(this.orbitAngle) * rad,
+        24.5,
+        -38 + Math.cos(this.orbitAngle) * rad
       );
-      this._camLook.set(0, 2.2, 8);
+      this._camLook.set(5, 2.2, -38);
     } else if (this.cameraMode === 'train' && (gameState.railwayTier || 0) >= 1 && this.world.railwaySystem?.userData?.trainGroup) {
-      // Follow the animated 3D Industrial Freight Train along the West Coastal Line
+      // Follow the animated 3D Industrial Freight Train along the East Infrastructure Railway Line
       const tz = this.world.railwaySystem.userData.trainGroup.position.z;
-      this._camDesired.set(-10.5, 9.5, tz + 11.5);
-      this._camLook.set(-19.5, 2.2, tz);
+      this._camDesired.set(93.5, 10.5, tz + 12.5);
+      this._camLook.set(106.0, 2.2, tz);
     } else {
       // Standard smooth follow camera
       const camHeight = Math.sin(this.camPitch) * activeDist;

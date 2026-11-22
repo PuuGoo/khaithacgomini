@@ -1153,6 +1153,8 @@ export function createDefaultState() {
     unlockedPets: ['none'],
     equippedVehicle: 'forklift',
     unlockedVehicles: ['forklift'],
+    yardDrivers: {},
+    yardDeliveriesCompleted: 0,
 
     // Boost & stats
     boostTimer: 0,
@@ -2320,6 +2322,8 @@ export function hydrateLoadedState() {
   if (typeof gameState.autoAirFleet !== 'number') gameState.autoAirFleet = 0;
   if (typeof gameState.treasuresCollected !== 'number') gameState.treasuresCollected = 0;
   if (typeof gameState.seaDeliveries !== 'number') gameState.seaDeliveries = 0;
+  if (!gameState.yardDrivers || typeof gameState.yardDrivers !== 'object') gameState.yardDrivers = {};
+  if (typeof gameState.yardDeliveriesCompleted !== 'number') gameState.yardDeliveriesCompleted = 0;
   if (typeof gameState.airDeliveries !== 'number') gameState.airDeliveries = 0;
   if (typeof gameState.milestoneIndex !== 'number') gameState.milestoneIndex = 0;
   if (typeof gameState.totalAuctionsWon !== 'number') gameState.totalAuctionsWon = 0;

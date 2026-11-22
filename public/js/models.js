@@ -381,6 +381,89 @@ function getGltfLoader() {
   return sharedGltfLoader;
 }
 
+// Cached normalized GLB loader for residential, logging, infrastructure & boat assets
+const _normalizedGlbCache = new Map();
+
+function loadNormalizedGlbScene(url) {
+  if (_normalizedGlbCache.has(url)) return _normalizedGlbCache.get(url);
+  const promise = new Promise((resolve) => {
+    const loader = getGltfLoader();
+    loader.load(
+      url,
+      (gltf) => {
+        const root = gltf?.scene || gltf?.scenes?.[0];
+        if (!root) {
+          resolve(null);
+          return;
+        }
+        root.updateMatrixWorld(true);
+        const box = new THREE.Box3().setFromObject(root);
+        const size = new THREE.Vector3();
+        const center = new THREE.Vector3();
+        box.getSize(size);
+        box.getCenter(center);
+
+        const maxHoriz = Math.max(size.x, size.z, 0.001);
+        const height = Math.max(size.y, 0.001);
+
+        const wrapper = new THREE.Group();
+        root.position.set(-center.x, -box.min.y, -center.z);
+        root.traverse((obj) => {
+          if (obj.isMesh) {
+            obj.castShadow = false;
+            obj.receiveShadow = true;
+            obj.frustumCulled = true;
+            const mats = Array.isArray(obj.material) ? obj.material : [obj.material];
+            for (const m of mats) {
+              if (!m) continue;
+              if (m.map) m.map.colorSpace = THREE.SRGBColorSpace;
+              m.needsUpdate = true;
+            }
+          }
+        });
+        wrapper.add(root);
+        resolve({ template: wrapper, size, maxHoriz, height });
+      },
+      undefined,
+      () => resolve(null)
+    );
+  });
+  _normalizedGlbCache.set(url, promise);
+  return promise;
+}
+
+/**
+ * Asynchronously mounts a cached, bottom-centered GLB model into targetGroup.
+ * Fits either targetFootprint (max X/Z width) or targetHeight cleanly to ground y=0.
+ */
+export function mountNormalizedGlb(targetGroup, url, options = {}) {
+  if (!targetGroup || !url) return Promise.resolve(false);
+  const {
+    targetFootprint = null,
+    targetHeight = null,
+    yaw = 0,
+    yOffset = 0,
+    placeholder = null
+  } = options;
+
+  return loadNormalizedGlbScene(url).then((entry) => {
+    if (!entry?.template || !targetGroup) return false;
+    const clone = entry.template.clone(true);
+    let scale = 1;
+    if (targetHeight && entry.height > 0.001) {
+      scale = targetHeight / entry.height;
+    } else if (targetFootprint && entry.maxHoriz > 0.001) {
+      scale = targetFootprint / entry.maxHoriz;
+    }
+    clone.scale.setScalar(scale);
+    clone.rotation.y = yaw;
+    clone.position.y = yOffset;
+    if (placeholder) placeholder.visible = false;
+    targetGroup.add(clone);
+    return true;
+  });
+}
+
 function smoothstep(edge0, edge1, x) {
   const t = Math.max(0, Math.min(1, (x - edge0) / (edge1 - edge0)));
   return t * t * (3 - 2 * t);
@@ -1844,126 +1927,50 @@ export function attachGlbToSawmill(sawmillGroup, url = SAWMILL_GLB_URL) {
 }
 
 export function createHarborStructure() {
+  // Clean Wooden Fishing Boat Mooring Pier ("Bờ đi tàu cá neo đậu") — full port deferred
   const g = new THREE.Group();
   const deckMat = new THREE.MeshStandardMaterial({ map: markShared(getTimberTexture('#b87c44', '#855223')), roughness: 0.78 });
   const pilingMat = new THREE.MeshStandardMaterial({ color: 0x451a03, roughness: 0.9 });
-  const craneMat = new THREE.MeshStandardMaterial({ color: 0xf59e0b, roughness: 0.38, metalness: 0.55 });
-  const steelMat = new THREE.MeshStandardMaterial({ color: 0x1e293b, roughness: 0.4, metalness: 0.7 });
+  const bollardMat = new THREE.MeshStandardMaterial({ color: 0x334155, roughness: 0.48, metalness: 0.55 });
+  const ropeMat = new THREE.MeshStandardMaterial({ color: 0xd6b37c, roughness: 0.88 });
 
-  const pier = new THREE.Mesh(new THREE.BoxGeometry(26, 0.55, 14), deckMat);
-  pier.position.set(0, 0.45, 7);
+  // Simple central wooden walkway pier extending from coastal embankment into calm bay
+  const pier = new THREE.Mesh(new THREE.BoxGeometry(10.5, 0.45, 13.0), deckMat);
+  pier.position.set(0, 0.38, 6.2);
   pier.receiveShadow = true;
-  pier.castShadow = true;
   g.add(pier);
 
-  const pileGeo = new THREE.CylinderGeometry(0.32, 0.35, 3.4, 7);
-  for (let px = -11; px <= 11; px += 5.5) {
-    for (let pz = 1; pz <= 13; pz += 6) {
+  const pileGeo = new THREE.CylinderGeometry(0.24, 0.28, 3.2, 7);
+  for (const px of [-4.6, 0, 4.6]) {
+    for (const pz of [1.0, 6.2, 11.4]) {
       const pile = new THREE.Mesh(pileGeo, pilingMat);
-      pile.position.set(px, -1.1, pz);
+      pile.position.set(px, -1.0, pz);
       g.add(pile);
     }
   }
 
-  const canneryBody = new THREE.Mesh(new THREE.BoxGeometry(6.2, 3.2, 5.0), new THREE.MeshStandardMaterial({ color: 0x0284c7, roughness: 0.48 }));
-  canneryBody.position.set(-8.5, 2.3, 5.2);
-  canneryBody.castShadow = true;
-  const canneryRoof = new THREE.Mesh(new THREE.ConeGeometry(4.8, 1.8, 4), new THREE.MeshStandardMaterial({ color: 0xf8fafc, roughness: 0.45, flatShading: true }));
-  canneryRoof.rotation.y = Math.PI / 4;
-  canneryRoof.position.set(-8.5, 4.75, 5.2);
-  g.add(canneryBody, canneryRoof);
-
-  const craneGroup = new THREE.Group();
-  craneGroup.position.set(6.5, 0.7, 9.5);
-  const legGeo = new THREE.BoxGeometry(0.45, 7.6, 0.45);
-  [[-2.5, -2.0], [2.5, -2.0], [-2.5, 2.0], [2.5, 2.0]].forEach(([lx, lz]) => {
-    const leg = new THREE.Mesh(legGeo, craneMat);
-    leg.position.set(lx, 3.8, lz);
-    leg.castShadow = true;
-    craneGroup.add(leg);
-  });
-  const boom = new THREE.Mesh(new THREE.BoxGeometry(7.0, 0.65, 12.5), craneMat);
-  boom.position.set(0, 7.8, 2.2);
-  boom.castShadow = true;
-  const trolley = new THREE.Mesh(new THREE.BoxGeometry(1.8, 0.7, 1.8), steelMat);
-  trolley.position.set(0, 7.3, 4.5);
-  const hoistedCrate = new THREE.Mesh(
-    new THREE.BoxGeometry(2.6, 1.4, 3.8),
-    new THREE.MeshStandardMaterial({ color: 0x10b981, roughness: 0.45 })
-  );
-  hoistedCrate.position.set(0, 4.2, 4.5);
-  craneGroup.add(boom, trolley, hoistedCrate);
-  g.add(craneGroup);
-
-  const ship = new THREE.Group();
-  ship.position.set(6.5, 0.1, 20.5);
-  const hull = new THREE.Mesh(new THREE.BoxGeometry(17, 2.6, 5.4), new THREE.MeshStandardMaterial({ color: 0x1e293b, roughness: 0.55, metalness: 0.35 }));
-  hull.position.y = 0.8;
-  hull.castShadow = true;
-  const redKeel = new THREE.Mesh(new THREE.BoxGeometry(16.4, 0.8, 5.1), new THREE.MeshStandardMaterial({ color: 0xb91c1c, roughness: 0.6 }));
-  redKeel.position.y = -0.3;
-  const bridge = new THREE.Mesh(new THREE.BoxGeometry(3.6, 4.2, 4.4), new THREE.MeshStandardMaterial({ color: 0xf8fafc, roughness: 0.42 }));
-  bridge.position.set(-5.8, 3.9, 0);
-  bridge.castShadow = true;
-  const funnel = new THREE.Mesh(new THREE.CylinderGeometry(0.65, 0.8, 1.9, 8), craneMat);
-  funnel.position.set(-6.2, 6.6, 0);
-  ship.add(hull, redKeel, bridge, funnel);
-
-  const cColors = [0x0ea5e9, 0xf59e0b, 0x10b981, 0xef4444];
-  const contGeo = new THREE.BoxGeometry(3.1, 1.5, 2.0);
-  for (let i = 0; i < 4; i++) {
-    const cont = new THREE.Mesh(
-      contGeo,
-      new THREE.MeshStandardMaterial({ color: cColors[i], roughness: 0.5 })
-    );
-    cont.position.set(-1.5 + (i % 2) * 3.5, 2.75, i < 2 ? -1.1 : 1.1);
-    cont.castShadow = true;
-    ship.add(cont);
+  // Timber mooring bollards & rope guard along pier edges
+  const bollardGeo = new THREE.CylinderGeometry(0.14, 0.17, 0.65, 8);
+  for (const px of [-4.7, 4.7]) {
+    for (const pz of [2.2, 6.4, 10.6]) {
+      const b = new THREE.Mesh(bollardGeo, bollardMat);
+      b.position.set(px, 0.85, pz);
+      g.add(b);
+    }
+    const rail = new THREE.Mesh(new THREE.CylinderGeometry(0.04, 0.04, 8.6, 6), ropeMat);
+    rail.rotation.x = Math.PI / 2;
+    rail.position.set(px, 0.95, 6.4);
+    g.add(rail);
   }
-  g.add(ship);
 
-  // Pre-built Tier 2 & Tier 3 Harbor Extensions (Lighthouse + Pier Containers + Control Tower)
+  // Keep empty tier containers for evolution hook compatibility
   const tier2Group = new THREE.Group();
   tier2Group.visible = false;
-  const lhTower = new THREE.Mesh(
-    new THREE.CylinderGeometry(0.85, 1.35, 7.2, 8),
-    new THREE.MeshStandardMaterial({ color: 0xf8fafc, roughness: 0.55 })
-  );
-  lhTower.position.set(-11.5, 4.2, 11.5);
-  lhTower.castShadow = true;
-  const lhBand = new THREE.Mesh(
-    new THREE.CylinderGeometry(1.02, 1.15, 2.0, 8),
-    new THREE.MeshStandardMaterial({ color: 0xdc2626, roughness: 0.5 })
-  );
-  lhBand.position.set(-11.5, 4.5, 11.5);
-  const beaconMat = new THREE.MeshStandardMaterial({ color: 0xfef08a, emissive: 0xfacc15, emissiveIntensity: 1.1, roughness: 0.2 });
-  const lhBeacon = new THREE.Mesh(new THREE.CylinderGeometry(0.7, 0.7, 1.1, 8), beaconMat);
-  lhBeacon.position.set(-11.5, 8.3, 11.5);
-  const lhCap = new THREE.Mesh(new THREE.ConeGeometry(0.95, 1.0, 8), steelMat);
-  lhCap.position.set(-11.5, 9.3, 11.5);
-  const stackA = new THREE.Mesh(contGeo, new THREE.MeshStandardMaterial({ color: 0x0ea5e9, roughness: 0.5 }));
-  stackA.position.set(-1.5, 1.45, 10.5);
-  const stackB = new THREE.Mesh(contGeo, new THREE.MeshStandardMaterial({ color: 0xf59e0b, roughness: 0.5 }));
-  stackB.position.set(-1.5, 2.95, 10.5);
-  tier2Group.add(lhTower, lhBand, lhBeacon, lhCap, stackA, stackB);
-  g.add(tier2Group);
-
   const tier3Group = new THREE.Group();
   tier3Group.visible = false;
-  const ctrlTower = new THREE.Mesh(new THREE.BoxGeometry(3.8, 5.4, 3.6), steelMat);
-  ctrlTower.position.set(0.2, 3.4, 4.6);
-  ctrlTower.castShadow = true;
-  const ctrlCab = new THREE.Mesh(
-    new THREE.BoxGeometry(4.4, 1.6, 4.2),
-    new THREE.MeshStandardMaterial({ color: 0x38bdf8, roughness: 0.2, metalness: 0.3 })
-  );
-  ctrlCab.position.set(0.2, 6.8, 4.6);
-  const ctrlRoof = new THREE.Mesh(new THREE.BoxGeometry(4.8, 0.3, 4.6), craneMat);
-  ctrlRoof.position.set(0.2, 7.75, 4.6);
-  tier3Group.add(ctrlTower, ctrlCab, ctrlRoof);
-  g.add(tier3Group);
+  g.add(tier2Group, tier3Group);
 
-  g.userData = { ship, trolley, hoistedCrate, lhBeacon, tier2Group, tier3Group };
+  g.userData = { ship: null, trolley: null, hoistedCrate: null, lhBeacon: null, tier2Group, tier3Group };
   return g;
 }
 
@@ -3357,12 +3364,12 @@ export function createRailwayAndTrainModel(lowSpec = false) {
   const contBlueMat = new THREE.MeshStandardMaterial({ color: 0x0284c7, roughness: 0.42, metalness: 0.28 });
   const contTealMat = new THREE.MeshStandardMaterial({ color: 0x0d9488, roughness: 0.42, metalness: 0.28 });
 
-  // Track Corridor along x = -19.5 from z = -13.5 (Sawmill/Forest Rail Depot) to z = 25.5 (Deep-Water Container Port)
-  const trackLen = 39.0;
-  const trackCenterZ = 6.0;
-  const trackX = -19.5;
+  // Track Corridor along East Infrastructure Zone edge (x = 106, z = -104 .. +12)
+  const trackLen = 116.0;
+  const trackCenterZ = -46.0;
+  const trackX = 106.0;
 
-  const ballast = new THREE.Mesh(new THREE.BoxGeometry(2.4, 0.12, trackLen + 1.4), ballastMat);
+  const ballast = new THREE.Mesh(new THREE.BoxGeometry(2.8, 0.12, trackLen + 1.6), ballastMat);
   ballast.position.set(trackX, 0.06, trackCenterZ);
   ballast.receiveShadow = !lowSpec;
   g.add(ballast);
@@ -3373,13 +3380,13 @@ export function createRailwayAndTrainModel(lowSpec = false) {
   railR.position.set(trackX + 0.58, 0.17, trackCenterZ);
   g.add(railL, railR);
 
-  // Instanced Wooden Sleepers (Zero Draw-Call Overhead)
-  const sleeperCount = 44;
-  const sleeperGeo = new THREE.BoxGeometry(1.75, 0.09, 0.32);
+  // Instanced Wooden Sleepers along East Infrastructure Railway
+  const sleeperCount = 110;
+  const sleeperGeo = new THREE.BoxGeometry(1.85, 0.09, 0.32);
   const sleeperInst = new THREE.InstancedMesh(sleeperGeo, sleeperMat, sleeperCount);
   const dummy = new THREE.Object3D();
   for (let i = 0; i < sleeperCount; i++) {
-    const sz = -13.2 + (i / (sleeperCount - 1)) * 38.4;
+    const sz = -103.5 + (i / (sleeperCount - 1)) * 115.0;
     dummy.position.set(trackX, 0.12, sz);
     dummy.updateMatrix();
     sleeperInst.setMatrixAt(i, dummy.matrix);
@@ -3388,38 +3395,41 @@ export function createRailwayAndTrainModel(lowSpec = false) {
   g.add(sleeperInst);
 
   // North & South Heavy Steel Buffer Stops
-  for (const bz of [-13.6, 25.6]) {
-    const buf = new THREE.Mesh(new THREE.BoxGeometry(1.6, 0.65, 0.35), locoRedMat);
+  for (const bz of [-104.2, 12.2]) {
+    const buf = new THREE.Mesh(new THREE.BoxGeometry(1.7, 0.65, 0.38), locoRedMat);
     buf.position.set(trackX, 0.38, bz);
     g.add(buf);
   }
 
-  // Sawmill Rail Depot Platform (at x = -17.3, z = -10.5)
+  // East Infrastructure Train Station Platform (at x = 101.6, z = -42)
   const depotGroup = new THREE.Group();
-  depotGroup.position.set(-17.2, 0, -10.5);
-  const platform = new THREE.Mesh(new THREE.BoxGeometry(2.4, 0.45, 5.8), ballastMat);
+  depotGroup.position.set(101.6, 0, -42.0);
+  const platform = new THREE.Mesh(new THREE.BoxGeometry(4.2, 0.45, 11.0), ballastMat);
   platform.position.y = 0.225;
   platform.receiveShadow = !lowSpec;
-  const canopyRoof = new THREE.Mesh(new THREE.BoxGeometry(2.6, 0.18, 5.4), darkIronMat);
-  canopyRoof.position.set(0, 2.55, 0);
-  const canopyStripe = new THREE.Mesh(new THREE.BoxGeometry(2.64, 0.1, 5.44), brassMat);
-  canopyStripe.position.set(0, 2.48, 0);
-  for (const pz of [-2.1, 2.1]) {
-    const post = new THREE.Mesh(new THREE.CylinderGeometry(0.1, 0.12, 2.3, 6), darkIronMat);
-    post.position.set(0.5, 1.35, pz);
+  const stationHouse = new THREE.Mesh(new THREE.BoxGeometry(2.6, 2.5, 5.2), new THREE.MeshStandardMaterial({ color: 0xe2e8f0, roughness: 0.72 }));
+  stationHouse.position.set(-0.7, 1.65, 0);
+  const stationRoof = new THREE.Mesh(new THREE.BoxGeometry(3.4, 0.32, 6.2), darkIronMat);
+  stationRoof.position.set(-0.7, 3.05, 0);
+  const canopyRoof = new THREE.Mesh(new THREE.BoxGeometry(2.6, 0.18, 10.6), darkIronMat);
+  canopyRoof.position.set(0.8, 2.75, 0);
+  const canopyStripe = new THREE.Mesh(new THREE.BoxGeometry(2.66, 0.1, 10.66), brassMat);
+  canopyStripe.position.set(0.8, 2.66, 0);
+  for (const pz of [-4.2, 0, 4.2]) {
+    const post = new THREE.Mesh(new THREE.CylinderGeometry(0.1, 0.12, 2.4, 6), darkIronMat);
+    post.position.set(1.2, 1.45, pz);
     depotGroup.add(post);
   }
-  // Signal Semaphore Post with glowing lantern
-  const signalPost = new THREE.Mesh(new THREE.CylinderGeometry(0.08, 0.1, 3.2, 6), darkIronMat);
-  signalPost.position.set(-0.85, 1.6, 3.1);
+  const signalPost = new THREE.Mesh(new THREE.CylinderGeometry(0.08, 0.1, 3.4, 6), darkIronMat);
+  signalPost.position.set(1.9, 1.7, 5.8);
   const signalLamp = new THREE.Mesh(new THREE.SphereGeometry(0.22, 8, 8), headlightMat);
-  signalLamp.position.set(-0.85, 3.15, 3.1);
-  depotGroup.add(platform, canopyRoof, canopyStripe, signalPost, signalLamp);
+  signalLamp.position.set(1.9, 3.35, 5.8);
+  depotGroup.add(platform, stationHouse, stationRoof, canopyRoof, canopyStripe, signalPost, signalLamp);
   g.add(depotGroup);
 
-  // Animated Diesel-Electric Freight Train Group (moves along Z between -10.5 and +21.5)
+  // Animated Diesel-Electric Freight Train Group (runs along East Infrastructure rail x = 106)
   const trainGroup = new THREE.Group();
-  trainGroup.position.set(trackX, 0.24, -8.0);
+  trainGroup.position.set(trackX, 0.24, -42.0);
   trainGroup.visible = false;
 
   // 1. Locomotive Engine Unit
@@ -3523,7 +3533,10 @@ export function createRailwayAndTrainModel(lowSpec = false) {
     wheels,
     headlightMat,
     glassMat,
-    signalLamp
+    signalLamp,
+    trackX,
+    trackCenterZ,
+    trackHalfSpan: 44.0
   };
   return g;
 }
@@ -3566,6 +3579,11 @@ export function createHelicopterModel(tier = 1, lowSpec = false, livery = null) 
     roughness: 0.15
   });
 
+  // Airframe rotated 180° around Y so nose faces +Z (matching forward flight vector sin(yaw), cos(yaw))
+  const airframe = new THREE.Group();
+  airframe.rotation.y = Math.PI;
+  g.add(airframe);
+
   // Landing Skids
   for (const sx of [-0.88, 0.88]) {
     const skid = new THREE.Mesh(new THREE.CylinderGeometry(0.055, 0.055, 3.6, 8), rotorMat);
@@ -3577,10 +3595,10 @@ export function createHelicopterModel(tier = 1, lowSpec = false, livery = null) 
     const strutR = new THREE.Mesh(new THREE.CylinderGeometry(0.045, 0.045, 0.65, 6), rotorMat);
     strutR.position.set(sx * 0.85, 0.4, 0.85);
     strutR.rotation.z = sx > 0 ? 0.35 : -0.35;
-    g.add(skid, strutF, strutR);
+    airframe.add(skid, strutF, strutR);
   }
 
-  // Streamlined Fuselage & Nose Canopy (-Z is forward)
+  // Streamlined Fuselage & Nose Canopy (local -Z -> world +Z forward via airframe rotation)
   const fuselage = new THREE.Mesh(new THREE.BoxGeometry(1.62, 1.25, 3.2), hullMat);
   fuselage.position.set(0, 1.15, 0.15);
   fuselage.castShadow = !lowSpec;
@@ -3591,16 +3609,16 @@ export function createHelicopterModel(tier = 1, lowSpec = false, livery = null) 
   beltStripe.position.set(0, 1.04, 0.15);
   const turbineHousing = new THREE.Mesh(new THREE.BoxGeometry(1.12, 0.48, 1.85), trimMat);
   turbineHousing.position.set(0, 1.94, 0.25);
-  g.add(fuselage, nose, beltStripe, turbineHousing);
+  airframe.add(fuselage, nose, beltStripe, turbineHousing);
 
   // Tier 2 & 3 Side Sponsons / Executive Winglets
   if (tier >= 2) {
     const sponson = new THREE.Mesh(new THREE.BoxGeometry(2.55, 0.22, 0.85), trimMat);
     sponson.position.set(0, 0.86, 0.35);
-    g.add(sponson);
+    airframe.add(sponson);
   }
 
-  // Tail Boom & Vertical Fin (+Z is aft)
+  // Tail Boom & Vertical Fin (local +Z -> world -Z aft via airframe rotation)
   const tailBoom = new THREE.Mesh(new THREE.CylinderGeometry(0.22, 0.38, 3.3, 8), hullMat);
   tailBoom.rotation.x = Math.PI / 2;
   tailBoom.position.set(0, 1.32, 3.1);
@@ -3609,7 +3627,7 @@ export function createHelicopterModel(tier = 1, lowSpec = false, livery = null) 
   vFin.rotation.x = -0.22;
   const tailStrobe = new THREE.Mesh(new THREE.SphereGeometry(0.11, 6, 6), strobeMat);
   tailStrobe.position.set(0, 2.38, 4.65);
-  g.add(tailBoom, vFin, tailStrobe);
+  airframe.add(tailBoom, vFin, tailStrobe);
 
   // Main Rotor Assembly (4 composite blades)
   const mainRotor = new THREE.Group();
@@ -3620,7 +3638,7 @@ export function createHelicopterModel(tier = 1, lowSpec = false, livery = null) 
   const blade1 = new THREE.Mesh(new THREE.BoxGeometry(6.8, 0.05, 0.28), rotorMat);
   const blade2 = new THREE.Mesh(new THREE.BoxGeometry(0.28, 0.05, 6.8), rotorMat);
   mainRotor.add(mast, hubCap, blade1, blade2);
-  g.add(mainRotor);
+  airframe.add(mainRotor);
 
   // Tail Rotor Assembly
   const tailRotor = new THREE.Group();
@@ -3628,7 +3646,7 @@ export function createHelicopterModel(tier = 1, lowSpec = false, livery = null) 
   const tBlade1 = new THREE.Mesh(new THREE.BoxGeometry(0.05, 1.25, 0.14), rotorMat);
   const tBlade2 = new THREE.Mesh(new THREE.BoxGeometry(0.05, 0.14, 1.25), rotorMat);
   tailRotor.add(tBlade1, tBlade2);
-  g.add(tailRotor);
+  airframe.add(tailRotor);
 
   g.userData = {
     mainRotor,
@@ -4024,5 +4042,122 @@ export function createCivicPromenadeModel(lowSpec = false) {
   };
   return g;
 }
+
+export function createLoggingTruckModel(cabColor = 0xea580c, lowSpec = false) {
+  const g = new THREE.Group();
+  const cabMat = new THREE.MeshStandardMaterial({ color: cabColor, roughness: 0.36, metalness: 0.25 });
+  const chassisMat = new THREE.MeshStandardMaterial({ color: 0x1e293b, roughness: 0.58, metalness: 0.55 });
+  const bedMat = new THREE.MeshStandardMaterial({ color: 0x78350f, roughness: 0.78 });
+  const glassMat = new THREE.MeshStandardMaterial({ color: 0x7dd3fc, roughness: 0.14, metalness: 0.45, transparent: true, opacity: 0.8 });
+  const tireMat = new THREE.MeshStandardMaterial({ color: 0x0f172a, roughness: 0.9 });
+  const rimMat = new THREE.MeshStandardMaterial({ color: 0xcbd5e1, roughness: 0.35, metalness: 0.7 });
+  const chromeMat = new THREE.MeshStandardMaterial({ color: 0xe2e8f0, roughness: 0.22, metalness: 0.82 });
+  const lampMat = new THREE.MeshStandardMaterial({ color: 0xfef08a, emissive: 0xfacc15, emissiveIntensity: 0.85 });
+  const logMat = new THREE.MeshStandardMaterial({ color: 0xb96832, roughness: 0.82 });
+  const logEndMat = new THREE.MeshStandardMaterial({ color: 0xe6b88a, roughness: 0.76 });
+
+  // Heavy chassis frame along +Z (nose at +Z)
+  const chassis = new THREE.Mesh(new THREE.BoxGeometry(2.1, 0.36, 5.8), chassisMat);
+  chassis.position.set(0, 0.62, 0);
+  chassis.castShadow = !lowSpec;
+
+  // Front Cab (+Z)
+  const cabLower = new THREE.Mesh(new THREE.BoxGeometry(2.18, 1.05, 1.85), cabMat);
+  cabLower.position.set(0, 1.32, 1.92);
+  cabLower.castShadow = !lowSpec;
+
+  const cabUpper = new THREE.Mesh(new THREE.BoxGeometry(2.06, 0.86, 1.5), cabMat);
+  cabUpper.position.set(0, 2.22, 1.78);
+  cabUpper.castShadow = !lowSpec;
+
+  const windshield = new THREE.Mesh(new THREE.BoxGeometry(1.88, 0.66, 0.12), glassMat);
+  windshield.position.set(0, 2.24, 2.52);
+
+  const bumper = new THREE.Mesh(new THREE.BoxGeometry(2.26, 0.32, 0.28), chromeMat);
+  bumper.position.set(0, 0.68, 2.96);
+
+  const grille = new THREE.Mesh(new THREE.BoxGeometry(1.36, 0.56, 0.1), chassisMat);
+  grille.position.set(0, 1.24, 2.86);
+
+  const hlGeo = new THREE.BoxGeometry(0.32, 0.22, 0.1);
+  for (const hx of [-0.78, 0.78]) {
+    const hl = new THREE.Mesh(hlGeo, lampMat);
+    hl.position.set(hx, 1.12, 2.88);
+    g.add(hl);
+  }
+
+  // Roof amber warning strobe
+  const beacon = new THREE.Mesh(new THREE.CylinderGeometry(0.16, 0.18, 0.22, 8), lampMat);
+  beacon.position.set(0, 2.76, 1.85);
+
+  // Rear Timber Flatbed (-Z)
+  const bed = new THREE.Mesh(new THREE.BoxGeometry(2.26, 0.22, 3.75), bedMat);
+  bed.position.set(0, 0.92, -1.02);
+  bed.castShadow = !lowSpec;
+
+  // Steel side log-retaining stakes
+  const stakeGeo = new THREE.BoxGeometry(0.1, 1.15, 0.12);
+  for (const sx of [-1.08, 1.08]) {
+    for (const sz of [-2.55, -1.1, 0.35]) {
+      const stake = new THREE.Mesh(stakeGeo, chassisMat);
+      stake.position.set(sx, 1.54, sz);
+      g.add(stake);
+    }
+  }
+
+  // 6 Wheels (front axle + dual rear axles)
+  const wheels = [];
+  const tireGeo = new THREE.CylinderGeometry(0.46, 0.46, 0.34, 12);
+  tireGeo.rotateZ(Math.PI / 2);
+  const rimGeo = new THREE.CylinderGeometry(0.24, 0.24, 0.36, 8);
+  rimGeo.rotateZ(Math.PI / 2);
+  for (const wz of [1.95, -0.85, -2.05]) {
+    for (const wx of [-1.1, 1.1]) {
+      const wGroup = new THREE.Group();
+      wGroup.position.set(wx, 0.46, wz);
+      wGroup.add(new THREE.Mesh(tireGeo, tireMat), new THREE.Mesh(rimGeo, rimMat));
+      g.add(wGroup);
+      wheels.push(wGroup);
+    }
+  }
+
+  // Stacked Timber Log Cargo Load (toggled visible when truck carries wood)
+  const cargoVisual = new THREE.Group();
+  cargoVisual.position.set(0, 1.08, -1.02);
+  const logGeo = new THREE.CylinderGeometry(0.24, 0.25, 3.45, 8);
+  logGeo.rotateX(Math.PI / 2);
+  const logOffsets = [
+    [-0.64, 0.24], [0, 0.24], [0.64, 0.24],
+    [-0.32, 0.68], [0.32, 0.68],
+    [0, 1.1]
+  ];
+  for (const [lx, ly] of logOffsets) {
+    const log = new THREE.Mesh(logGeo, [logMat, logEndMat, logEndMat]);
+    log.position.set(lx, ly, 0);
+    log.castShadow = !lowSpec;
+    cargoVisual.add(log);
+  }
+  g.add(cargoVisual);
+
+  // Hired AI Driver Indicator (hard-hat worker visible inside/above cab when hired)
+  const driverVisual = new THREE.Group();
+  driverVisual.position.set(-0.42, 2.08, 1.88);
+  const head = new THREE.Mesh(new THREE.SphereGeometry(0.2, 8, 8), new THREE.MeshStandardMaterial({ color: 0xfdba74, roughness: 0.7 }));
+  const hat = new THREE.Mesh(new THREE.CylinderGeometry(0.24, 0.26, 0.14, 8), new THREE.MeshStandardMaterial({ color: 0xfacc15, roughness: 0.35 }));
+  hat.position.y = 0.16;
+  const aiOrb = new THREE.Mesh(
+    new THREE.OctahedronGeometry(0.22, 0),
+    new THREE.MeshStandardMaterial({ color: 0x38bdf8, emissive: 0x0ea5e9, emissiveIntensity: 0.8 })
+  );
+  aiOrb.position.set(0.42, 1.25, 0);
+  driverVisual.add(head, hat, aiOrb);
+  driverVisual.visible = false;
+  g.add(driverVisual);
+
+  g.add(chassis, cabLower, cabUpper, windshield, bumper, grille, beacon, bed);
+  g.userData = { wheels, cargoVisual, driverVisual, beacon };
+  return g;
+}
+
 
 

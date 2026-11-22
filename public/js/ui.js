@@ -1,4 +1,4 @@
-import { HIGHLAND_LANDMARKS, HIGHLAND_TRAILS } from './world.js';
+import { HIGHLAND_LANDMARKS, HIGHLAND_TRAILS, MAP_ZONES, ZONES, DELIVERY_DROPOFFS } from './world.js';
 import { CONNECTOR_ROADS, DISTRICTS, districtIndex, districtRoads, LAND_EDGE_Z, MINIMAP_BOUNDS, nearbyDistricts } from './regions.js';
 import { FISHERY_LOCATION } from './island-route.js';
 /**
@@ -231,6 +231,7 @@ export class UIManager {
       btnQuickExport: document.getElementById('btn-quick-export'),
       btnQuickGreet: document.getElementById('btn-quick-greet'),
       btnQuickTrain: document.getElementById('btn-quick-train'),
+      btnQuickTruck: document.getElementById('btn-quick-truck'),
       btnQuickYacht: document.getElementById('btn-quick-yacht'),
       btnQuickHeli: document.getElementById('btn-quick-heli'),
       btnQuickPlane: document.getElementById('btn-quick-plane'),
@@ -244,6 +245,7 @@ export class UIManager {
       vhudSpeed: document.getElementById('vhud-speed'),
       vhudAlt: document.getElementById('vhud-alt'),
       vhudMission: document.getElementById('vhud-mission'),
+      btnVehicleDriver: document.getElementById('btn-vehicle-driver'),
       btnPlaneUp: document.getElementById('btn-plane-up'),
       btnPlaneDown: document.getElementById('btn-plane-down'),
       btnVehicleExit: document.getElementById('btn-vehicle-exit'),
@@ -436,6 +438,9 @@ export class UIManager {
     this.els.btnQuickTrain?.addEventListener('click', () => {
       this.cb.onTrainExpress?.();
     });
+    this.els.btnQuickTruck?.addEventListener('click', () => {
+      this.cb.onQuickYardTruck?.();
+    });
     this.els.btnQuickYacht?.addEventListener('click', () => {
       if (this.cb.onBoardYacht) this.cb.onBoardYacht();
     });
@@ -444,6 +449,9 @@ export class UIManager {
     });
     this.els.btnQuickPlane?.addEventListener('click', () => {
       if (this.cb.onBoardPlane) this.cb.onBoardPlane();
+    });
+    this.els.btnVehicleDriver?.addEventListener('click', () => {
+      this.cb.onHireOrToggleDriver?.();
     });
     this.els.btnVehicleExit?.addEventListener('click', () => {
       if (this.cb.onDisembark) this.cb.onDisembark();
@@ -624,15 +632,15 @@ export class UIManager {
     ctx.lineWidth = 1.2;
     ctx.strokeStyle = 'rgba(56, 189, 248, 0.55)';
     ctx.beginPath();
-    ctx.moveTo(toMapX(14.5), toMapY(29));
+    ctx.moveTo(toMapX(ZONES.yachtBerth.x), toMapY(ZONES.yachtBerth.z));
     ctx.lineTo(toMapX(41), toMapY(86));
     ctx.stroke();
 
     ctx.strokeStyle = 'rgba(245, 158, 11, 0.55)';
     ctx.beginPath();
-    ctx.moveTo(toMapX(30), toMapY(-2));
+    ctx.moveTo(toMapX(ZONES.runwayStart.x), toMapY(ZONES.runwayStart.z));
     ctx.lineTo(islX, islY);
-    ctx.lineTo(toMapX(2), toMapY(32));
+    ctx.lineTo(toMapX(ZONES.harborExport.x), toMapY(ZONES.harborExport.z));
     ctx.stroke();
     ctx.restore();
 
@@ -643,7 +651,7 @@ export class UIManager {
     ctx.setLineDash([2, 2]);
     ctx.strokeStyle = '#67e8f9';
     ctx.beginPath();
-    ctx.moveTo(toMapX(2), toMapY(22.6));
+    ctx.moveTo(toMapX(ZONES.ferryPier.x), toMapY(ZONES.ferryPier.z));
     ctx.lineTo(fisheryX, fisheryY);
     ctx.stroke();
     ctx.setLineDash([]);
@@ -660,16 +668,41 @@ export class UIManager {
     ctx.fillText('Ngư Trường', fisheryX + 4, fisheryY + 16);
     ctx.restore();
 
-    // Asphalt roads
-    ctx.fillStyle = '#334155';
-    ctx.fillRect(toMapX(-25), toMapY(-6.5), toMapX(21) - toMapX(-25), 5);
-    ctx.fillRect(toMapX(-1), toMapY(-6), 5, toMapY(26) - toMapY(-6));
+    // Master 3-Zone Fenced Footprints (Logging | Forest | Residential | Infrastructure)
+    const zoneStyles = [
+      { z: MAP_ZONES.logging, fill: 'rgba(217, 119, 6, 0.24)', stroke: '#f59e0b' },
+      { z: MAP_ZONES.forest, fill: 'rgba(22, 163, 74, 0.26)', stroke: '#4ade80' },
+      { z: MAP_ZONES.residential, fill: 'rgba(56, 189, 248, 0.22)', stroke: '#38bdf8' },
+      { z: MAP_ZONES.infrastructure, fill: 'rgba(168, 85, 247, 0.22)', stroke: '#c084fc' }
+    ];
+    ctx.save();
+    for (const item of zoneStyles) {
+      const zx = toMapX(item.z.minX);
+      const zy = toMapY(item.z.minZ);
+      const zw = toMapX(item.z.maxX) - zx;
+      const zh = toMapY(item.z.maxZ) - zy;
+      ctx.fillStyle = item.fill;
+      ctx.fillRect(zx, zy, zw, zh);
+      ctx.strokeStyle = item.stroke;
+      ctx.lineWidth = 1.25;
+      ctx.strokeRect(zx, zy, zw, zh);
+    }
+    ctx.restore();
 
-    // Airport Runway (30, -2)
-    const rwX = toMapX(25.4);
-    const rwY = toMapY(-21);
-    const rwW = Math.max(6, toMapX(34.6) - rwX);
-    const rwH = Math.max(18, toMapY(17) - rwY);
+    // Wide 2-Lane Separation Avenues
+    ctx.fillStyle = '#334155';
+    // South Waterfront Avenue (z = 10) & North Ring Avenue (z = -106)
+    ctx.fillRect(toMapX(-124), toMapY(6), toMapX(124) - toMapX(-124), Math.max(3, toMapY(14) - toMapY(6)));
+    ctx.fillRect(toMapX(-124), toMapY(-109), toMapX(124) - toMapX(-124), Math.max(2.5, toMapY(-103) - toMapY(-109)));
+    // West Separation Avenue (x = -34) & East Separation Avenue (x = 45)
+    ctx.fillRect(toMapX(-38), toMapY(-109), Math.max(3, toMapX(-30) - toMapX(-38)), toMapY(23) - toMapY(-109));
+    ctx.fillRect(toMapX(41), toMapY(-109), Math.max(3, toMapX(49) - toMapX(41)), toMapY(23) - toMapY(-109));
+
+    // Far-East Airport Runway (132, -10)
+    const rwX = toMapX(127.5);
+    const rwY = toMapY(-34);
+    const rwW = Math.max(5, toMapX(136.5) - rwX);
+    const rwH = Math.max(16, toMapY(14) - rwY);
     ctx.fillStyle = (gameState.airportTier || 0) > 0 ? '#1e293b' : 'rgba(30, 41, 59, 0.45)';
     ctx.fillRect(rwX, rwY, rwW, rwH);
     if ((gameState.airportTier || 0) > 0) {
@@ -681,54 +714,52 @@ export class UIManager {
       ctx.stroke();
     }
 
-    // Corporate HQ Plaza Building (15, 7)
+    // Corporate HQ Building (Infrastructure Zone)
     if ((gameState.hqTier || 0) > 0) {
       ctx.fillStyle = '#a855f7';
-      ctx.fillRect(toMapX(12.5), toMapY(4.5), 6, 6);
+      ctx.fillRect(toMapX(ZONES.hqPlaza.x) - 3, toMapY(ZONES.hqPlaza.z) - 3, 6, 6);
     }
 
-    // Luxury Furniture Factory (16, -24) & Coastal Lighthouse (-30, 26)
+    // Furniture Mill (Logging Zone) & Coastal Lighthouse
     if ((gameState.furnitureMillTier || 0) > 0) {
       ctx.fillStyle = '#fb7185';
-      ctx.fillRect(toMapX(13.5), toMapY(-26.5), 7, 5);
+      ctx.fillRect(toMapX(ZONES.furnitureMill.x) - 3.5, toMapY(ZONES.furnitureMill.z) - 2.5, 7, 5);
     }
     if ((gameState.lighthouseTier || 0) > 0) {
       ctx.fillStyle = '#fef08a';
       ctx.beginPath();
-      ctx.arc(toMapX(-30), toMapY(26), 3.4, 0, Math.PI * 2);
+      ctx.arc(toMapX(ZONES.lighthouse.x), toMapY(ZONES.lighthouse.z), 3.4, 0, Math.PI * 2);
       ctx.fill();
     }
-    if ((gameState.deepPortTier || 0) > 0 || (gameState.greenEnergyTier || 0) > 0) {
-      ctx.fillStyle = (gameState.greenEnergyTier || 0) > 0 ? '#34d399' : '#38bdf8';
-      ctx.fillRect(toMapX(-25), toMapY(26.5), 11, 7);
-    }
 
-    // Industrial Coastal Railway Line (x = -19.5, z = -13..25.5)
-    if ((gameState.railwayTier || 0) > 0) {
-      ctx.strokeStyle = '#f97316';
-      ctx.lineWidth = 2;
-      ctx.beginPath();
-      ctx.moveTo(toMapX(-19.5), toMapY(-13));
-      ctx.lineTo(toMapX(-19.5), toMapY(25.5));
-      ctx.stroke();
-    }
+    // East Infrastructure Railway Line (x = 106, z = -104..12)
+    ctx.strokeStyle = (gameState.railwayTier || 0) > 0 ? '#f97316' : 'rgba(148, 163, 184, 0.55)';
+    ctx.lineWidth = 2;
+    ctx.beginPath();
+    ctx.moveTo(toMapX(106), toMapY(-104));
+    ctx.lineTo(toMapX(106), toMapY(12));
+    ctx.stroke();
 
-    // VIP Helipad H (19.5, 15.5)
+    // VIP Helipad H (Infrastructure Zone)
     if ((gameState.heliTier || 0) > 0) {
       ctx.strokeStyle = '#c084fc';
       ctx.lineWidth = 1.6;
       ctx.beginPath();
-      ctx.arc(toMapX(19.5), toMapY(15.5), 3.6, 0, Math.PI * 2);
+      ctx.arc(toMapX(ZONES.helipad.x), toMapY(ZONES.helipad.z), 3.6, 0, Math.PI * 2);
       ctx.stroke();
     }
 
-    // Sawmill building & Harbor Pier
+    // Sawmill complex in Logging Zone
     ctx.fillStyle = '#d97706';
-    ctx.fillRect(toMapX(-6), toMapY(-19), 15, 11);
+    ctx.fillRect(toMapX(-84), toMapY(-48), Math.max(8, toMapX(-68) - toMapX(-84)), Math.max(6, toMapY(-36) - toMapY(-48)));
+
+    // 3 Simple Wooden Fishing-Boat Piers along South Coastline (x = -58, 5, 52)
     ctx.fillStyle = '#92623a';
-    ctx.fillRect(toMapX(-11), toMapY(24.5), 25, 13);
-    ctx.fillStyle = '#0ea5e9';
-    ctx.fillRect(toMapX(2), toMapY(29), 10, 6);
+    for (const px of [-58, 5, 52]) {
+      ctx.fillRect(toMapX(px - 3), toMapY(23), Math.max(4, toMapX(px + 3) - toMapX(px - 3)), Math.max(6, toMapY(36) - toMapY(23)));
+    }
+    ctx.fillStyle = '#38bdf8';
+    ctx.fillRect(toMapX(ZONES.harborExport.x) - 2, toMapY(ZONES.harborExport.z) - 2, 4, 4);
 
     // Harvestable alive trees
     if (trees && trees.length) {
@@ -740,7 +771,7 @@ export class UIManager {
     }
 
     ctx.fillStyle = '#cffafe';
-    ctx.fillRect(toMapX(2) - 2, toMapY(22.6) - 2, 4, 4);
+    ctx.fillRect(toMapX(ZONES.ferryPier.x) - 2, toMapY(ZONES.ferryPier.z) - 2, 4, 4);
 
     ctx.save();
     ctx.font = 'bold 9px sans-serif';
@@ -763,6 +794,21 @@ export class UIManager {
         ctx.beginPath();
         ctx.arc(toMapX(tr.pos.x), toMapY(tr.pos.z), 2.8, 0, Math.PI * 2);
         ctx.fill();
+      }
+    }
+
+    // Wood Delivery Drop-off zones & active Logging Yard Vehicles
+    for (const drop of DELIVERY_DROPOFFS) {
+      ctx.fillStyle = '#' + drop.color.toString(16).padStart(6, '0');
+      ctx.beginPath();
+      ctx.arc(toMapX(drop.x), toMapY(drop.z), 3.1, 0, Math.PI * 2);
+      ctx.fill();
+    }
+    if (extras.yardVehicles && extras.yardVehicles.length) {
+      for (const v of extras.yardVehicles) {
+        if (!v.pos) continue;
+        ctx.fillStyle = v.driverHired ? '#38bdf8' : '#f59e0b';
+        ctx.fillRect(toMapX(v.pos.x) - 2, toMapY(v.pos.z) - 2, 4, 4);
       }
     }
 
@@ -961,7 +1007,8 @@ export class UIManager {
   updateVehicleHud(telemetry) {
     const mode = telemetry?.mode || 'foot';
     this.currentControlMode = mode;
-    const isPilot = mode === 'yacht' || mode === 'plane' || mode === 'heli';
+    const isYard = mode === 'yard_vehicle';
+    const isPilot = mode === 'yacht' || mode === 'plane' || mode === 'heli' || isYard;
     const isAir = mode === 'plane' || mode === 'heli';
 
     if (this.els.fleetQuickStrip) {
@@ -981,6 +1028,12 @@ export class UIManager {
     if (this.els.vhudAlt) this.els.vhudAlt.textContent = telemetry.altDisplay || '0.0 m';
     if (this.els.vhudMission) this.els.vhudMission.textContent = telemetry.missionText || 'Tự do khám phá';
     if (this.els.btnVehicleExit) this.els.btnVehicleExit.title = telemetry.parkingLabel || '';
+    if (this.els.btnVehicleDriver) {
+      this.els.btnVehicleDriver.hidden = !isYard;
+      if (isYard && telemetry.driverBtnLabel) {
+        this.els.btnVehicleDriver.textContent = telemetry.driverBtnLabel;
+      }
+    }
     if (this.els.btnPlaneUp) this.els.btnPlaneUp.hidden = !isAir;
     if (this.els.btnPlaneDown) this.els.btnPlaneDown.hidden = !isAir;
   }

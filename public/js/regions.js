@@ -14,7 +14,7 @@ export const DISTRICTS = Array.from({ length: ROWS }, (_, row) =>
   Array.from({ length: COLUMNS }, (_, column) => {
     const x = WORLD_BOUNDS.minX + (column + 0.5) * CELL_WIDTH;
     const z = WORLD_BOUNDS.minZ + (row + 0.5) * CELL_DEPTH;
-    const developed = z < -215 || x < -125 || x > 205;
+    const developed = z < -165 || x < -155 || x > 165;
     const stations = developed ? [{ mode: 'land', x: x + 7, z, y: 0 }] : [];
     if (developed && column % 5 === 0) stations.push({ mode: 'heli', x: x - 11, z, y: 0.35 });
     if (developed && column % 5 === 2) stations.push({ mode: 'plane', x: x - 12, z: z + 30, y: 0.25 });
@@ -24,12 +24,12 @@ export const DISTRICTS = Array.from({ length: ROWS }, (_, row) =>
 );
 
 export const CONNECTOR_ROADS = [
-  [[46, -148], [46, -231.25]],
-  [[46, -231.25], [85, -231.25]],
-  [[145, 21], [265, 21]],
-  [[265, 21], [265, -26.25]],
-  [[-66, -4], [-185, -4]],
-  [[-185, -4], [-185, -26.25]]
+  [[5, -106], [5, -231.25]],
+  [[5, -231.25], [85, -231.25]],
+  [[116, 10], [265, 10]],
+  [[265, 10], [265, -26.25]],
+  [[-114, 10], [-185, 10]],
+  [[-185, 10], [-185, -26.25]]
 ];
 
 export function nearbyDistricts(row, column, radius) {
