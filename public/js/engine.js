@@ -111,9 +111,13 @@ import {
   updatePlayerModelAnimation,
   createPetModel,
   createVehicleModel,
+  updateVehicleKinematics,
   createFishingBoatModel,
+  updateVesselBuoyancy,
   createWorkerModel,
   createCitizenModel,
+  attachGlbCitizenModel,
+  attachMixamoWorkerModel,
   createDrivableYachtModel,
   attachGlbToPersonalBoat,
   setPersonalBoatGlbShadows,
@@ -130,88 +134,95 @@ import { UIManager } from './ui.js';
 // ---------------------------------------------------------------------------
 const ISLAND_WAYPOINTS = {
   plaza_center: {
-    id: 'plaza_center', x: 0.5, z: 4.5, isShelter: false,
-    buildingId: 'plaza', buildingLabel: 'Quảng Trường Trung Tâm',
-    interactAction: '🏛️ Ngắm Quảng trường Đế Chế', pose: 'photo',
-    lookAt: { x: 0, z: -8 },
-    neighbors: ['sawmill_walk', 'hq_plaza', 'boardwalk_center', 'rail_station']
+    id: 'plaza_center', x: 2.5, z: -0.5, isShelter: false,
+    buildingId: 'plaza', buildingLabel: 'Quảng Trường Công Viên Trung Tâm',
+    interactAction: '🏛️ Ngắm Đài phun nước Quảng trường', pose: 'photo',
+    lookAt: { x: 2.5, z: -5.5 },
+    neighbors: ['park_north', 'west_ave_mid', 'east_ave_mid', 'boardwalk_center']
   },
-  sawmill_walk: {
-    id: 'sawmill_walk', x: 5.2, z: -3.2, isShelter: true,
-    buildingId: 'sawmill', buildingLabel: 'Xưởng Cưa Công Nghiệp',
-    interactAction: '🪵 Kiểm định dây chuyền Xưởng Cưa', pose: 'inspect',
-    lookAt: { x: 1.5, z: -11.5 },
-    neighbors: ['plaza_center', 'hq_plaza', 'furniture_walk']
+  park_north: {
+    id: 'park_north', x: 2.5, z: -16.6, isShelter: true,
+    buildingId: 'town', buildingLabel: 'Khu Phố Nhà Gỗ Bắc',
+    interactAction: '🏡 Dạo quanh Khu dân cư Trung tâm', pose: 'sip_coffee',
+    lookAt: { x: 2.5, z: -20.5 },
+    neighbors: ['plaza_center', 'west_ave_north', 'east_ave_north']
   },
-  hq_plaza: {
-    id: 'hq_plaza', x: 13.5, z: -9.8, isShelter: true,
+  west_ave_north: {
+    id: 'west_ave_north', x: -11.5, z: -10.5, isShelter: true,
+    buildingId: 'sawmill', buildingLabel: 'Cổng Xưởng Cưa Công Nghiệp',
+    interactAction: '🪵 Kiểm định băng chuyền Xưởng Cưa', pose: 'inspect',
+    lookAt: { x: -29.0, z: -10.5 },
+    neighbors: ['park_north', 'west_ave_mid']
+  },
+  west_ave_mid: {
+    id: 'west_ave_mid', x: -11.5, z: 3.6, isShelter: true,
+    buildingId: 'furniture', buildingLabel: 'Khu Công Nghiệp Gỗ & Nội Thất',
+    interactAction: '🛋️ Xem Xưởng Nội thất Xuất khẩu', pose: 'inspect',
+    lookAt: { x: -35.0, z: 2.5 },
+    neighbors: ['plaza_center', 'west_ave_north', 'boardwalk_west']
+  },
+  east_ave_north: {
+    id: 'east_ave_north', x: 16.5, z: -10.5, isShelter: true,
+    buildingId: 'railway', buildingLabel: 'Khu Hạ Tầng & Ga Tàu Hỏa',
+    interactAction: '🚂 Kiểm tra tuyến Ga Đường Sắt Đông', pose: 'wave_ship',
+    lookAt: { x: 30.0, z: -10.5 },
+    neighbors: ['park_north', 'rail_station', 'east_ave_mid']
+  },
+  east_ave_mid: {
+    id: 'east_ave_mid', x: 16.5, z: 7.5, isShelter: true,
     buildingId: 'hq', buildingLabel: 'Tháp Trụ Sở Tập Đoàn',
     interactAction: '📊 Xem bảng cổ phiếu Trụ sở HQ', pose: 'point_up',
-    lookAt: { x: 15.0, z: -14.5 },
-    neighbors: ['plaza_center', 'sawmill_walk', 'east_avenue']
-  },
-  east_avenue: {
-    id: 'east_avenue', x: 18.5, z: -4.0, isShelter: false,
-    buildingId: 'avenue', buildingLabel: 'Đại Lộ Thương Mại Đông',
-    interactAction: '🌳 Dạo mát Đại lộ Đông', pose: 'sip_coffee',
-    lookAt: { x: 24.0, z: -4.0 },
-    neighbors: ['hq_plaza', 'airport_terminal', 'furniture_walk']
-  },
-  furniture_walk: {
-    id: 'furniture_walk', x: 12.8, z: 4.8, isShelter: true,
-    buildingId: 'furniture', buildingLabel: 'Nhà Máy Nội Thất Cao Cấp',
-    interactAction: '🛋️ Xem Showroom Nội thất xuất khẩu', pose: 'inspect',
-    lookAt: { x: 16.0, z: 2.5 },
-    neighbors: ['sawmill_walk', 'east_avenue', 'helipad_plaza', 'boardwalk_center']
+    lookAt: { x: 24.5, z: 7.5 },
+    neighbors: ['plaza_center', 'east_ave_north', 'helipad_plaza', 'boardwalk_east']
   },
   rail_station: {
-    id: 'rail_station', x: -14.5, z: -2.5, isShelter: true,
+    id: 'rail_station', x: 29.0, z: -10.5, isShelter: true,
     buildingId: 'railway', buildingLabel: 'Ga Tàu Hỏa Logistics',
-    interactAction: '🚂 Kiểm tra toa hàng Ga Đường Sắt', pose: 'wave_ship',
-    lookAt: { x: -19.5, z: -2.5 },
-    neighbors: ['plaza_center', 'boardwalk_west']
+    interactAction: '🚂 Chờ chuyến tàu hàng xuất bến', pose: 'wave_ship',
+    lookAt: { x: 33.5, z: -10.5 },
+    neighbors: ['east_ave_north', 'airport_terminal']
   },
   boardwalk_west: {
-    id: 'boardwalk_west', x: -9.5, z: 17.2, isShelter: true,
-    buildingId: 'deep_port', buildingLabel: 'Bến Cảng Tây & Nhà Máy Cá',
-    interactAction: '🏗️ Quan sát Cẩu Container Cảng Sâu', pose: 'photo',
-    lookAt: { x: -18.0, z: 26.0 },
-    neighbors: ['rail_station', 'boardwalk_center']
+    id: 'boardwalk_west', x: -11.5, z: 19.5, isShelter: true,
+    buildingId: 'deep_port', buildingLabel: 'Kênh Nước Cối Xay & Khu Nông Nghiệp',
+    interactAction: '🌾 Tham quan Kênh Tưới Tiêu & Cối Xay Nước', pose: 'photo',
+    lookAt: { x: -27.5, z: 15.5 },
+    neighbors: ['west_ave_mid', 'boardwalk_center']
   },
   boardwalk_center: {
-    id: 'boardwalk_center', x: 1.5, z: 17.2, isShelter: true,
-    buildingId: 'promenade', buildingLabel: 'Phố Đi Bộ & Café Bến Cảng',
-    interactAction: '☕ Thưởng thức Cà phê Phố Đi Bộ', pose: 'sip_coffee',
-    lookAt: { x: 2.0, z: 26.0 },
-    neighbors: ['plaza_center', 'furniture_walk', 'boardwalk_west', 'harbor_pier', 'boardwalk_east']
+    id: 'boardwalk_center', x: 2.5, z: 22.0, isShelter: true,
+    buildingId: 'promenade', buildingLabel: 'Phố Đi Bộ Ven Biển Trung Tâm',
+    interactAction: '☕ Thưởng thức Cà phê Phố Biển', pose: 'sip_coffee',
+    lookAt: { x: 2.5, z: 26.0 },
+    neighbors: ['plaza_center', 'boardwalk_west', 'boardwalk_east']
   },
   harbor_pier: {
-    id: 'harbor_pier', x: 2.0, z: 22.6, isShelter: false,
-    buildingId: 'harbor', buildingLabel: 'Cầu Tàu Xuất Khẩu Quốc Tế',
-    interactAction: '🚢 Vẫy chào tàu viễn dương cập cảng', pose: 'wave_ship',
-    lookAt: { x: 2.0, z: 32.0 },
-    neighbors: ['boardwalk_center']
+    id: 'harbor_pier', x: 23.0, z: 23.5, isShelter: false,
+    buildingId: 'harbor', buildingLabel: 'Cầu Tàu Gỗ Xuất Khẩu Đông Nam',
+    interactAction: '🚢 Vẫy chào 3 tàu gỗ cập cảng', pose: 'wave_ship',
+    lookAt: { x: 23.0, z: 34.0 },
+    neighbors: ['boardwalk_east']
   },
   boardwalk_east: {
-    id: 'boardwalk_east', x: 12.8, z: 18.8, isShelter: true,
-    buildingId: 'yacht', buildingLabel: 'Bến Du Thuyền VIP',
-    interactAction: '📸 Chụp ảnh Bến Du Thuyền VIP', pose: 'photo',
-    lookAt: { x: 16.0, z: 28.0 },
-    neighbors: ['boardwalk_center', 'helipad_plaza']
+    id: 'boardwalk_east', x: 16.5, z: 22.0, isShelter: true,
+    buildingId: 'harbor', buildingLabel: 'Đại Lộ Cảng Gỗ Đông Nam',
+    interactAction: '📸 Chụp ảnh Cầu Tàu Gỗ 3 Tàu Hàng', pose: 'photo',
+    lookAt: { x: 23.0, z: 30.0 },
+    neighbors: ['boardwalk_center', 'east_ave_mid', 'helipad_plaza', 'harbor_pier']
   },
   helipad_plaza: {
-    id: 'helipad_plaza', x: 17.2, z: 12.2, isShelter: false,
+    id: 'helipad_plaza', x: 20.0, z: 16.5, isShelter: false,
     buildingId: 'helipad', buildingLabel: 'Sân Đáp Trực Thăng VIP (H)',
     interactAction: '🚁 Chiêm ngưỡng Trực thăng Chuyên cơ', pose: 'photo',
-    lookAt: { x: 19.5, z: 15.5 },
-    neighbors: ['furniture_walk', 'boardwalk_east', 'airport_terminal']
+    lookAt: { x: 24.5, z: 16.5 },
+    neighbors: ['east_ave_mid', 'boardwalk_east', 'airport_terminal']
   },
   airport_terminal: {
-    id: 'airport_terminal', x: 23.2, z: 3.5, isShelter: true,
+    id: 'airport_terminal', x: 36.5, z: 2.0, isShelter: true,
     buildingId: 'airport', buildingLabel: 'Nhà Ga Sân Bay Đông',
-    interactAction: '✈️ Xem lịch bay tại Nhà ga Hàng không', pose: 'inspect',
-    lookAt: { x: 30.0, z: 5.0 },
-    neighbors: ['east_avenue', 'helipad_plaza']
+    interactAction: '✈️ Xem lịch bay tại Đường băng Đông', pose: 'inspect',
+    lookAt: { x: 43.5, z: -4.0 },
+    neighbors: ['rail_station', 'helipad_plaza']
   },
   // Offshore Luxury Resort Island Loop
   resort_west: {
@@ -237,21 +248,24 @@ const ISLAND_WAYPOINTS = {
   }
 };
 const MAINLAND_WP_KEYS = [
-  'plaza_center', 'sawmill_walk', 'hq_plaza', 'east_avenue',
-  'furniture_walk', 'rail_station', 'boardwalk_west', 'boardwalk_center',
-  'harbor_pier', 'boardwalk_east', 'helipad_plaza', 'airport_terminal'
+  'plaza_center', 'park_north', 'west_ave_north', 'west_ave_mid',
+  'east_ave_north', 'east_ave_mid', 'rail_station', 'boardwalk_west',
+  'boardwalk_center', 'harbor_pier', 'boardwalk_east', 'helipad_plaza', 'airport_terminal'
 ];
 const RESORT_WP_KEYS = ['resort_west', 'resort_plaza', 'resort_lighthouse'];
 
 // Soft circular building obstacle colliders so pedestrians never clip into structures while steering
 const BUILDING_COLLIDERS = [
-  { x: 0.0, z: -11.5, radius: 5.4 },   // Main Sawmill complex
-  { x: 15.0, z: -14.2, radius: 3.8 },  // Corporate HQ Tower
-  { x: 16.2, z: 1.5, radius: 3.2 },    // Luxury Furniture Mill
-  { x: -19.5, z: -3.5, radius: 2.8 },  // West Railway Depot
-  { x: -7.5, z: 22.0, radius: 2.8 },   // Harbor Cannery Building
-  { x: -5.8, z: 11.2, radius: 1.65 },  // Civic Tourist Kiosk
-  { x: 5.8, z: 11.2, radius: 1.65 }    // Civic Golden Monument
+  { x: -29.0, z: -10.5, radius: 5.5 },  // Main Sawmill complex (West Logging Zone)
+  { x: -35.0, z: 2.5, radius: 3.4 },    // Luxury Furniture Mill (West Logging Zone)
+  { x: -20.2, z: -25.2, radius: 4.5 },  // North Timber Warehouse
+  { x: -20.2, z: -0.5, radius: 4.5 },   // Mid-South Timber Warehouse
+  { x: -20.2, z: 7.8, radius: 3.8 },    // South Timber Warehouse
+  { x: 2.5, z: -5.5, radius: 2.3 },     // Central Park Fountain
+  { x: 24.5, z: 7.5, radius: 3.8 },     // Corporate HQ Tower (East Infrastructure)
+  { x: 30.0, z: -10.5, radius: 2.8 },   // East Railway Station Depot
+  { x: 24.5, z: -12.0, radius: 3.6 },   // Water Treatment Plant
+  { x: 24.5, z: -2.5, radius: 3.6 }     // Storage Silos Yard
 ];
 
 // ---------------------------------------------------------------------------
@@ -388,8 +402,8 @@ class TimberPortEngine {
     this._arcStart = new THREE.Vector3();
     this._arcEnd = new THREE.Vector3();
 
-    // Player & simulation state
-    this.playerPos = new THREE.Vector3(0, 0, 2);
+    // Player & simulation state (spawns cleanly at Central Square Park)
+    this.playerPos = new THREE.Vector3(2.5, 0, -0.5);
     const checkpoint = gameState.checkpoint;
     if (checkpoint) {
       const { x, z } = DISTRICTS[checkpoint.row][checkpoint.column];
@@ -435,8 +449,15 @@ class TimberPortEngine {
     this.lastVisualPallets = -1;
     this.walkPhase = 0;
     this.playerMoving = false;
+    this.playerPrevSpeed = 0;
+    this.playerAccelLean = 0;
+    this.playerTurnLean = 0;
+    this.footstepTimer = 0;
     this.chopTargetYaw = null;
-    this._playerAnimOpts = { carryRatio: 0, speedMult: 1 };
+    this.chopImpactPending = false;
+    this.chopImpactTree = null;
+    this._playerAnimOpts = { carryRatio: 0, speedMult: 1, turnLean: 0, accelLean: 0 };
+    this._workSmokeVec = new THREE.Vector3();
 
     // Camera Orbit & Choreography state
     this.camYaw = 0.42;
@@ -1128,12 +1149,19 @@ class TimberPortEngine {
     while (this.aiWorkers.length < (gameState.lumberjacks || 0)) {
       const idx = this.aiWorkers.length;
       const mesh = createWorkerModel('lumberjack');
-      const startPos = new THREE.Vector3(-18 - idx * 2.5, 0, -14 + idx * 2);
+      attachMixamoWorkerModel(mesh);
+      const startPos = new THREE.Vector3(-44 - idx * 2.2, 0, -10.5 + idx * 2.2);
       mesh.position.copy(startPos);
       this.scene.add(mesh);
       this.aiWorkers.push({
         mesh,
         pos: startPos,
+        yaw: 0,
+        walkPhase: Math.random() * Math.PI * 2,
+        chopSwing: 0,
+        chopPulseTimer: 0,
+        impactFired: false,
+        animOpts: { carryRatio: 0, speedMult: 1 },
         state: 'to_tree',
         targetTree: null,
         timer: 0,
@@ -1150,12 +1178,15 @@ class TimberPortEngine {
       const idx = this.aiForklifts.length;
       const mesh = createVehicleModel('forklift', low);
       mesh.scale.setScalar(0.84);
-      const startPos = new THREE.Vector3(6 + idx * 2.4, 0, -6 + idx * 3);
+      const startPos = new THREE.Vector3(-19.5 + idx * 2.0, 0, -10.5 + idx * 2.4);
       mesh.position.copy(startPos);
       this.scene.add(mesh);
       this.aiForklifts.push({
         mesh,
         pos: startPos,
+        yaw: 0,
+        curSpeed: 0,
+        loadTimer: 0,
         phase: idx * 1.5,
         toHarbor: true,
         carrying: false
@@ -1174,6 +1205,7 @@ class TimberPortEngine {
       this.scene.add(mesh);
       this.fishingBoats.push({
         mesh,
+        yaw: idx * 1.7 + Math.PI * 0.5,
         angle: idx * 1.7,
         radiusX: 16 + idx * 5,
         radiusZ: 9 + idx * 3.5,
@@ -1226,7 +1258,7 @@ class TimberPortEngine {
         this.drivablePlane.position.copy(this.playerPos);
         this.drivablePlane.rotation.y = this.playerYaw;
       } else {
-        this.drivablePlane.position.set(30, 0.14, 13);
+        this.drivablePlane.position.copy(ZONES.runwayStart);
         this.drivablePlane.rotation.set(0, Math.PI, 0);
       }
       this.scene.add(this.drivablePlane);
@@ -1245,7 +1277,7 @@ class TimberPortEngine {
         this.drivableHeli.position.copy(this.playerPos);
         this.drivableHeli.rotation.y = this.playerYaw;
       } else {
-        this.drivableHeli.position.set(19.5, 0.25, 15.5);
+        this.drivableHeli.position.set(ZONES.helipad.x, 0.25, ZONES.helipad.z);
         this.drivableHeli.rotation.set(0, -Math.PI * 0.25, 0);
       }
       this.scene.add(this.drivableHeli);
@@ -2574,6 +2606,8 @@ class TimberPortEngine {
     const moving = len > 0.08;
     this.playerMoving = moving;
     let speedMult = 1;
+    let currentSpeed = 0;
+    let steerDiff = 0;
 
     if (moving) {
       ix /= Math.max(1, len);
@@ -2597,6 +2631,7 @@ class TimberPortEngine {
         const veh = VEHICLES.find((v) => v.id === (gameState.equippedVehicle || 'forklift')) || VEHICLES[0];
         speed = veh.speed * (gameState.boostTimer > 0 ? 1.25 : 1.0);
       }
+      currentSpeed = speed;
 
       this.playerPos.addScaledVector(this._moveDir, speed * dt);
       this.playerPos.x = THREE.MathUtils.clamp(this.playerPos.x, WORLD_BOUNDS.minX, WORLD_BOUNDS.maxX);
@@ -2612,9 +2647,19 @@ class TimberPortEngine {
       let diff = targetYaw - this.playerYaw;
       while (diff > Math.PI) diff -= Math.PI * 2;
       while (diff < -Math.PI) diff += Math.PI * 2;
-      this.playerYaw += diff * Math.min(1, dt * 12);
+      steerDiff = diff;
+      this.playerYaw += diff * Math.min(1, dt * (this.inVehicle ? 8.5 : 12));
 
       this.walkPhase += dt * (this.inVehicle ? 6 : 11 * Math.max(0.85, Math.min(1.45, speedMult)));
+
+      // Subtle footstep / tire dust puffs while moving briskly on dirt/grass
+      this.footstepTimer += dt;
+      const stepInterval = this.inVehicle ? 0.24 : 0.34;
+      if (!onPier && this.footstepTimer >= stepInterval) {
+        this.footstepTimer = 0;
+        this._workSmokeVec.set(this.playerPos.x, 0.08, this.playerPos.z);
+        this.world.spawnParticles(this._workSmokeVec, this.inVehicle ? 0xd6d3d1 : 0xb4a284, 1);
+      }
     } else if (!this.inVehicle && this.chopSwing > 0 && this.chopTargetYaw !== null) {
       let diff = this.chopTargetYaw - this.playerYaw;
       while (diff > Math.PI) diff -= Math.PI * 2;
@@ -2622,22 +2667,57 @@ class TimberPortEngine {
       this.playerYaw += diff * Math.min(1, dt * 14);
     }
 
+    // Smooth momentum acceleration & cornering lean for lifelike inertia
+    const accelVal = THREE.MathUtils.clamp((currentSpeed - this.playerPrevSpeed) / Math.max(0.01, dt * 16), -1, 1);
+    this.playerPrevSpeed += (currentSpeed - this.playerPrevSpeed) * Math.min(1, dt * 9);
+    this.playerAccelLean += (accelVal - this.playerAccelLean) * Math.min(1, dt * 8);
+    const targetTurnLean = THREE.MathUtils.clamp(steerDiff * 0.9, -1, 1);
+    this.playerTurnLean += (targetTurnLean - this.playerTurnLean) * Math.min(1, dt * 9);
+
     if (this.inVehicle && this.parkedVehicle) {
       this.vehiclePos.copy(this.playerPos);
       this.vehicleYaw = this.playerYaw;
       this.parkedVehicle.position.copy(this.vehiclePos);
       this.parkedVehicle.rotation.y = this.vehicleYaw;
+      updateVehicleKinematics(
+        this.parkedVehicle,
+        dt,
+        this.playerPrevSpeed,
+        THREE.MathUtils.clamp(steerDiff * 0.85, -0.5, 0.5),
+        (gameState.logs || 0) > 0,
+        this.elapsed,
+        true
+      );
     } else {
+      if (this.parkedVehicle) {
+        updateVehicleKinematics(this.parkedVehicle, dt, 0, 0, false, this.elapsed, false);
+      }
       this.playerModel.position.copy(this.playerPos);
       this.playerModel.rotation.y = this.playerYaw;
       if (this.chopSwing > 0) {
         const chopDecay = gameState.boostTimer > 0 ? 4.4 : 3.0;
         this.chopSwing = Math.max(0, this.chopSwing - dt * chopDecay);
-        if (this.chopSwing <= 0) this.chopTargetYaw = null;
+        // Trigger physical woodchip spray & tree shudder at the exact axe impact frame!
+        if (this.chopImpactPending && (1 - this.chopSwing) >= 0.42) {
+          this.chopImpactPending = false;
+          if (this.chopImpactTree) {
+            this.chopImpactTree.wobble = 1.0;
+            this.world.spawnParticles(this.chopImpactTree.pos, 0xd97706, 5);
+            sound.playChop(0.94 + Math.random() * 0.16);
+            this.chopImpactTree = null;
+          }
+        }
+        if (this.chopSwing <= 0) {
+          this.chopTargetYaw = null;
+          this.chopImpactPending = false;
+          this.chopImpactTree = null;
+        }
       }
       const cap = Math.max(1, getBackpackCapacity());
       this._playerAnimOpts.carryRatio = Math.min(1, (gameState.logs || 0) / cap);
       this._playerAnimOpts.speedMult = speedMult;
+      this._playerAnimOpts.turnLean = this.playerTurnLean;
+      this._playerAnimOpts.accelLean = this.playerAccelLean;
       updatePlayerModelAnimation(
         this.playerModel,
         dt,
@@ -2710,15 +2790,21 @@ class TimberPortEngine {
     if (this.playerPos.z < 44 && Math.abs(this.playerPos.x + 20) < 10.5) {
       this.playerPos.z = 44;
     }
-    const waveAmp = stormState.active ? 0.24 : 0.1;
-    const waveFreq = stormState.active ? 4.4 : 2.2;
-    this.playerPos.y = 0.05 + Math.sin(this.elapsed * waveFreq) * waveAmp;
-
+    const stormFactor = stormState.active ? 1.0 : 0.0;
     if (this.drivableYacht) {
-      this.drivableYacht.position.copy(this.playerPos);
-      this.drivableYacht.rotation.y = this.playerYaw;
-      this.drivableYacht.rotation.z = THREE.MathUtils.clamp(-turnDiff * 0.25, -0.22, 0.22);
-      this.drivableYacht.rotation.x = -Math.min(0.08, (this.vehicleSpeed / maxSpeed) * 0.06);
+      updateVesselBuoyancy(
+        this.drivableYacht,
+        this.playerPos.x,
+        this.playerPos.z,
+        this.playerYaw,
+        this.vehicleSpeed,
+        THREE.MathUtils.clamp(turnDiff, -0.85, 0.85),
+        this.elapsed,
+        stormFactor,
+        dt,
+        0.04
+      );
+      this.playerPos.y = this.drivableYacht.position.y;
     }
 
     // Wake foam trail (throttled & scaled down on <8GB RAM)
@@ -3048,9 +3134,17 @@ class TimberPortEngine {
 
           const dmg = gameState.boostTimer > 0 ? 2 : Math.max(1, Math.ceil((gameState.axeTier || 1) * 0.75));
           nearest.hp -= dmg;
-          nearest.wobble = 1.0;
-          this.world.spawnParticles(nearest.pos, 0xd97706, 4);
-          sound.playChop(0.95 + Math.random() * 0.15);
+          // Schedule impact shudder/chips for the exact downswing contact frame (or fire immediately if tree falls)
+          if (nearest.hp <= 0 || this.inVehicle) {
+            nearest.wobble = 1.0;
+            this.world.spawnParticles(nearest.pos, 0xd97706, 5);
+            sound.playChop(0.95 + Math.random() * 0.15);
+            this.chopImpactPending = false;
+            this.chopImpactTree = null;
+          } else {
+            this.chopImpactPending = true;
+            this.chopImpactTree = nearest;
+          }
 
           if (nearest.hp <= 0) {
             nearest.alive = false;
@@ -3262,36 +3356,76 @@ class TimberPortEngine {
   updateWorkforceAI(dt) {
     const forestSpeedMult = 1 + getManagerBonus('forestSpeed');
     const workerYield = forestSpeedMult >= 1.48 ? 3 : 2;
+    const stormFactor = stormState.active ? 1.0 : 0.0;
     for (const w of this.aiWorkers) {
+      let isMoving = false;
       if (w.state === 'to_tree') {
         if (!w.targetTree || !w.targetTree.alive) {
           w.targetTree = this.world.trees.find((t) => t.alive) || null;
         }
         if (w.targetTree) {
           const dist = w.pos.distanceTo(w.targetTree.pos);
-          if (dist > 1.6) {
+          if (dist > 1.65) {
+            isMoving = true;
             this._tmpVec.subVectors(w.targetTree.pos, w.pos).normalize();
-            w.pos.addScaledVector(this._tmpVec, 4.4 * forestSpeedMult * dt);
-            w.mesh.rotation.y = Math.atan2(this._tmpVec.x, this._tmpVec.z);
+            const spd = 4.4 * forestSpeedMult;
+            w.pos.addScaledVector(this._tmpVec, spd * dt);
+            const targetYaw = Math.atan2(this._tmpVec.x, this._tmpVec.z);
+            let yDiff = targetYaw - (w.yaw || 0);
+            while (yDiff > Math.PI) yDiff -= Math.PI * 2;
+            while (yDiff < -Math.PI) yDiff += Math.PI * 2;
+            w.yaw = (w.yaw || 0) + yDiff * Math.min(1, dt * 8.5);
+            w.mesh.rotation.y = w.yaw;
+            w.walkPhase = (w.walkPhase || 0) + dt * spd * 2.15;
           } else {
             w.state = 'chopping';
-            w.timer = 1.4 / forestSpeedMult;
+            w.timer = 1.45 / forestSpeedMult;
+            w.chopSwing = 1.0;
+            w.chopPulseTimer = 0.45 / forestSpeedMult;
+            w.impactFired = false;
           }
         }
       } else if (w.state === 'chopping') {
         w.timer -= dt;
-        w.mesh.userData.rightArm.rotation.x = Math.sin(this.elapsed * 12) * 1.1;
+        w.chopPulseTimer = (w.chopPulseTimer || 0) - dt;
+        if (w.targetTree) {
+          const targetYaw = Math.atan2(w.targetTree.pos.x - w.pos.x, w.targetTree.pos.z - w.pos.z);
+          let yDiff = targetYaw - (w.yaw || 0);
+          while (yDiff > Math.PI) yDiff -= Math.PI * 2;
+          while (yDiff < -Math.PI) yDiff += Math.PI * 2;
+          w.yaw = (w.yaw || 0) + yDiff * Math.min(1, dt * 12);
+          w.mesh.rotation.y = w.yaw;
+        }
+        w.chopSwing = Math.max(0, (w.chopSwing || 0) - dt * 2.75 * forestSpeedMult);
+        if (!w.impactFired && (1 - w.chopSwing) >= 0.44 && w.targetTree) {
+          w.impactFired = true;
+          w.targetTree.wobble = 0.85;
+          this.world.spawnParticles(w.targetTree.pos, 0xd97706, 2);
+        }
+        if (w.chopSwing <= 0.02 && w.timer > 0.25) {
+          w.chopSwing = 1.0;
+          w.impactFired = false;
+        }
         if (w.timer <= 0) {
           w.state = 'to_hopper';
           w.carrying = true;
+          w.chopSwing = 0;
           syncPlayerBackLogs(w.mesh, workerYield);
         }
       } else if (w.state === 'to_hopper') {
         const dist = w.pos.distanceTo(ZONES.hopper);
         if (dist > 1.8) {
+          isMoving = true;
           this._tmpVec.subVectors(ZONES.hopper, w.pos).normalize();
-          w.pos.addScaledVector(this._tmpVec, 4.2 * forestSpeedMult * dt);
-          w.mesh.rotation.y = Math.atan2(this._tmpVec.x, this._tmpVec.z);
+          const spd = 4.0 * forestSpeedMult;
+          w.pos.addScaledVector(this._tmpVec, spd * dt);
+          const targetYaw = Math.atan2(this._tmpVec.x, this._tmpVec.z);
+          let yDiff = targetYaw - (w.yaw || 0);
+          while (yDiff > Math.PI) yDiff -= Math.PI * 2;
+          while (yDiff < -Math.PI) yDiff += Math.PI * 2;
+          w.yaw = (w.yaw || 0) + yDiff * Math.min(1, dt * 8.0);
+          w.mesh.rotation.y = w.yaw;
+          w.walkPhase = (w.walkPhase || 0) + dt * spd * 2.1;
         } else {
           gameState.sawmillBuffer += workerYield;
           gameState.totalLogsCut += workerYield;
@@ -3304,42 +3438,96 @@ class TimberPortEngine {
         }
       }
       w.mesh.position.copy(w.pos);
+      if (!w.animOpts) w.animOpts = { carryRatio: 0, speedMult: 1 };
+      w.animOpts.carryRatio = w.carrying ? 0.8 : 0;
+      w.animOpts.speedMult = forestSpeedMult * 0.9;
+      updatePlayerModelAnimation(w.mesh, dt, isMoving, w.walkPhase || 0, w.chopSwing || 0, this.elapsed, w.animOpts);
     }
 
     const harborSpeedMult = 1 + getManagerBonus('contractBonus');
     for (const f of this.aiForklifts) {
+      if (f.loadTimer > 0) {
+        f.loadTimer -= dt;
+        f.curSpeed = THREE.MathUtils.lerp(f.curSpeed || 0, 0, Math.min(1, dt * 7));
+        updateVehicleKinematics(f.mesh, dt, f.curSpeed, 0, f.carrying, this.elapsed, true);
+        continue;
+      }
+
       const target = f.toHarbor ? ZONES.harborExport : ZONES.sawOutput;
       const dist = f.pos.distanceTo(target);
-      if (dist > 1.6) {
+      if (dist > 1.75) {
         this._tmpVec.subVectors(target, f.pos).normalize();
-        f.pos.addScaledVector(this._tmpVec, 6.2 * harborSpeedMult * dt);
-        f.mesh.rotation.y = Math.atan2(this._tmpVec.x, this._tmpVec.z);
+        const approachFactor = dist < 4.0 ? THREE.MathUtils.clamp(dist / 4.0, 0.35, 1.0) : 1.0;
+        const desiredSpeed = 6.0 * harborSpeedMult * approachFactor;
+        f.curSpeed = THREE.MathUtils.lerp(f.curSpeed || 0, desiredSpeed, Math.min(1, dt * 4.8));
+
+        const targetYaw = Math.atan2(this._tmpVec.x, this._tmpVec.z);
+        let yDiff = targetYaw - (f.yaw || 0);
+        while (yDiff > Math.PI) yDiff -= Math.PI * 2;
+        while (yDiff < -Math.PI) yDiff += Math.PI * 2;
+        const steerIn = THREE.MathUtils.clamp(yDiff * 1.1, -0.5, 0.5);
+        f.yaw = (f.yaw || 0) + yDiff * Math.min(1, dt * 5.2);
+
+        f.pos.x += Math.sin(f.yaw) * f.curSpeed * dt;
+        f.pos.z += Math.cos(f.yaw) * f.curSpeed * dt;
         f.pos.y = f.pos.z > 24.5 ? 0.65 : 0;
+        f.mesh.position.copy(f.pos);
+        f.mesh.rotation.y = f.yaw;
+        updateVehicleKinematics(f.mesh, dt, f.curSpeed, steerIn, f.carrying, this.elapsed, true);
       } else {
         if (f.toHarbor && f.carrying) {
           const earn = Math.round(68 * getRevenueMultiplier() * harborSpeedMult);
           gameState.cash += earn;
           recordRevenue('sawmill', earn);
           f.carrying = false;
+          f.loadTimer = 0.65; // realistic hydraulic fork lowering pause at dock
         } else if (!f.toHarbor && gameState.planks > 0) {
           gameState.planks -= 1;
           f.carrying = true;
+          f.loadTimer = 0.65; // realistic hydraulic fork lifting pause at sawmill
           this.syncSawmillVisuals();
         }
         f.toHarbor = !f.toHarbor;
+        updateVehicleKinematics(f.mesh, dt, 0, 0, f.carrying, this.elapsed, true);
       }
-      f.mesh.position.copy(f.pos);
     }
 
     for (const b of this.fishingBoats) {
-      b.angle += dt * 0.28;
+      const angSpeed = 0.28;
+      b.angle += dt * angSpeed;
       const nx = b.centerX + Math.cos(b.angle) * b.radiusX;
       const nz = b.centerZ + Math.sin(b.angle) * b.radiusZ;
-      const dx = nx - b.mesh.position.x;
-      const dz = nz - b.mesh.position.z;
-      b.mesh.position.set(nx, -0.2 + Math.sin(this.elapsed * 2 + b.angle) * 0.08, nz);
-      if (dx * dx + dz * dz > 0.0001) {
-        b.mesh.rotation.y = Math.atan2(dx, dz);
+      const vx = -Math.sin(b.angle) * b.radiusX * angSpeed;
+      const vz = Math.cos(b.angle) * b.radiusZ * angSpeed;
+      const boatSpeed = Math.hypot(vx, vz);
+      const targetYaw = Math.atan2(vx, vz);
+      let yDiff = targetYaw - (b.yaw ?? targetYaw);
+      while (yDiff > Math.PI) yDiff -= Math.PI * 2;
+      while (yDiff < -Math.PI) yDiff += Math.PI * 2;
+      b.yaw = (b.yaw ?? targetYaw) + yDiff * Math.min(1, dt * 4.5);
+
+      updateVesselBuoyancy(
+        b.mesh,
+        nx,
+        nz,
+        b.yaw,
+        boatSpeed,
+        THREE.MathUtils.clamp(yDiff * 1.6, -0.75, 0.75),
+        this.elapsed,
+        stormFactor,
+        dt,
+        -0.05
+      );
+
+      // Gentle tugboat chimney exhaust puffs
+      const bUd = b.mesh.userData;
+      if (bUd && bUd.funnelAnchor) {
+        bUd.smokeTimer = (bUd.smokeTimer || 0) + dt;
+        if (bUd.smokeTimer >= (this.activeProfile === 'low' ? 0.95 : 0.48)) {
+          bUd.smokeTimer = 0;
+          bUd.funnelAnchor.getWorldPosition(this._workSmokeVec);
+          this.world.spawnParticles(this._workSmokeVec, 0xe2e8f0, 1);
+        }
       }
     }
 
@@ -3405,6 +3593,7 @@ class TimberPortEngine {
       const targetWp = ISLAND_WAYPOINTS[nextKey] || startWp;
 
       const mesh = createCitizenModel(arch);
+      attachGlbCitizenModel(mesh, idx);
       const laneOffset = ((idx % 3) - 1) * 0.55;
       const jitterX = ((idx % 3) - 1) * 0.7;
       const jitterZ = (((idx + 1) % 3) - 1) * 0.7;
@@ -3739,19 +3928,34 @@ class TimberPortEngine {
         const dx = this.playerPos.x - c.pos.x;
         const dz = this.playerPos.z - c.pos.z;
         if (dx * dx + dz * dz > 0.001) {
-          c.mesh.rotation.y = Math.atan2(dx, dz);
+          const desiredYaw = Math.atan2(dx, dz);
+          let yDiff = desiredYaw - c.mesh.rotation.y;
+          while (yDiff > Math.PI) yDiff -= Math.PI * 2;
+          while (yDiff < -Math.PI) yDiff += Math.PI * 2;
+          c.mesh.rotation.y += yDiff * Math.min(1, dt * 8);
         }
-        ud.leftLeg.rotation.x = 0;
-        ud.rightLeg.rotation.x = 0;
-        ud.leftArm.rotation.x = 0;
-        ud.leftArm.rotation.z = 0;
-        if (ud.torso) ud.torso.rotation.x = 0;
-        ud.rightArm.rotation.x = -2.35 + Math.sin(this.elapsed * 14) * 0.35;
-        ud.rightArm.rotation.z = 0.22 + Math.cos(this.elapsed * 14) * 0.18;
+        const damp = Math.min(1, dt * 10);
+        ud.leftLeg.rotation.x = THREE.MathUtils.lerp(ud.leftLeg.rotation.x, 0.04, damp);
+        ud.rightLeg.rotation.x = THREE.MathUtils.lerp(ud.rightLeg.rotation.x, -0.04, damp);
+        ud.leftArm.rotation.x = THREE.MathUtils.lerp(ud.leftArm.rotation.x, 0.08, damp);
+        ud.leftArm.rotation.z = THREE.MathUtils.lerp(ud.leftArm.rotation.z, 0.1, damp);
+        if (ud.torso) {
+          ud.torso.position.y = THREE.MathUtils.lerp(ud.torso.position.y, 0.76 + Math.sin(this.elapsed * 3.2) * 0.012, damp);
+          ud.torso.rotation.x = THREE.MathUtils.lerp(ud.torso.rotation.x, -0.05, damp);
+          ud.torso.rotation.y = THREE.MathUtils.lerp(ud.torso.rotation.y, 0.1, damp);
+        }
+        if (ud.head) {
+          ud.head.rotation.x = THREE.MathUtils.lerp(ud.head.rotation.x, -0.06 + Math.sin(this.elapsed * 5) * 0.05, damp);
+          ud.head.rotation.y = THREE.MathUtils.lerp(ud.head.rotation.y, 0, damp);
+        }
+        ud.rightArm.rotation.x = THREE.MathUtils.lerp(ud.rightArm.rotation.x, -2.35 + Math.sin(this.elapsed * 11) * 0.28, damp);
+        ud.rightArm.rotation.z = THREE.MathUtils.lerp(ud.rightArm.rotation.z, 0.24 + Math.cos(this.elapsed * 11) * 0.16, damp);
+        if (ud.glbLoaded && ud.glbBody) {
+          ud.glbBody.position.y = Math.abs(Math.sin(this.elapsed * 5.2)) * 0.04;
+          ud.glbBody.rotation.set(Math.sin(this.elapsed * 5.2) * 0.06, Math.sin(this.elapsed * 3.0) * 0.08, 0);
+        }
         if (c.stateTimer <= 0) {
           c.state = 'stroll';
-          ud.rightArm.rotation.x = 0;
-          ud.rightArm.rotation.z = 0;
         }
         continue;
       }
@@ -3829,25 +4033,40 @@ class TimberPortEngine {
           while (diff < -Math.PI) diff += Math.PI * 2;
           c.mesh.rotation.y += diff * Math.min(1, dt * 10);
 
-          // Articulated walking limb kinematics
+          // Articulated human strolling kinematics (hip bounce, torso counter-twist, polite CEO glance)
           c.walkPhase += dt * c.currentSpeed * 3.6;
-          const swing = Math.sin(c.walkPhase) * (isStorm ? 0.72 : 0.52);
+          const sp = Math.sin(c.walkPhase);
+          const swing = sp * (isStorm ? 0.72 : 0.54);
           ud.leftLeg.rotation.x = swing;
           ud.rightLeg.rotation.x = -swing;
-          ud.leftArm.rotation.x = -swing * 0.65;
-          ud.leftArm.rotation.z = 0;
-          ud.rightArm.rotation.x = swing * 0.65;
-          ud.rightArm.rotation.z = 0;
-          if (ud.torso) ud.torso.rotation.x = THREE.MathUtils.lerp(ud.torso.rotation.x, isStorm ? 0.14 : 0, Math.min(1, dt * 6));
+          ud.leftArm.rotation.x = -swing * 0.68;
+          ud.leftArm.rotation.z = 0.06;
+          ud.rightArm.rotation.x = swing * 0.68;
+          ud.rightArm.rotation.z = -0.06;
+          if (ud.torso) {
+            ud.torso.position.y = 0.76 + Math.abs(sp) * 0.045;
+            ud.torso.rotation.x = THREE.MathUtils.lerp(ud.torso.rotation.x, isStorm ? 0.16 : 0.06, Math.min(1, dt * 6));
+            ud.torso.rotation.y = -sp * 0.14;
+            ud.torso.rotation.z = sp * 0.038;
+          }
           if (ud.head) {
-            if (c.evadingPlayer) {
-              // Glance politely toward the player while sidestepping
-              const pYaw = Math.atan2(this.playerPos.x - c.pos.x, this.playerPos.z - c.pos.z) - c.mesh.rotation.y;
-              ud.head.rotation.y = THREE.MathUtils.clamp(pYaw, -0.55, 0.55);
+            const distPlayer = playerOnLand ? c.pos.distanceTo(this.playerPos) : 99;
+            if (c.evadingPlayer || distPlayer < 6.5) {
+              let pYaw = Math.atan2(this.playerPos.x - c.pos.x, this.playerPos.z - c.pos.z) - c.mesh.rotation.y;
+              while (pYaw > Math.PI) pYaw -= Math.PI * 2;
+              while (pYaw < -Math.PI) pYaw += Math.PI * 2;
+              ud.head.rotation.y = THREE.MathUtils.lerp(ud.head.rotation.y, THREE.MathUtils.clamp(pYaw, -0.62, 0.62), Math.min(1, dt * 7));
             } else {
-              ud.head.rotation.y = Math.sin(c.walkPhase * 0.5) * 0.1;
+              ud.head.rotation.y = THREE.MathUtils.lerp(ud.head.rotation.y, Math.sin(c.walkPhase * 0.45) * 0.16, Math.min(1, dt * 5));
             }
-            ud.head.rotation.x = 0;
+            ud.head.rotation.x = -0.03;
+          }
+          if (ud.glbLoaded && ud.glbBody) {
+            const strideBounce = Math.abs(sp) * (isStorm ? 0.08 : 0.055);
+            ud.glbBody.position.y = strideBounce;
+            ud.glbBody.rotation.x = THREE.MathUtils.lerp(ud.glbBody.rotation.x, isStorm ? 0.12 : 0.055, Math.min(1, dt * 8));
+            ud.glbBody.rotation.y = -sp * 0.075;
+            ud.glbBody.rotation.z = sp * 0.042;
           }
         } else {
           // Reached Building POI Waypoint -> Transition to Building Interaction or Storm Shelter
@@ -3965,6 +4184,12 @@ class TimberPortEngine {
           ud.leftArm.rotation.x = THREE.MathUtils.lerp(ud.leftArm.rotation.x, -0.82, Math.min(1, dt * 6));
           ud.rightArm.rotation.x = THREE.MathUtils.lerp(ud.rightArm.rotation.x, -0.68 + Math.sin(t * 1.4) * 0.22, Math.min(1, dt * 6));
           if (ud.head) ud.head.rotation.y = Math.sin(t * 0.8) * 0.22;
+        }
+        if (ud.glbLoaded && ud.glbBody) {
+          ud.glbBody.position.y = THREE.MathUtils.lerp(ud.glbBody.position.y, Math.sin(t * 0.8) * 0.014, Math.min(1, dt * 8));
+          ud.glbBody.rotation.x = THREE.MathUtils.lerp(ud.glbBody.rotation.x, Math.sin(t * 1.2) * 0.035, Math.min(1, dt * 6));
+          ud.glbBody.rotation.y = THREE.MathUtils.lerp(ud.glbBody.rotation.y, Math.sin(t * 0.7) * 0.14, Math.min(1, dt * 6));
+          ud.glbBody.rotation.z = THREE.MathUtils.lerp(ud.glbBody.rotation.z, 0, Math.min(1, dt * 8));
         }
 
         // Finish building interaction & pick next connected waypoint
@@ -4122,10 +4347,10 @@ class TimberPortEngine {
       );
       this._camLook.set(0, 2.2, 8);
     } else if (this.cameraMode === 'train' && (gameState.railwayTier || 0) >= 1 && this.world.railwaySystem?.userData?.trainGroup) {
-      // Follow the animated 3D Industrial Freight Train along the West Coastal Line
+      // Follow the animated 3D Industrial Freight Train along the East Infrastructure Line (X = +33.5)
       const tz = this.world.railwaySystem.userData.trainGroup.position.z;
-      this._camDesired.set(-10.5, 9.5, tz + 11.5);
-      this._camLook.set(-19.5, 2.2, tz);
+      this._camDesired.set(24.5, 9.5, tz + 11.5);
+      this._camLook.set(33.5, 2.2, tz);
     } else {
       // Standard smooth follow camera
       const camHeight = Math.sin(this.camPitch) * activeDist;

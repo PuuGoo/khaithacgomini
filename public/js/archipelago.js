@@ -1,5 +1,12 @@
 import * as THREE from 'three';
-import { createFishingBoatModel, createFisheryIslandModel, disposeObject3D } from './models.js';
+import {
+  createFishingBoatModel,
+  createFisheryIslandModel,
+  createOcean3DModel,
+  updateOcean3D,
+  updateVesselBuoyancy,
+  disposeObject3D
+} from './models.js';
 import { sound } from './audio.js';
 import { gameState, logTransaction, recordRevenue, saveGameServer } from './state.js';
 import { getFishStock, getPlankMarket, HOLD_CAPACITY, performIslandAction, PIER_COST, SAIL_MS } from './island-route.js';
@@ -202,14 +209,38 @@ export class Archipelago {
     const crossingX = motion ? THREE.MathUtils.lerp(-6, 6, progress) : 0;
     this.land.visible = !sailing;
     this.pier.visible = route.pierBuilt;
-    this.boat.position.set(sailing ? crossingX : 5, motion ? Math.sin(elapsed * 2) * 0.11 : 0, sailing ? 0 : 4);
-    this.boat.rotation.y = sailing ? Math.PI / 2 : 0;
-    this.boat.rotation.z = motion ? Math.sin(elapsed * 1.6) * 0.05 : 0;
+    if (this.ocean3D) {
+      updateOcean3D(this.ocean3D, motion ? elapsed : 0, 0);
+    }
+    updateVesselBuoyancy(
+      this.boat,
+      sailing ? crossingX : 5,
+      sailing ? 0 : 4,
+      sailing ? Math.PI / 2 : 0,
+      sailing ? 5.5 : 0,
+      0,
+      motion ? elapsed : 0,
+      0,
+      0.016,
+      0.02
+    );
 
     const rival = getRegattaStatus(route.regatta, now);
     this.rivalBoat.visible = route.pierBuilt && !sailing && (motion ? rival.distance < 1 : rival.distance === 0);
-    this.rivalBoat.position.set(-4 - rival.distance * 10, 0, 6 + rival.distance * 3);
-    this.rivalBoat.rotation.y = rival.activity === 'Đang về TimberPort' ? -Math.PI / 2 : Math.PI / 2;
+    if (this.rivalBoat.visible) {
+      updateVesselBuoyancy(
+        this.rivalBoat,
+        -4 - rival.distance * 10,
+        6 + rival.distance * 3,
+        rival.activity === 'Đang về TimberPort' ? -Math.PI / 2 : Math.PI / 2,
+        rival.distance > 0 ? 4.2 : 0,
+        0,
+        motion ? elapsed : 0,
+        0,
+        0.016,
+        0.02
+      );
+    }
     const camera = this.camera;
     camera.aspect = this.engine.camera.aspect;
     camera.updateProjectionMatrix();
@@ -228,12 +259,9 @@ export class Archipelago {
     this.camera.position.set(15, 16, 25);
     this.camera.lookAt(0, 0, 1);
 
-    const sea = new THREE.Mesh(
-      new THREE.BoxGeometry(200, 0.3, 200),
-      new THREE.MeshStandardMaterial({ color: '#187f9f' })
-    );
-    sea.position.y = -0.55;
-    this.scene.add(sea);
+    const seaMat = new THREE.MeshStandardMaterial({ color: '#187f9f', roughness: 0.25, metalness: 0.18 });
+    this.ocean3D = createOcean3DModel(190, 190, 0, 0, seaMat);
+    this.scene.add(this.ocean3D);
     this.land = createFisheryIslandModel();
     this.pier = this.land.userData.pier;
     this.scene.add(this.land);

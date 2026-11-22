@@ -660,16 +660,28 @@ export class UIManager {
     ctx.fillText('Ngư Trường', fisheryX + 4, fisheryY + 16);
     ctx.restore();
 
-    // Asphalt roads
+    // Twin Parallel Main Avenues (X=-11.5 & X=+16.5) + North Connector + East Harbor Quay
     ctx.fillStyle = '#334155';
-    ctx.fillRect(toMapX(-25), toMapY(-6.5), toMapX(21) - toMapX(-25), 5);
-    ctx.fillRect(toMapX(-1), toMapY(-6), 5, toMapY(26) - toMapY(-6));
+    ctx.fillRect(toMapX(-13.8), toMapY(-35), Math.max(3, toMapX(-9.2) - toMapX(-13.8)), toMapY(25) - toMapY(-35));
+    ctx.fillRect(toMapX(14.2), toMapY(-35), Math.max(3, toMapX(18.8) - toMapX(14.2)), toMapY(25) - toMapY(-35));
+    ctx.fillRect(toMapX(-45), toMapY(-36), toMapX(35) - toMapX(-45), Math.max(3, toMapY(-32) - toMapY(-36)));
+    ctx.fillRect(toMapX(14.5), toMapY(20.5), toMapX(33) - toMapX(14.5), Math.max(3, toMapY(25) - toMapY(20.5)));
 
-    // Airport Runway (30, -2)
-    const rwX = toMapX(25.4);
-    const rwY = toMapY(-21);
-    const rwW = Math.max(6, toMapX(34.6) - rwX);
-    const rwH = Math.max(18, toMapY(17) - rwY);
+    // Central Square Park (2.5, -5.5)
+    ctx.fillStyle = '#3f8f54';
+    ctx.fillRect(toMapX(-3), toMapY(-11), Math.max(5, toMapX(8) - toMapX(-3)), Math.max(5, toMapY(0) - toMapY(-11)));
+
+    // Southwest Recessed Irrigation Canal (-48..-14.8, z=13.4..17.0) & Agriculture Terrace
+    ctx.fillStyle = '#0ea5e9';
+    ctx.fillRect(toMapX(-48), toMapY(13.4), Math.max(8, toMapX(-14.8) - toMapX(-48)), Math.max(2.5, toMapY(17.0) - toMapY(13.4)));
+    ctx.fillStyle = '#714b2b';
+    ctx.fillRect(toMapX(-36), toMapY(18.2), Math.max(6, toMapX(-23) - toMapX(-36)), Math.max(3.5, toMapY(23.5) - toMapY(18.2)));
+
+    // Airport Runway (43.5, -4) cleanly East of Railway
+    const rwX = toMapX(39.0);
+    const rwY = toMapY(-23);
+    const rwW = Math.max(6, toMapX(48.0) - rwX);
+    const rwH = Math.max(18, toMapY(15) - rwY);
     ctx.fillStyle = (gameState.airportTier || 0) > 0 ? '#1e293b' : 'rgba(30, 41, 59, 0.45)';
     ctx.fillRect(rwX, rwY, rwW, rwH);
     if ((gameState.airportTier || 0) > 0) {
@@ -681,54 +693,54 @@ export class UIManager {
       ctx.stroke();
     }
 
-    // Corporate HQ Plaza Building (15, 7)
+    // Corporate HQ Plaza Building (24.5, 7.5)
     if ((gameState.hqTier || 0) > 0) {
       ctx.fillStyle = '#a855f7';
-      ctx.fillRect(toMapX(12.5), toMapY(4.5), 6, 6);
+      ctx.fillRect(toMapX(22.0), toMapY(5.0), 6, 6);
     }
 
-    // Luxury Furniture Factory (16, -24) & Coastal Lighthouse (-30, 26)
+    // Luxury Furniture Factory (-35, 2.5) & Coastal Lighthouse (-44, 24.2)
     if ((gameState.furnitureMillTier || 0) > 0) {
       ctx.fillStyle = '#fb7185';
-      ctx.fillRect(toMapX(13.5), toMapY(-26.5), 7, 5);
+      ctx.fillRect(toMapX(-38.0), toMapY(0.0), 7, 5);
     }
     if ((gameState.lighthouseTier || 0) > 0) {
       ctx.fillStyle = '#fef08a';
       ctx.beginPath();
-      ctx.arc(toMapX(-30), toMapY(26), 3.4, 0, Math.PI * 2);
+      ctx.arc(toMapX(-44), toMapY(24.2), 3.4, 0, Math.PI * 2);
       ctx.fill();
     }
     if ((gameState.deepPortTier || 0) > 0 || (gameState.greenEnergyTier || 0) > 0) {
       ctx.fillStyle = (gameState.greenEnergyTier || 0) > 0 ? '#34d399' : '#38bdf8';
-      ctx.fillRect(toMapX(-25), toMapY(26.5), 11, 7);
+      ctx.fillRect(toMapX(-29), toMapY(27.0), 11, 7);
     }
 
-    // Industrial Coastal Railway Line (x = -19.5, z = -13..25.5)
+    // East Infrastructure Railway Line (x = +33.5, z = -34..25.5)
     if ((gameState.railwayTier || 0) > 0) {
       ctx.strokeStyle = '#f97316';
       ctx.lineWidth = 2;
       ctx.beginPath();
-      ctx.moveTo(toMapX(-19.5), toMapY(-13));
-      ctx.lineTo(toMapX(-19.5), toMapY(25.5));
+      ctx.moveTo(toMapX(33.5), toMapY(-34));
+      ctx.lineTo(toMapX(33.5), toMapY(25.5));
       ctx.stroke();
     }
 
-    // VIP Helipad H (19.5, 15.5)
+    // VIP Helipad H (24.5, 16.5)
     if ((gameState.heliTier || 0) > 0) {
       ctx.strokeStyle = '#c084fc';
       ctx.lineWidth = 1.6;
       ctx.beginPath();
-      ctx.arc(toMapX(19.5), toMapY(15.5), 3.6, 0, Math.PI * 2);
+      ctx.arc(toMapX(24.5), toMapY(16.5), 3.6, 0, Math.PI * 2);
       ctx.stroke();
     }
 
-    // Sawmill building & Harbor Pier
+    // West Sawmill Compound (-29, -10.5) & South-East Wooden Timber Harbor Piers (23, 25)
     ctx.fillStyle = '#d97706';
-    ctx.fillRect(toMapX(-6), toMapY(-19), 15, 11);
+    ctx.fillRect(toMapX(-36), toMapY(-15), 14, 9);
     ctx.fillStyle = '#92623a';
-    ctx.fillRect(toMapX(-11), toMapY(24.5), 25, 13);
+    ctx.fillRect(toMapX(11), toMapY(25.0), 24, 14);
     ctx.fillStyle = '#0ea5e9';
-    ctx.fillRect(toMapX(2), toMapY(29), 10, 6);
+    ctx.fillRect(toMapX(18), toMapY(30), 11, 6);
 
     // Harvestable alive trees
     if (trees && trees.length) {
@@ -740,7 +752,7 @@ export class UIManager {
     }
 
     ctx.fillStyle = '#cffafe';
-    ctx.fillRect(toMapX(2) - 2, toMapY(22.6) - 2, 4, 4);
+    ctx.fillRect(toMapX(2.5) - 2, toMapY(24.4) - 2, 4, 4);
 
     ctx.save();
     ctx.font = 'bold 9px sans-serif';
