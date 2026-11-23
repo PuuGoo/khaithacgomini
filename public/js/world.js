@@ -43,6 +43,7 @@ import {
   syncBuildingEvolution,
   createFisheryIslandModel,
   createLoggingTruckModel,
+  createWorkerModel,
   mountNormalizedGlb,
   disposeObject3D
 } from './models.js';
@@ -214,6 +215,14 @@ export class WorldManager {
     this.mooredFishingBoats = [];
     this.yardVehicles = [];
     this.deliveryRings = [];
+    this.yardLogPiles = [];
+    this.yardPorters = [];
+    this.woodenHouses = [];
+    this.houseSmokePuffs = [];
+    this.floatingLogRafts = [];
+    this.oceanUniforms = null;
+    this.skyUniforms = null;
+    this.skyDome = null;
     this._lifeDummy = new THREE.Object3D();
     this.nightFactor = 0;
 
@@ -259,12 +268,19 @@ export class WorldManager {
     land.receiveShadow = !this.lowSpec;
     this.worldGroup.add(land);
 
-    // Subtle sandy shoreline belt behind the stone fishing embankment
-    const sandMat = new THREE.MeshStandardMaterial({ color: 0xe6cb94, roughness: 0.92, metalness: 0.0 });
-    const beach = new THREE.Mesh(new THREE.BoxGeometry(width, 0.36, 5.5), sandMat);
-    beach.position.set(centerX, -0.2, 24.4);
+    // Warm golden coastal beach sloping gently beneath the crystal-clear turquoise shallows
+    const sandMat = new THREE.MeshStandardMaterial({ color: 0xe2c792, roughness: 0.9, metalness: 0.0 });
+    const beach = new THREE.Mesh(new THREE.BoxGeometry(width, 0.42, 7.6), sandMat);
+    beach.position.set(centerX, -0.22, 24.4);
     beach.receiveShadow = !this.lowSpec;
     this.worldGroup.add(beach);
+
+    // Submerged sandy seabed sloping into deeper water so shallows glow turquoise
+    const seabedMat = new THREE.MeshStandardMaterial({ color: 0xcab384, roughness: 0.96, metalness: 0.0 });
+    const seabed = new THREE.Mesh(new THREE.PlaneGeometry(width + 120, 44), seabedMat);
+    seabed.rotation.x = -Math.PI / 2 + 0.065;
+    seabed.position.set(centerX, -1.65, 44);
+    this.worldGroup.add(seabed);
 
     // Wide 2-lane straight asphalt avenues cleanly dividing the 3 Zones
     const roadMat = new THREE.MeshStandardMaterial({
@@ -335,18 +351,221 @@ export class WorldManager {
       this.worldGroup.add(dashInst);
     }
 
-    // Calm turquoise bay ocean
-    this.waterTex = getWaterTexture('#0ea5e9');
-    this.waterMat = new THREE.MeshStandardMaterial({
-      map: this.waterTex,
-      roughness: 0.22,
-      metalness: 0.18
+    // Photorealistic Sunlit Coastal Ocean Shader (Turquoise Shallows, Caustics, Shoreline Surf Foam, Fresnel Sky & Sun Glitter)
+    this.oceanUniforms = {
+      uTime: { value: 0 },
+      uSunDir: { value: new THREE.Vector3(0.45, 0.72, 0.52).normalize() },
+      uSunColor: { value: new THREE.Color(0xfff4d6) },
+      uSkyColor: { value: new THREE.Color(0x88c9f0) },
+      uHorizonColor: { value: new THREE.Color(0xdbeeff) },
+      uShallowColor: { value: new THREE.Color(0x45c7ca) },
+      uMidColor: { value: new THREE.Color(0x1185a3) },
+      uDeepColor: { value: new THREE.Color(0x073d63) },
+      uFogColor: { value: new THREE.Color(0xcce6f7) },
+      uFogDensity: { value: 0.0042 },
+      uShoreZ: { value: 23.0 }
+    };
+
+    this.waterMat = new THREE.ShaderMaterial({
+      uniforms: this.oceanUniforms,
+      transparent: true,
+      depthWrite: true,
+      vertexShader: /* glsl */ `
+        uniform float uTime;
+        uniform float uShoreZ;
+        varying vec3 vWorldPos;
+        varying float vWaveHeight;
+
+        void main() {
+          vec4 worldPosition = modelMatrix * vec4(position, 1.0);
+          float shoreFade = smoothstep(uShoreZ - 0.5, uShoreZ + 11.0, worldPosition.z);
+
+          float w1 = sin(worldPosition.x * 0.14 + worldPosition.z * 0.22 - uTime * 1.35) * 0.14;
+          float w2 = cos(worldPosition.x * 0.26 - worldPosition.z * 0.17 + uTime * 1.05) * 0.09;
+          float w3 = sin((worldPosition.x * 0.42 + worldPosition.z * 0.36) - uTime * 1.85) * 0.045;
+          float w4 = cos((worldPosition.x * -0.31 + worldPosition.z * 0.52) - uTime * 1.55) * 0.035;
+          float h = (w1 + w2 + w3 + w4) * (0.28 + 0.72 * shoreFade);
+
+          worldPosition.y += h;
+          vWorldPos = worldPosition.xyz;
+          vWaveHeight = h;
+
+          gl_Position = projectionMatrix * viewMatrix * worldPosition;
+        }
+      `,
+      fragmentShader: /* glsl */ `
+        uniform float uTime;
+        uniform vec3 uSunDir;
+        uniform vec3 uSunColor;
+        uniform vec3 uSkyColor;
+        uniform vec3 uHorizonColor;
+        uniform vec3 uShallowColor;
+        uniform vec3 uMidColor;
+        uniform vec3 uDeepColor;
+        uniform vec3 uFogColor;
+        uniform float uFogDensity;
+        uniform float uShoreZ;
+
+        varying vec3 vWorldPos;
+        varying float vWaveHeight;
+
+        float hash21(vec2 p) {
+          p = fract(p * vec2(123.34, 456.21));
+          p += dot(p, p + 45.32);
+          return fract(p.x * p.y);
+        }
+
+        float noise2(vec2 p) {
+          vec2 i = floor(p);
+          vec2 f = fract(p);
+          f = f * f * (3.0 - 2.0 * f);
+          float a = hash21(i);
+          float b = hash21(i + vec2(1.0, 0.0));
+          float c = hash21(i + vec2(0.0, 1.0));
+          float d = hash21(i + vec2(1.0, 1.0));
+          return mix(mix(a, b, f.x), mix(c, d, f.x), f.y);
+        }
+
+        // Multi-layered procedural wave height for crisp realistic ocean normals
+        float waterDetail(vec2 p, float t) {
+          float h = 0.0;
+          h += sin(p.x * 0.45 + p.y * 0.72 - t * 1.6) * 0.24;
+          h += cos(p.x * 0.85 - p.y * 0.54 + t * 1.35) * 0.16;
+          h += sin(p.x * 1.75 + p.y * 1.45 - t * 2.25) * 0.09;
+          h += cos(p.x * -2.3 + p.y * 2.15 - t * 2.6) * 0.06;
+          h += (noise2(p * 0.75 + vec2(t * 0.35, -t * 0.28)) - 0.5) * 0.26;
+          h += (noise2(p * 1.95 + vec2(-t * 0.55, t * 0.42)) - 0.5) * 0.14;
+          return h;
+        }
+
+        void main() {
+          vec2 wp = vWorldPos.xz;
+          float t = uTime;
+
+          // Finite-difference analytical ripple normal
+          float eps = 0.16;
+          float hC = waterDetail(wp, t);
+          float hX = waterDetail(wp + vec2(eps, 0.0), t);
+          float hZ = waterDetail(wp + vec2(0.0, eps), t);
+          vec3 N = normalize(vec3((hC - hX) * 0.62, 1.0, (hC - hZ) * 0.62));
+
+          vec3 V = normalize(cameraPosition - vWorldPos);
+          vec3 L = normalize(uSunDir);
+
+          // Depth gradient from sandy shore (z ~ 23) to deep Pacific bay
+          float distFromShore = max(0.0, wp.y - uShoreZ);
+          float shallowMask = 1.0 - smoothstep(0.0, 16.0, distFromShore);
+          float deepMask = smoothstep(10.0, 68.0, distFromShore);
+
+          vec3 waterCol = mix(uShallowColor, uMidColor, smoothstep(0.0, 18.0, distFromShore));
+          waterCol = mix(waterCol, uDeepColor, deepMask);
+
+          // Sunlit underwater caustic shimmer in crystal turquoise shallows
+          float c1 = noise2(wp * 0.85 + vec2(t * 0.42, t * 0.25));
+          float c2 = noise2(wp * 1.35 - vec2(t * 0.32, -t * 0.38));
+          float caustics = pow(clamp(c1 * c2 * 2.1, 0.0, 1.0), 3.0);
+          waterCol += vec3(0.42, 0.62, 0.55) * caustics * shallowMask * 0.48;
+
+          // Subsurface turquoise glow on sunlit wave crests
+          float sss = pow(clamp(dot(V, -L + N * 0.45), 0.0, 1.0), 3.0) * (0.45 + 0.55 * shallowMask);
+          waterCol += vec3(0.08, 0.42, 0.44) * sss * 0.55;
+
+          // Physical Schlick Fresnel sky reflection
+          float NdotV = max(dot(N, V), 0.0);
+          float fresnel = 0.04 + 0.92 * pow(1.0 - NdotV, 4.2);
+          vec3 R = reflect(-V, N);
+          float skyGrad = clamp(R.y * 1.6, 0.0, 1.0);
+          vec3 envSky = mix(uHorizonColor, uSkyColor, skyGrad);
+          vec3 col = mix(waterCol, envSky, clamp(fresnel * 0.78, 0.0, 0.82));
+
+          // Sparkling sunlight specular glitter + warm sun path reflection
+          vec3 H = normalize(L + V);
+          float NdotH = max(dot(N, H), 0.0);
+          float sparkle = pow(NdotH, 240.0) * 2.4;
+          float sheen = pow(NdotH, 28.0) * 0.34;
+          col += uSunColor * (sparkle + sheen);
+
+          // Soft animated white surf foam waves lapping along the shoreline & piers
+          float surfNoise = noise2(wp * 0.55 + vec2(t * 0.22, -t * 0.68));
+          float surfWave = sin(distFromShore * 2.4 - t * 2.6 + surfNoise * 4.2);
+          float shoreFoamBand = smoothstep(5.8, 0.4, distFromShore + surfNoise * 1.9);
+          float laceFoam = smoothstep(0.32, 0.82, surfWave * 0.5 + 0.5 + surfNoise * 0.35) * shoreFoamBand;
+          float edgeFoam = smoothstep(1.6, 0.0, distFromShore + (surfNoise - 0.5) * 1.2) * 0.92;
+
+          // Subtle foam ring around the 3 coastal wooden piers & nearshore rocks
+          float pierDist = min(
+            length(vec2(wp.x + 58.0, (wp.y - 29.5) * 0.7)),
+            min(length(vec2(wp.x - 5.0, (wp.y - 29.5) * 0.7)), length(vec2(wp.x - 52.0, (wp.y - 29.5) * 0.7)))
+          );
+          float pierFoam = smoothstep(7.5, 4.2, pierDist + surfNoise * 1.6) * 0.38 * smoothstep(0.35, 0.85, surfNoise);
+
+          // Tiny open-sea whitecaps on high wave crests
+          float whitecap = smoothstep(0.14, 0.24, vWaveHeight + surfNoise * 0.08) * 0.22;
+
+          float foam = clamp(max(max(laceFoam * 0.78, edgeFoam), pierFoam) + whitecap, 0.0, 0.95);
+          vec3 foamColor = mix(vec3(0.92, 0.97, 0.99), uSunColor * 1.05, 0.16);
+          col = mix(col, foamColor, foam);
+
+          // Soft atmospheric horizon fog matching the sunlit coastal haze
+          float camDist = length(cameraPosition - vWorldPos);
+          float fogFactor = 1.0 - exp2(-uFogDensity * uFogDensity * camDist * camDist * 1.442695);
+          col = mix(col, uFogColor, clamp(fogFactor, 0.0, 0.96));
+
+          // Translucent crystal water edge at the sandy shoreline
+          float alpha = mix(0.76, 0.98, smoothstep(0.0, 6.5, distFromShore));
+          alpha = max(alpha, foam * 0.95);
+
+          gl_FragColor = vec4(col, alpha);
+        }
+      `
     });
-    const ocean = new THREE.Mesh(new THREE.PlaneGeometry(width + 140, 220), this.waterMat);
+
+    const oceanSegX = this.lowSpec ? 48 : 112;
+    const oceanSegZ = this.lowSpec ? 36 : 84;
+    const ocean = new THREE.Mesh(new THREE.PlaneGeometry(width + 200, 260, oceanSegX, oceanSegZ), this.waterMat);
     ocean.rotation.x = -Math.PI / 2;
-    ocean.position.set(centerX, -0.45, 130);
+    ocean.position.set(centerX, -0.34, 151);
     ocean.receiveShadow = false;
     this.worldGroup.add(ocean);
+
+    // Sunlit Coastal Atmospheric Sky Dome (soft misty horizon -> crisp azure zenith + warm sun glow)
+    this.skyUniforms = {
+      uTopColor: { value: new THREE.Color(0x529be0) },
+      uHorizonColor: { value: new THREE.Color(0xdbeeff) },
+      uSunDir: { value: new THREE.Vector3(0.45, 0.72, 0.52).normalize() },
+      uSunColor: { value: new THREE.Color(0xfff5db) }
+    };
+    const skyMat = new THREE.ShaderMaterial({
+      uniforms: this.skyUniforms,
+      side: THREE.BackSide,
+      depthWrite: false,
+      fog: false,
+      vertexShader: /* glsl */ `
+        varying vec3 vWorldDir;
+        void main() {
+          vec4 wp = modelMatrix * vec4(position, 1.0);
+          vWorldDir = normalize(position);
+          gl_Position = projectionMatrix * viewMatrix * wp;
+        }
+      `,
+      fragmentShader: /* glsl */ `
+        uniform vec3 uTopColor;
+        uniform vec3 uHorizonColor;
+        uniform vec3 uSunDir;
+        uniform vec3 uSunColor;
+        varying vec3 vWorldDir;
+        void main() {
+          vec3 dir = normalize(vWorldDir);
+          float h = clamp(dir.y * 1.45, 0.0, 1.0);
+          vec3 col = mix(uHorizonColor, uTopColor, pow(h, 0.65));
+          float sunDot = max(dot(dir, normalize(uSunDir)), 0.0);
+          col += uSunColor * (pow(sunDot, 16.0) * 0.24 + pow(sunDot, 220.0) * 0.95);
+          gl_FragColor = vec4(col, 1.0);
+        }
+      `
+    });
+    this.skyDome = new THREE.Mesh(new THREE.SphereGeometry(460, 24, 16), skyMat);
+    this.worldGroup.add(this.skyDome);
 
     this.fisheryIsland = createFisheryIslandModel();
     this.fisheryIsland.rotation.y = Math.PI;
@@ -828,35 +1047,103 @@ export class WorldManager {
       this.deliveryRings.push(ring);
     }
 
-    // Organized Stacked Timber Log Yards (InstancedMesh matching left side of reference image)
-    const logPiles = [
+    // Dynamic Stacked Timber Log Piles (logs visibly disappear as GLB workers carry them away & restock)
+    const logPilesCoords = [
       [-104, -64], [-104, -52], [-104, -40],
       [-92, -68], [-92, -56], [-80, -72], [-80, -60],
       [-74, -22], [-86, -12]
     ];
     const logGeo = new THREE.CylinderGeometry(0.32, 0.34, 4.4, 8);
     logGeo.rotateZ(Math.PI / 2);
-    const logsPerPile = 9; // 4 bottom, 3 middle, 2 top
-    const logInst = new THREE.InstancedMesh(logGeo, logMat, logPiles.length * logsPerPile);
-    const dummy = new THREE.Object3D();
-    let lIdx = 0;
+    const logMats = [logMat, barkEndMat, barkEndMat];
     const offsets = [
       [-0.96, 0.35], [-0.32, 0.35], [0.32, 0.35], [0.96, 0.35],
       [-0.64, 0.9], [0, 0.9], [0.64, 0.9],
       [-0.32, 1.45], [0.32, 1.45]
     ];
-    for (const [px, pz] of logPiles) {
+
+    for (let idx = 0; idx < logPilesCoords.length; idx++) {
+      const [px, pz] = logPilesCoords[idx];
+      const pileGroup = new THREE.Group();
+      pileGroup.position.set(px, 0.04, pz);
+      const logMeshes = [];
       for (const [oz, oy] of offsets) {
-        dummy.position.set(px, oy, pz + oz);
-        dummy.rotation.set(0, 0, 0);
-        dummy.scale.set(1, 1, 1);
-        dummy.updateMatrix();
-        logInst.setMatrixAt(lIdx++, dummy.matrix);
+        const m = new THREE.Mesh(logGeo, logMats);
+        m.position.set(0, oy, oz);
+        pileGroup.add(m);
+        logMeshes.push(m);
       }
+      this.worldGroup.add(pileGroup);
+      this.yardLogPiles.push({
+        id: `pile_${idx}`,
+        pos: new THREE.Vector3(px, 0.06, pz),
+        pickupPos: new THREE.Vector3(px + 2.5, 0.06, pz),
+        logs: logMeshes,
+        count: logMeshes.length,
+        maxCount: logMeshes.length,
+        restockTimer: 0,
+        takeLog() {
+          if (this.count <= 0) return false;
+          this.count -= 1;
+          this.logs[this.count].visible = false;
+          return true;
+        },
+        restockOne() {
+          if (this.count >= this.maxCount) return false;
+          this.logs[this.count].visible = true;
+          this.count += 1;
+          return true;
+        }
+      });
     }
-    logInst.instanceMatrix.needsUpdate = true;
-    logInst.computeBoundingSphere();
-    this.worldGroup.add(logInst);
+
+    // 6 Dispersed Animated GLB Yard Log Porters (each assigned an independent sector, curved path & spacing so they NEVER line up!)
+    const yardDropTargets = [
+      { name: 'Phễu Xưởng Cưa', pos: new THREE.Vector3(-82, 0.06, -42), feedsSawmill: true },
+      { name: 'Lò Sấy Gỗ Tây', pos: new THREE.Vector3(-93.5, 0.06, -46), feedsSawmill: true },
+      { name: 'Lò Sấy Gỗ Đông', pos: new THREE.Vector3(-62, 0.06, -59.5), feedsSawmill: true },
+      { name: 'Bãi Bốc Xếp Xe Gỗ', pos: new THREE.Vector3(-60, 0.06, -42), feedsSawmill: false },
+      { name: 'Kho Phân Loại Nam', pos: new THREE.Vector3(-72, 0.06, -24), feedsSawmill: true },
+      { name: 'Bãi Xếp Ván Đông', pos: new THREE.Vector3(-56, 0.06, -26), feedsSawmill: false }
+    ];
+    const startPileOrder = [0, 3, 6, 8, 2, 5];
+    const startStates = ['to_pile', 'to_drop', 'to_pile', 'rest', 'to_drop', 'to_pile'];
+    for (let i = 0; i < 6; i++) {
+      const role = i % 3 === 2 ? 'harvester' : 'porter';
+      const mesh = createWorkerModel(role);
+      const pileIdx = startPileOrder[i % startPileOrder.length];
+      const startPile = this.yardLogPiles[pileIdx];
+      const angle = (i / 6) * Math.PI * 2;
+      const startPos = startPile.pickupPos.clone().add(
+        new THREE.Vector3(Math.cos(angle) * 3.8, 0, Math.sin(angle) * 4.2)
+      );
+      const initialState = startStates[i % startStates.length];
+      const initialCarrying = initialState === 'to_drop';
+      if (initialCarrying) {
+        mesh.userData?.setCarrying?.(true);
+      }
+      mesh.position.copy(startPos);
+      this.worldGroup.add(mesh);
+      this.yardPorters.push({
+        id: `yard_porter_${i}`,
+        mesh,
+        pos: startPos,
+        yaw: angle,
+        speed: 3.05 + ((i * 37) % 10) * 0.13,
+        state: initialState, // 'to_pile' | 'pickup' | 'to_drop' | 'drop' | 'rest'
+        pileIdx,
+        dropTarget: yardDropTargets[i % yardDropTargets.length],
+        dropTargets: yardDropTargets,
+        dropOffset: new THREE.Vector3(((i % 3) - 1) * 1.9, 0, (i % 2 === 0 ? -1.6 : 1.6)),
+        curveSign: i % 2 === 0 ? 1 : -1,
+        curveMag: 2.2 + (i % 3) * 1.15,
+        timer: initialState === 'rest' ? 1.5 : 0,
+        stateDuration: initialState === 'rest' ? 2.0 : 0.6,
+        dustTimer: i * 0.18,
+        deliveriesSinceRest: i % 2,
+        carrying: initialCarrying
+      });
+    }
 
     // 2 Drying Kiln / Boiler Sheds with Chimneys (matching reference image's industrial kilns)
     for (const [kx, kz] of [[-98, -46], [-62, -64]]) {
@@ -1042,51 +1329,134 @@ export class WorldManager {
       this.worldGroup.add(border, hedge);
     }
 
-    // 18 Real Optimized GLB Houses across the 6 Residential Blocks (matching reference image density & variety)
-    const lotPadMat = new THREE.MeshStandardMaterial({ color: 0xcbd5e1, roughness: 0.85 });
-    const houseLots = [
-      // North-West Residential Block
-      { x: -14.5, z: -90, yaw: 0, url: '/models/bietthu_opt.glb', size: 8.6 },
-      { x: -6.0, z: -90, yaw: 0, url: '/models/alpine_serenity_opt.glb', size: 7.4 },
-      { x: -14.5, z: -76, yaw: Math.PI, url: '/models/nhatuyet_opt.glb', size: 7.6 },
-      { x: -6.0, z: -76, yaw: Math.PI, url: '/models/nhacap4_opt.glb', size: 7.2 },
+    // 20 Active Wooden GLB Houses (100% Wood Cabins/Stilt Houses — Every House Has Its Own Unique Mission & Activity!)
+    const woodDeckMat = new THREE.MeshStandardMaterial({ color: 0x9a6b3e, roughness: 0.86 });
+    const lanternMat = new THREE.MeshStandardMaterial({
+      color: 0xfef08a,
+      emissive: 0xf59e0b,
+      emissiveIntensity: 1.1,
+      roughness: 0.25
+    });
+    const smokeMat = new THREE.MeshBasicMaterial({ color: 0xf1f5f9, transparent: true, opacity: 0.48, depthWrite: false });
+    const smokeGeo = new THREE.SphereGeometry(0.32, 6, 6);
 
-      // North-East Residential Block
-      { x: 16.5, z: -90, yaw: 0, url: '/models/alpine_serenity_opt.glb', size: 7.6 },
-      { x: 24.8, z: -90, yaw: 0, url: '/models/bietthu_opt.glb', size: 8.6 },
-      { x: 16.5, z: -76, yaw: Math.PI, url: '/models/nhasan_opt.glb', size: 7.4 },
-      { x: 24.8, z: -76, yaw: Math.PI, url: '/models/nhacap4_opt.glb', size: 7.2 },
+    const woodenHouseSpecs = [
+      // North-West Block
+      { x: -14.5, z: -90, yaw: 0, url: '/models/alpine_serenity_opt.glb', size: 7.6, icon: '🪚', name: 'Xưởng Mộc Thủ Công', role: 'Đóng bàn ghế đặt hàng', taskType: 'deliver_wood', reqPlanks: 2, rewardCash: 260, rewardGems: 0, cooldown: 22, hasSmoke: true, artisanRole: 'porter' },
+      { x: -6.0, z: -90, yaw: 0, url: '/models/nhasan_opt.glb', size: 7.5, icon: '🥖', name: 'Lò Bánh Mì Củi', role: 'Nướng bánh bằng củi thơm', taskType: 'collect_goods', rewardCash: 165, rewardGems: 0, cooldown: 18, hasSmoke: true, artisanRole: 'artisan_woman' },
+      { x: -14.5, z: -76, yaw: Math.PI, url: '/models/nhatuyet_opt.glb', size: 7.6, icon: '⚒️', name: 'Tiệm Rèn Lưỡi Cưa', role: 'Mài rìu & lưỡi cưa sắc bén', taskType: 'buff_work', rewardCash: 150, boostSec: 12, cooldown: 28, hasSmoke: true, artisanRole: null },
+      { x: -6.0, z: -76, yaw: Math.PI, url: '/models/alpine_serenity_opt.glb', size: 7.4, icon: '🌲', name: 'Trạm Kiểm Lâm Gỗ', role: 'Ươm mầm & bảo vệ rừng', taskType: 'collect_goods', rewardCash: 180, bonusLogs: 3, cooldown: 20, hasSmoke: false, artisanRole: 'harvester' },
+
+      // North-East Block
+      { x: 16.5, z: -90, yaw: 0, url: '/models/nhasan_opt.glb', size: 7.6, icon: '🛏️', name: 'Nhà Trọ Công Nhân', role: 'Chỗ nghỉ thợ gỗ & tiếp sức', taskType: 'buff_work', rewardCash: 145, boostSec: 10, cooldown: 24, hasSmoke: true, artisanRole: null },
+      { x: 24.8, z: -90, yaw: 0, url: '/models/nhatuyet_opt.glb', size: 7.7, icon: '🔥', name: 'Kho Sấy Gỗ Thủ Công', role: 'Sấy khô ván gỗ cao cấp', taskType: 'deliver_wood', reqPlanks: 2, rewardCash: 290, rewardGems: 1, cooldown: 24, hasSmoke: true, artisanRole: 'porter' },
+      { x: 16.5, z: -76, yaw: Math.PI, url: '/models/alpine_serenity_opt.glb', size: 7.5, icon: '📐', name: 'Trường Dạy Nghề Mộc', role: 'Đào tạo thợ thủ công', taskType: 'collect_goods', rewardCash: 210, rewardGems: 1, cooldown: 26, hasSmoke: false, artisanRole: 'artisan_trader' },
+      { x: 24.8, z: -76, yaw: Math.PI, url: '/models/nhasan_opt.glb', size: 7.4, icon: '🏥', name: 'Trạm Y Tế Làng Gỗ', role: 'Chăm sóc sức khỏe thợ', taskType: 'buff_work', rewardCash: 160, boostSec: 12, cooldown: 26, hasSmoke: false, artisanRole: null },
 
       // Mid-West & Mid-East Flanking Central Park
-      { x: -14.5, z: -55, yaw: Math.PI / 2, url: '/models/nhacap4_opt.glb', size: 7.2 },
-      { x: -14.5, z: -43, yaw: Math.PI / 2, url: '/models/nhasan_opt.glb', size: 7.5 },
-      { x: 24.5, z: -55, yaw: -Math.PI / 2, url: '/models/nhatuyet_opt.glb', size: 7.6 },
-      { x: 24.5, z: -43, yaw: -Math.PI / 2, url: '/models/alpine_serenity_opt.glb', size: 7.5 },
+      { x: -14.5, z: -55, yaw: Math.PI / 2, url: '/models/nhatuyet_opt.glb', size: 7.5, icon: '🗿', name: 'Xưởng Khắc Mỹ Nghệ', role: 'Chạm khắc tượng gỗ xuất khẩu', taskType: 'deliver_wood', reqPlanks: 3, rewardCash: 360, rewardGems: 2, cooldown: 25, hasSmoke: false, artisanRole: 'artisan_trader' },
+      { x: -14.5, z: -43, yaw: Math.PI / 2, url: '/models/nhasan_opt.glb', size: 7.6, icon: '☕', name: 'Quán Cà Phê Nhà Gỗ', role: 'Pha cà phê tăng tinh thần', taskType: 'buff_work', rewardCash: 175, boostSec: 15, cooldown: 22, hasSmoke: true, artisanRole: 'artisan_woman' },
+      { x: 24.5, z: -55, yaw: -Math.PI / 2, url: '/models/alpine_serenity_opt.glb', size: 7.6, icon: '📮', name: 'Bưu Điện Làng Gỗ', role: 'Nhận đơn đặt hàng từ xa', taskType: 'collect_goods', rewardCash: 230, rewardGems: 1, cooldown: 22, hasSmoke: false, artisanRole: null },
+      { x: 24.5, z: -43, yaw: -Math.PI / 2, url: '/models/nhatuyet_opt.glb', size: 7.5, icon: '🏛️', name: 'Hội Quán Làng Gỗ', role: 'Thu thuế & điều phối dân cư', taskType: 'collect_goods', rewardCash: 270, rewardGems: 1, cooldown: 25, hasSmoke: true, artisanRole: 'artisan_dock' },
 
-      // South-West Residential Block (immediately visible on spawn!)
-      { x: -14.5, z: -24, yaw: 0, url: '/models/nhacap4_opt.glb', size: 7.4 },
-      { x: -6.0, z: -24, yaw: 0, url: '/models/nhasan_opt.glb', size: 7.4 },
-      { x: -14.5, z: -12, yaw: Math.PI, url: '/models/bietthu_opt.glb', size: 8.4 },
-      { x: -6.0, z: -12, yaw: Math.PI, url: '/models/alpine_serenity_opt.glb', size: 7.4 },
+      // South-West Block (immediately visible on spawn!)
+      { x: -14.5, z: -24, yaw: 0, url: '/models/alpine_serenity_opt.glb', size: 7.5, icon: '🪵', name: 'Chợ Gỗ Dân Sinh', role: 'Mua bán gỗ tròn & ván lẻ', taskType: 'deliver_wood', reqPlanks: 2, rewardCash: 250, rewardGems: 0, cooldown: 19, hasSmoke: false, artisanRole: 'artisan_trader' },
+      { x: -6.0, z: -24, yaw: 0, url: '/models/nhasan_opt.glb', size: 7.5, icon: '⛵', name: 'Xưởng Đóng Thuyền Gỗ', role: 'Đóng xuồng & sửa tàu cá', taskType: 'deliver_wood', reqPlanks: 3, rewardCash: 340, rewardGems: 2, cooldown: 24, hasSmoke: true, artisanRole: 'artisan_dock' },
+      { x: -14.5, z: -12, yaw: Math.PI, url: '/models/nhatuyet_opt.glb', size: 7.6, icon: '🪢', name: 'Kho Dây Thừng & Nông Cụ', role: 'Cung ứng rìu & dây buộc gỗ', taskType: 'collect_goods', rewardCash: 170, bonusPlanks: 2, cooldown: 20, hasSmoke: false, artisanRole: null },
+      { x: -6.0, z: -12, yaw: Math.PI, url: '/models/alpine_serenity_opt.glb', size: 7.5, icon: '🛒', name: 'Tiệm Tạp Hóa Gỗ', role: 'Tiếp tế lương thực công trường', taskType: 'collect_goods', rewardCash: 195, rewardGems: 0, cooldown: 18, hasSmoke: true, artisanRole: 'artisan_woman' },
 
-      // South-East Residential Block (2-story villas facing Waterfront Blvd!)
-      { x: 16.5, z: -24, yaw: 0, url: '/models/bietthu_opt.glb', size: 8.6 },
-      { x: 24.8, z: -24, yaw: 0, url: '/models/nhatuyet_opt.glb', size: 7.8 },
-      { x: 16.5, z: -12, yaw: Math.PI, url: '/models/nhacap4_opt.glb', size: 7.2 },
-      { x: 24.8, z: -12, yaw: Math.PI, url: '/models/bietthu_opt.glb', size: 8.6 }
+      // South-East Block (facing South Avenue & Fishing Waterfront!)
+      { x: 16.5, z: -24, yaw: 0, url: '/models/nhasan_opt.glb', size: 7.6, icon: '🎣', name: 'Nhà Ngư Dân Ven Biển', role: 'Sấy cá & chuẩn bị lưới tàu cá', taskType: 'collect_goods', rewardCash: 215, bonusCanned: 2, cooldown: 21, hasSmoke: true, artisanRole: 'artisan_dock' },
+      { x: 24.8, z: -24, yaw: 0, url: '/models/nhatuyet_opt.glb', size: 7.7, icon: '📏', name: 'Văn Phòng Kiến Trúc Gỗ', role: 'Thiết kế nhà gỗ & cầu cảng', taskType: 'deliver_wood', reqPlanks: 3, rewardCash: 380, rewardGems: 2, cooldown: 27, hasSmoke: false, artisanRole: null },
+      { x: 16.5, z: -12, yaw: Math.PI, url: '/models/alpine_serenity_opt.glb', size: 7.5, icon: '🏮', name: 'Nhà Gác Đêm & Đèn Lồng', role: 'Thắp đèn tuần tra an ninh làng', taskType: 'buff_work', rewardCash: 165, boostSec: 12, cooldown: 23, hasSmoke: false, artisanRole: null },
+      { x: 24.8, z: -12, yaw: Math.PI, url: '/models/nhasan_opt.glb', size: 7.7, icon: '👑', name: 'Nhà Trưởng Làng Gỗ', role: 'Giao nhiệm vụ đặc biệt thưởng lớn', taskType: 'collect_goods', rewardCash: 320, rewardGems: 3, cooldown: 30, hasSmoke: true, artisanRole: 'artisan_trader' }
     ];
 
-    const lotGeo = new THREE.BoxGeometry(7.2, 0.06, 7.2);
-    for (const lot of houseLots) {
+    const lotGeo = new THREE.BoxGeometry(7.4, 0.08, 7.4);
+    const ringGeo = new THREE.RingGeometry(1.15, 1.5, 22);
+    const lanternGeo = new THREE.SphereGeometry(0.18, 8, 8);
+    const poleGeo = new THREE.CylinderGeometry(0.06, 0.07, 2.2, 6);
+    const poleMat = new THREE.MeshStandardMaterial({ color: 0x5c3317, roughness: 0.88 });
+
+    woodenHouseSpecs.forEach((spec, idx) => {
       const group = new THREE.Group();
-      group.position.set(lot.x, 0, lot.z);
-      const pad = new THREE.Mesh(lotGeo, lotPadMat);
-      pad.position.y = 0.03;
+      group.position.set(spec.x, 0, spec.z);
+
+      // Warm wooden courtyard deck under every wooden house
+      const pad = new THREE.Mesh(lotGeo, woodDeckMat);
+      pad.position.y = 0.04;
       pad.receiveShadow = !this.lowSpec;
       group.add(pad);
+
+      // Porch position facing the street side
+      const porchOffsetX = Math.sin(spec.yaw) * 4.4;
+      const porchOffsetZ = Math.cos(spec.yaw) * 4.4;
+      const porchPos = new THREE.Vector3(spec.x + porchOffsetX, 0.08, spec.z + porchOffsetZ);
+
+      // Warm Wooden Lantern Post at the front porch
+      const post = new THREE.Mesh(poleGeo, poleMat);
+      post.position.set(porchOffsetX * 0.72 + 1.1, 1.1, porchOffsetZ * 0.72);
+      const lantern = new THREE.Mesh(lanternGeo, lanternMat);
+      lantern.position.set(porchOffsetX * 0.72 + 1.1, 2.25, porchOffsetZ * 0.72);
+      group.add(post, lantern);
+
+      // Interactive front-porch mission ring (bright when task ready, dim while producing)
+      const ringMat = new THREE.MeshBasicMaterial({
+        color: spec.taskType === 'deliver_wood' ? 0xf59e0b : spec.taskType === 'buff_work' ? 0x38bdf8 : 0x22c55e,
+        transparent: true,
+        opacity: 0.85,
+        side: THREE.DoubleSide
+      });
+      const readyRing = new THREE.Mesh(ringGeo, ringMat);
+      readyRing.rotation.x = -Math.PI / 2;
+      readyRing.position.set(porchOffsetX, 0.1, porchOffsetZ);
+      group.add(readyRing);
+
+      // Compact role signpost badge floating above roof
+      const subLabel = spec.taskType === 'deliver_wood'
+        ? `Cần ${spec.reqPlanks} ván → +$${spec.rewardCash}`
+        : spec.taskType === 'buff_work'
+          ? `Tăng tốc +$${spec.rewardCash}`
+          : `Thu hoạch +$${spec.rewardCash}`;
+      const badge = makeWorldBadgeSprite(`${spec.icon} ${spec.name}`, subLabel, '#1c1917', '#fde68a');
+      badge.position.set(0, 6.2, 0);
+      badge.scale.set(5.4, 1.55, 1);
+      group.add(badge);
+
+      // Chimney smoke puffs for active wood workshops, bakeries, blacksmiths & cabins
+      if (spec.hasSmoke) {
+        for (let p = 0; p < 2; p++) {
+          const puff = new THREE.Mesh(smokeGeo, smokeMat);
+          puff.position.set(spec.x + 0.8, 5.2 + p * 1.4, spec.z - 0.5);
+          this.worldGroup.add(puff);
+          this.houseSmokePuffs.push({
+            mesh: puff,
+            baseX: spec.x + 0.8,
+            baseY: 5.0,
+            baseZ: spec.z - 0.5,
+            phase: idx * 0.7 + p * 1.8
+          });
+        }
+      }
+
+      // Keep wooden house frontage uncluttered (no back-and-forth patrolling NPCs)
+      const artisan = null;
+
       this.worldGroup.add(group);
-      mountNormalizedGlb(group, lot.url, { targetFootprint: lot.size, yaw: lot.yaw, yOffset: 0.05 });
-    }
+      mountNormalizedGlb(group, spec.url, { targetFootprint: spec.size, yaw: spec.yaw, yOffset: 0.06 });
+
+      this.woodenHouses.push({
+        id: `wh_${idx}`,
+        ...spec,
+        group,
+        porchPos,
+        readyRing,
+        lantern,
+        artisan,
+        ready: true,
+        timer: 0
+      });
+    });
   }
 
   // ---------------------------------------------------------------------------
@@ -1299,6 +1669,102 @@ export class WorldManager {
         group: boatGroup,
         phase: b.phase
       });
+    }
+
+    // Photorealistic Cove Details (inspired by reference photo): Sculpted Shoreline Boulders, Floating Timber Log Rafts, Drifting Logs & Pier Barrels
+    const rockGeo = new THREE.DodecahedronGeometry(1.0, 1);
+    const rockMat = new THREE.MeshStandardMaterial({ color: 0x6b7280, roughness: 0.9, metalness: 0.06, flatShading: true });
+    const boulderSpecs = [
+      [-105, 24.5, 2.4, 1.4, 2.0], [-96, 25.8, 1.8, 1.1, 1.5], [-84, 24.2, 2.6, 1.5, 2.2],
+      [-74, 25.5, 1.5, 0.9, 1.4], [-42, 24.8, 2.5, 1.4, 2.1], [-36, 26.2, 1.6, 1.0, 1.5],
+      [-24, 24.6, 2.1, 1.2, 1.8], [-12, 25.2, 1.7, 0.95, 1.4], [22, 24.5, 2.3, 1.35, 1.9],
+      [29, 26.0, 1.5, 0.9, 1.4], [38, 24.8, 2.4, 1.4, 2.0], [66, 25.2, 2.6, 1.5, 2.1],
+      [78, 24.4, 2.0, 1.2, 1.8], [92, 25.6, 2.8, 1.6, 2.2], [104, 24.8, 2.2, 1.3, 1.9],
+      [-80, 29.2, 1.4, 0.7, 1.3], [-28, 28.8, 1.3, 0.65, 1.2], [32, 29.5, 1.5, 0.75, 1.4], [74, 29.0, 1.6, 0.8, 1.4]
+    ];
+    const rockInst = new THREE.InstancedMesh(rockGeo, rockMat, boulderSpecs.length);
+    const rockCol = new THREE.Color();
+    boulderSpecs.forEach(([rx, rz, sx, sy, sz], i) => {
+      dummy.position.set(rx, -0.25 + sy * 0.28, rz);
+      dummy.rotation.set((i % 5) * 0.4, i * 1.1, (i % 3) * 0.3);
+      dummy.scale.set(sx, sy, sz);
+      dummy.updateMatrix();
+      rockInst.setMatrixAt(i, dummy.matrix);
+      rockCol.setHSL(0.08 + (i % 3) * 0.02, 0.08, 0.34 + (i % 4) * 0.06);
+      rockInst.setColorAt(i, rockCol);
+    });
+    rockInst.instanceMatrix.needsUpdate = true;
+    if (rockInst.instanceColor) rockInst.instanceColor.needsUpdate = true;
+    this.worldGroup.add(rockInst);
+
+    // Floating Timber Log Rafts & Loose Drifting Cedar Logs bobbing beside the wooden piers (just like the reference photo!)
+    const raftBarkMat = new THREE.MeshStandardMaterial({ color: 0x6b4423, roughness: 0.88, metalness: 0.04 });
+    const raftEndMat = new THREE.MeshStandardMaterial({ color: 0xd9b07c, roughness: 0.78 });
+    const raftLogsMats = [raftBarkMat, raftEndMat, raftEndMat];
+    const raftBaseLogGeo = new THREE.CylinderGeometry(0.22, 0.24, 5.2, 8);
+    raftBaseLogGeo.rotateZ(Math.PI / 2);
+    const cargoLogGeo = new THREE.CylinderGeometry(0.32, 0.35, 5.4, 8);
+    cargoLogGeo.rotateZ(Math.PI / 2);
+
+    const raftLocations = [
+      { x: -11.5, z: 33.8, yaw: 0.14 },
+      { x: -46.5, z: 34.5, yaw: -0.18 },
+      { x: 60.5, z: 34.2, yaw: 0.12 }
+    ];
+    raftLocations.forEach((loc, idx) => {
+      const raft = new THREE.Group();
+      raft.position.set(loc.x, -0.22, loc.z);
+      raft.rotation.y = loc.yaw;
+      for (let r = -3; r <= 3; r++) {
+        const baseLog = new THREE.Mesh(raftBaseLogGeo, raftLogsMats);
+        baseLog.position.set(0, 0.02, r * 0.44);
+        raft.add(baseLog);
+      }
+      // Stacked cedar logs lashed on top of the timber raft
+      const stackOffsets = [[-0.68, 0.42], [0, 0.42], [0.68, 0.42], [-0.34, 0.94], [0.34, 0.94]];
+      for (const [oz, oy] of stackOffsets) {
+        const cl = new THREE.Mesh(cargoLogGeo, raftLogsMats);
+        cl.position.set(0, oy, oz);
+        raft.add(cl);
+      }
+      // Lashings
+      for (const lx of [-1.5, 1.5]) {
+        const ropeBand = new THREE.Mesh(new THREE.TorusGeometry(0.95, 0.055, 6, 14), ropeMat);
+        ropeBand.position.set(lx, 0.56, 0);
+        ropeBand.rotation.y = Math.PI / 2;
+        raft.add(ropeBand);
+      }
+      this.worldGroup.add(raft);
+      this.floatingLogRafts.push({ group: raft, baseY: -0.2, phase: idx * 1.7 + 0.5, isRaft: true });
+    });
+
+    // Loose individual cedar logs floating gently in the shallow turquoise cove
+    const looseLogCoords = [
+      [-18.5, 36.2, 0.25], [-15.8, 38.4, 0.18], [-20.2, 39.5, -0.1],
+      [18.2, 35.8, -0.22], [21.5, 37.6, -0.12], [-41.2, 37.4, 0.3]
+    ];
+    looseLogCoords.forEach(([lx, lz, yaw], idx) => {
+      const log = new THREE.Mesh(raftBaseLogGeo, raftLogsMats);
+      log.position.set(lx, -0.26, lz);
+      log.rotation.y = yaw;
+      this.worldGroup.add(log);
+      this.floatingLogRafts.push({ group: log, baseY: -0.26, phase: idx * 1.15, isRaft: false });
+    });
+
+    // Weathered wooden barrels & coiled rope props on the piers
+    const barrelGeo = new THREE.CylinderGeometry(0.32, 0.3, 0.82, 10);
+    const barrelMat = new THREE.MeshStandardMaterial({ color: 0x7c4a21, roughness: 0.84 });
+    const coilGeo = new THREE.TorusGeometry(0.34, 0.075, 6, 12);
+    coilGeo.rotateX(Math.PI / 2);
+    for (const px of [-58, 5, 52]) {
+      for (const [bx, bz] of [[2.2, 26.2], [2.6, 27.1]]) {
+        const barrel = new THREE.Mesh(barrelGeo, barrelMat);
+        barrel.position.set(px + bx, 0.98, bz);
+        this.worldGroup.add(barrel);
+      }
+      const coil = new THREE.Mesh(coilGeo, ropeMat);
+      coil.position.set(px - 2.1, 0.64, 28.4);
+      this.worldGroup.add(coil);
     }
   }
 
@@ -1906,10 +2372,36 @@ export class WorldManager {
       this.groundMat.map = getGrassTexture(branch.groundTint);
       this.groundMat.needsUpdate = true;
     }
-    if (this.waterMat) {
+    if (this.oceanUniforms) {
+      const base = new THREE.Color(branch.waterColor || '#0ea5e9');
+      this.oceanUniforms.uMidColor.value.copy(base).lerp(new THREE.Color(0x1185a3), 0.55);
+      this.oceanUniforms.uShallowColor.value.copy(base).lerp(new THREE.Color(0x52d1d2), 0.65);
+      this.oceanUniforms.uDeepColor.value.copy(base).multiplyScalar(0.38);
+    } else if (this.waterMat) {
       this.waterTex = getWaterTexture(branch.waterColor);
       this.waterMat.map = this.waterTex;
       this.waterMat.needsUpdate = true;
+    }
+  }
+
+  updateOceanLighting(sunPos, sunColor, skyColor, fogColor, fogDensity = 0.0042, nightFactor = 0) {
+    if (this.oceanUniforms) {
+      if (sunPos) this.oceanUniforms.uSunDir.value.copy(sunPos).normalize();
+      if (sunColor) this.oceanUniforms.uSunColor.value.copy(sunColor);
+      if (skyColor) {
+        this.oceanUniforms.uSkyColor.value.copy(skyColor);
+        this.oceanUniforms.uHorizonColor.value.copy(skyColor).lerp(fogColor || skyColor, 0.65);
+      }
+      if (fogColor) this.oceanUniforms.uFogColor.value.copy(fogColor);
+      this.oceanUniforms.uFogDensity.value = fogDensity;
+    }
+    if (this.skyUniforms) {
+      if (sunPos) this.skyUniforms.uSunDir.value.copy(sunPos).normalize();
+      if (sunColor) this.skyUniforms.uSunColor.value.copy(sunColor);
+      if (skyColor) {
+        this.skyUniforms.uTopColor.value.copy(skyColor).lerp(new THREE.Color(0x3b82d6), nightFactor < 0.3 ? 0.35 : 0.0);
+      }
+      if (fogColor) this.skyUniforms.uHorizonColor.value.copy(fogColor);
     }
   }
 
@@ -2001,7 +2493,9 @@ export class WorldManager {
 
   update(dt, elapsed, sawmillWorking) {
     this.fisheryIsland.userData.pier.visible = gameState.islandRoute.pierBuilt;
-    if (this.waterTex) {
+    if (this.oceanUniforms) {
+      this.oceanUniforms.uTime.value = elapsed;
+    } else if (this.waterTex) {
       this.waterTex.offset.x = (elapsed * 0.025) % 1;
       this.waterTex.offset.y = (elapsed * 0.018) % 1;
     }
@@ -2016,6 +2510,14 @@ export class WorldManager {
       const b = this.mooredFishingBoats[i];
       b.group.position.y = 0.04 + Math.sin(elapsed * 1.4 + b.phase) * 0.09;
       b.group.rotation.z = Math.sin(elapsed * 1.1 + b.phase) * 0.025;
+    }
+
+    // Gently bob floating timber log rafts & drifting cedar logs in the turquoise surf
+    for (let i = 0; i < this.floatingLogRafts.length; i++) {
+      const r = this.floatingLogRafts[i];
+      r.group.position.y = r.baseY + Math.sin(elapsed * 1.55 + r.phase) * (r.isRaft ? 0.075 : 0.055);
+      r.group.rotation.z = Math.sin(elapsed * 1.2 + r.phase) * (r.isRaft ? 0.032 : 0.04);
+      r.group.rotation.x = Math.cos(elapsed * 1.05 + r.phase) * 0.022;
     }
 
     if (this.sawmill) {
@@ -2376,6 +2878,20 @@ export class WorldManager {
       const ringPulse = 1 + Math.sin(elapsed * 3.2) * 0.05;
       for (const ring of this.deliveryRings) {
         ring.scale.setScalar(ringPulse);
+      }
+    }
+
+    // Animate rising warm chimney smoke over active wooden houses
+    if (this.houseSmokePuffs && this.houseSmokePuffs.length) {
+      for (const p of this.houseSmokePuffs) {
+        const t = (elapsed * 0.42 + p.phase) % 1;
+        p.mesh.position.set(
+          p.baseX + Math.sin(elapsed * 1.1 + p.phase) * 0.35 + t * 0.55,
+          p.baseY + t * 2.8,
+          p.baseZ + Math.cos(elapsed * 0.9 + p.phase) * 0.2
+        );
+        const s = 0.65 + t * 1.45;
+        p.mesh.scale.setScalar(s);
       }
     }
   }

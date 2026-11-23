@@ -438,7 +438,14 @@ class TimberPortEngine {
     this.walkPhase = 0;
     this.playerMoving = false;
     this.chopTargetYaw = null;
-    this._playerAnimOpts = { carryRatio: 0, speedMult: 1 };
+    this.playerAction = null;
+    this.playerActionTimer = 0;
+    this.playerActionDuration = 0;
+    this.playerGestureIdx = 0;
+    this.playerJumpVel = 0;
+    this.playerJumpY = 0;
+    this.workerRallyTimer = 0;
+    this._playerAnimOpts = { carryRatio: 0, speedMult: 1, action: null, actionT: 0, jumpY: 0 };
 
     // Camera Orbit & Choreography state
     this.camYaw = 0.42;
@@ -564,7 +571,7 @@ class TimberPortEngine {
         this.world?.syncCivicTier(gameState.civicTier || 0);
         this.rebuildCitizens();
       },
-      onGreetCitizen: () => this.greetNearbyCitizen(true),
+      onGreetCitizen: () => this.cyclePlayerGesture(),
       onTrainExpress: () => this.triggerTrainBoost(),
       onCycleWeather: () => this.cycleWeatherPreset(),
       onCycleCamera: () => this.cycleCameraMode(),
@@ -703,7 +710,7 @@ class TimberPortEngine {
       48,
       window.innerWidth / Math.max(1, window.innerHeight),
       0.5,
-      240
+      760
     );
 
     const high = this.activeProfile === 'high';
@@ -714,7 +721,7 @@ class TimberPortEngine {
     });
     this.renderer.outputColorSpace = THREE.SRGBColorSpace;
     this.renderer.toneMapping = THREE.ACESFilmicToneMapping;
-    this.renderer.toneMappingExposure = 1.08;
+    this.renderer.toneMappingExposure = 1.12;
     this.renderer.shadowMap.type = high ? THREE.PCFSoftShadowMap : THREE.BasicShadowMap;
     this.renderer.setSize(window.innerWidth, window.innerHeight);
 
@@ -741,32 +748,32 @@ class TimberPortEngine {
       const roomEnv = new RoomEnvironment();
       this.envRT = pmrem.fromScene(roomEnv, 0.04);
       this.scene.environment = this.envRT.texture;
-      this.scene.environmentIntensity = 0.72;
+      this.scene.environmentIntensity = 0.78;
       roomEnv.dispose();
       pmrem.dispose();
     } else {
       this.scene.environment = null;
     }
 
-    // 3-Point Outdoor Lighting Rig (Warm Sun + Cool Sky Fill + Sea Rim)
-    const hemiIntensity = low ? 1.05 : 0.78;
-    this.hemiLight = new THREE.HemisphereLight(0xdbeafe, 0x455a3b, hemiIntensity);
+    // Photorealistic 3-Point Sunlit Coastal Lighting Rig (Warm Sun + Crisp Sky Fill + Turquoise Sea Bounce)
+    const hemiIntensity = low ? 1.08 : 0.84;
+    this.hemiLight = new THREE.HemisphereLight(0xcbe9ff, 0x4b5e3d, hemiIntensity);
     this.scene.add(this.hemiLight);
 
-    this.sunLight = new THREE.DirectionalLight(0xfff5e4, low ? 2.0 : 2.25);
-    this.sunLight.position.set(28, 42, 18);
+    this.sunLight = new THREE.DirectionalLight(0xfff1d6, low ? 2.1 : 2.38);
+    this.sunLight.position.set(34, 44, 24);
     this.sunLight.shadow.camera.left = -45;
     this.sunLight.shadow.camera.right = 45;
     this.sunLight.shadow.camera.top = 45;
     this.sunLight.shadow.camera.bottom = -45;
     this.sunLight.shadow.camera.near = 2;
-    this.sunLight.shadow.camera.far = 130;
+    this.sunLight.shadow.camera.far = 135;
     this.sunLight.shadow.bias = -0.0005;
     this.sunLight.shadow.normalBias = 0.02;
     this.scene.add(this.sunLight);
 
-    const rimLight = new THREE.DirectionalLight(0x7dd3fc, 0.55);
-    rimLight.position.set(-26, 18, -24);
+    const rimLight = new THREE.DirectionalLight(0x7dd3fc, 0.62);
+    rimLight.position.set(-28, 18, 26);
     this.scene.add(rimLight);
 
     this.applyGraphicsSettings();
@@ -1096,7 +1103,7 @@ class TimberPortEngine {
     } else {
       this.scene.background.copy(this._daySkyBase);
     }
-    this.scene.fog = new THREE.FogExp2(branch.fogColor, 0.0072);
+    this.scene.fog = new THREE.FogExp2(branch.fogColor, 0.0044);
     this.world?.applyBranchTheme(branch);
   }
 
@@ -1382,7 +1389,23 @@ class TimberPortEngine {
         return;
       }
       if (code === 'KeyG') {
-        this.greetNearbyCitizen(true);
+        if (!this.ui.isAnyModalOpen()) this.cyclePlayerGesture();
+        return;
+      }
+      if (code === 'Digit1' && !this.ui.isAnyModalOpen()) {
+        this.triggerPlayerAction('wave');
+        return;
+      }
+      if (code === 'Digit2' && !this.ui.isAnyModalOpen()) {
+        this.triggerPlayerAction('stretch');
+        return;
+      }
+      if (code === 'Digit3' && !this.ui.isAnyModalOpen()) {
+        this.triggerPlayerAction('cheer');
+        return;
+      }
+      if (code === 'Digit4' && !this.ui.isAnyModalOpen()) {
+        this.triggerPlayerAction('command');
         return;
       }
       if (code === 'KeyF') {
@@ -1395,7 +1418,16 @@ class TimberPortEngine {
       if (code === 'KeyE' || (code === 'Space' && !isAircraft)) {
         if (!this.ui.isAnyModalOpen()) {
           e.preventDefault();
-          this.handleContextAction(code === 'Space');
+          if (code === 'Space' && this.controlMode === 'foot') {
+            const prompt = this.getContextPromptState();
+            if (prompt && prompt.key === 'SPACE') {
+              this.handleContextAction(true);
+            } else {
+              this.triggerPlayerJump();
+            }
+          } else {
+            this.handleContextAction(code === 'Space');
+          }
         }
       } else if (code === 'Space' && isAircraft && !this.ui.isAnyModalOpen()) {
         e.preventDefault();
@@ -1816,12 +1848,179 @@ class TimberPortEngine {
       const veh = VEHICLES.find((v) => v.id === (gameState.equippedVehicle || 'forklift')) || VEHICLES[0];
       return { action: 'vehicle', key: 'E', label: `Lái ${veh.name}` };
     }
+    const nearHouse = this.findNearestWoodenHouse(5.8);
+    if (nearHouse) {
+      let houseLabel = '';
+      if (!nearHouse.ready) {
+        houseLabel = `${nearHouse.icon} ${nearHouse.name}: Đang ${nearHouse.role.toLowerCase()} (còn ${Math.ceil(nearHouse.timer)}s)`;
+      } else if (nearHouse.taskType === 'deliver_wood') {
+        const gemTag = nearHouse.rewardGems ? ` +${nearHouse.rewardGems}💎` : '';
+        houseLabel = `${nearHouse.icon} ${nearHouse.name}: Giao ${nearHouse.reqPlanks} ván/gỗ → +$${nearHouse.rewardCash}${gemTag}`;
+      } else if (nearHouse.taskType === 'buff_work') {
+        houseLabel = `${nearHouse.icon} ${nearHouse.name}: ${nearHouse.role} (+$${nearHouse.rewardCash} & Tăng tốc ${nearHouse.boostSec}s)`;
+      } else {
+        const bonusParts = [];
+        if (nearHouse.rewardGems) bonusParts.push(`+${nearHouse.rewardGems}💎`);
+        if (nearHouse.bonusLogs) bonusParts.push(`+${nearHouse.bonusLogs}🪵`);
+        if (nearHouse.bonusPlanks) bonusParts.push(`+${nearHouse.bonusPlanks}📦`);
+        if (nearHouse.bonusCanned) bonusParts.push(`+${nearHouse.bonusCanned}🥫`);
+        const extraTag = bonusParts.length ? ` ${bonusParts.join(' ')}` : '';
+        houseLabel = `${nearHouse.icon} ${nearHouse.name}: ${nearHouse.role} (+$${nearHouse.rewardCash}${extraTag})`;
+      }
+      return { action: 'wooden_house', key: 'E', label: houseLabel, house: nearHouse };
+    }
     const nearCitizen = this.findNearestCitizen(3.6);
     if (nearCitizen) {
       const tipTag = nearCitizen.hasTip ? ' · Nhận Tip 💰' : '';
       return { action: 'greet_citizen', key: 'G', label: `Chào ${nearCitizen.arch.name}${tipTag}` };
     }
     return null;
+  }
+
+  findNearestWoodenHouse(maxDist = 5.8) {
+    const houses = this.world?.woodenHouses || [];
+    let best = null;
+    let bestDist = maxDist;
+    for (const h of houses) {
+      const dPorch = Math.hypot(this.playerPos.x - h.porchPos.x, this.playerPos.z - h.porchPos.z);
+      const dCenter = Math.hypot(this.playerPos.x - h.x, this.playerPos.z - h.z) - 2.2;
+      const d = Math.min(dPorch, Math.max(0, dCenter));
+      if (d < bestDist) {
+        bestDist = d;
+        best = h;
+      }
+    }
+    return best;
+  }
+
+  interactWoodenHouse(h) {
+    if (!h) return;
+    if (!h.ready) {
+      this.ui.toast(`${h.icon} ${h.name} đang ${h.role.toLowerCase()} — sẵn sàng sau ${Math.ceil(h.timer)} giây!`);
+      return;
+    }
+
+    if (h.taskType === 'deliver_wood') {
+      const req = h.reqPlanks || 2;
+      if ((gameState.planks || 0) >= req) {
+        gameState.planks -= req;
+        this.syncSawmillVisuals();
+      } else if ((gameState.logs || 0) >= req) {
+        gameState.logs -= req;
+        syncPlayerBackLogs(this.playerModel, gameState.logs);
+      } else {
+        this.ui.toast(`${h.icon} ${h.name} cần ${req} ván xẻ (hoặc ${req} khúc gỗ) để ${h.role.toLowerCase()}!`);
+        return;
+      }
+    }
+
+    const cashGain = Math.round((h.rewardCash || 180) * getRevenueMultiplier());
+    gameState.cash += cashGain;
+    recordRevenue('sawmill', cashGain);
+
+    const extraParts = [];
+    if (h.rewardGems) {
+      gameState.gems += h.rewardGems;
+      extraParts.push(`+${h.rewardGems} 💎`);
+    }
+    if (h.bonusLogs) {
+      const cap = getBackpackCapacity();
+      gameState.logs = Math.min(cap, (gameState.logs || 0) + h.bonusLogs);
+      syncPlayerBackLogs(this.playerModel, gameState.logs);
+      extraParts.push(`+${h.bonusLogs} 🪵`);
+    }
+    if (h.bonusPlanks) {
+      gameState.planks = (gameState.planks || 0) + h.bonusPlanks;
+      this.syncSawmillVisuals();
+      extraParts.push(`+${h.bonusPlanks} 📦`);
+    }
+    if (h.bonusCanned) {
+      gameState.cannedFish = (gameState.cannedFish || 0) + h.bonusCanned;
+      extraParts.push(`+${h.bonusCanned} 🥫`);
+    }
+    if (h.boostSec) {
+      gameState.boostTimer = Math.max(gameState.boostTimer || 0, h.boostSec);
+      extraParts.push(`⚡ Tăng tốc ${h.boostSec}s`);
+    }
+
+    addVipXp(12);
+    addSeasonXp(10);
+    gameState.xp += 18;
+    if (gameState.xp >= gameState.level * 120) gameState.level++;
+
+    h.ready = false;
+    h.timer = h.cooldown || 22;
+
+    const fxColor = h.taskType === 'deliver_wood' ? 0xf59e0b : h.taskType === 'buff_work' ? 0x38bdf8 : 0x22c55e;
+    this.world.spawnParticles(h.porchPos, fxColor, 7);
+    this.spawnWorldText(
+      h.porchPos,
+      `${h.icon} +$${cashGain.toLocaleString()}${extraParts.length ? ' ' + extraParts[0] : ''}`,
+      'cash'
+    );
+    sound.playCash();
+    this.triggerPlayerAction('cheer', true);
+    this.ui.toast(
+      `${h.icon} Hoàn thành nhiệm vụ ${h.name} (${h.role}): +$${cashGain.toLocaleString()}${extraParts.length ? ' · ' + extraParts.join(' · ') : ''}!`
+    );
+    saveGameServer();
+    this.ui.refreshHUD();
+  }
+
+  cyclePlayerGesture() {
+    const order = ['wave', 'stretch', 'cheer', 'command'];
+    const name = order[this.playerGestureIdx % order.length];
+    this.playerGestureIdx = (this.playerGestureIdx + 1) % order.length;
+    this.triggerPlayerAction(name);
+  }
+
+  triggerPlayerJump() {
+    if (this.controlMode !== 'foot' || this.inVehicle) return;
+    if (this.playerJumpY > 0.05) return;
+    this.playerJumpVel = 7.0;
+    this.world.spawnParticles(this.playerPos, 0xd6c7a9, 4);
+  }
+
+  triggerPlayerAction(actionName, silent = false) {
+    if (this.controlMode !== 'foot' || this.inVehicle) return;
+    const durations = { wave: 1.75, stretch: 2.05, cheer: 1.85, command: 1.65 };
+    const dur = durations[actionName] || 1.7;
+    this.playerAction = actionName;
+    this.playerActionDuration = dur;
+    this.playerActionTimer = dur;
+
+    if (actionName === 'cheer') {
+      this.world.spawnParticles(this.playerPos, 0xfbbf24, 6);
+      if (!silent) {
+        this.spawnWorldText(this.playerPos, '🎉 Tuyệt vời!', 'cash');
+        this.ui.toast('🎉 Ăn mừng! (Phím 1: Vẫy tay · 2: Vươn vai · 3: Ăn mừng · 4: Điều phối · Space: Nhảy)');
+      }
+    } else if (actionName === 'wave') {
+      if (!silent) {
+        this.spawnWorldText(this.playerPos, '👋 Xin chào!', 'gem');
+        this.ui.toast('👋 Vẫy tay chào! (Phím 1-4 để đổi cử chỉ · Space để nhảy)');
+      }
+    } else if (actionName === 'stretch') {
+      this.world.spawnParticles(this.playerPos, 0x38bdf8, 4);
+      if (!silent) {
+        this.spawnWorldText(this.playerPos, '💪 Khởi động!', 'gem');
+        this.ui.toast('💪 Vươn vai khởi động!');
+      }
+    } else if (actionName === 'command') {
+      this.workerRallyTimer = 10.0;
+      this.world.spawnParticles(this.playerPos, 0xf59e0b, 6);
+      if (!silent) {
+        this.spawnWorldText(this.playerPos, '👉 Tăng tốc công nhân!', 'cash');
+        this.ui.toast('👉 Ra hiệu chỉ đạo! Công nhân bốc vác tăng tốc độ khiêng gỗ trong 10 giây!');
+      }
+      for (const p of this.world?.yardPorters || []) {
+        if (p.state === 'rest') {
+          p.state = 'to_pile';
+          p.timer = 0;
+        }
+        this.world.spawnParticles(p.pos, 0xfbbf24, 3);
+      }
+    }
   }
 
   handleContextAction(preferSpace = false) {
@@ -1849,6 +2048,7 @@ class TimberPortEngine {
     else if (prompt.action === 'board_plane') this.boardPlane();
     else if (prompt.action === 'board_heli') this.boardHeli();
     else if (prompt.action === 'train_express') this.triggerTrainBoost();
+    else if (prompt.action === 'wooden_house') this.interactWoodenHouse(prompt.house);
     else if (prompt.action === 'greet_citizen') this.greetNearbyCitizen(true);
     else if (prompt.action === 'vehicle') this.toggleVehicle();
     else if (prompt.action === 'export') this.handleDeliverContract(true);
@@ -2456,6 +2656,8 @@ class TimberPortEngine {
     this.updateArcadePads(dt);
     this.updateWorkforceAI(dt);
     this.updateYardVehiclesAI(dt);
+    this.updateYardPorters(dt);
+    this.updateWoodenHouses(dt);
     this.updateCitizensAI(dt);
     this.world.regionalLife.update(this.playerPos, this.elapsed, this.activeProfile === 'low', this.vehicleHome);
     this.updatePet(dt);
@@ -3034,7 +3236,21 @@ class TimberPortEngine {
       this.parkedVehicle.position.copy(this.vehiclePos);
       this.parkedVehicle.rotation.y = this.vehicleYaw;
     } else {
-      this.playerModel.position.copy(this.playerPos);
+      if (this.playerJumpY > 0 || this.playerJumpVel > 0) {
+        this.playerJumpY += this.playerJumpVel * dt;
+        this.playerJumpVel -= 19.5 * dt;
+        if (this.playerJumpY <= 0) {
+          this.playerJumpY = 0;
+          this.playerJumpVel = 0;
+          this.world.spawnParticles(this.playerPos, 0xd6c7a9, 3);
+        }
+      }
+      if (this.playerActionTimer > 0) {
+        this.playerActionTimer = Math.max(0, this.playerActionTimer - dt);
+        if (this.playerActionTimer <= 0) this.playerAction = null;
+      }
+
+      this.playerModel.position.set(this.playerPos.x, this.playerPos.y + this.playerJumpY, this.playerPos.z);
       this.playerModel.rotation.y = this.playerYaw;
       if (this.chopSwing > 0) {
         const chopDecay = gameState.boostTimer > 0 ? 4.4 : 3.0;
@@ -3044,6 +3260,11 @@ class TimberPortEngine {
       const cap = Math.max(1, getBackpackCapacity());
       this._playerAnimOpts.carryRatio = Math.min(1, (gameState.logs || 0) / cap);
       this._playerAnimOpts.speedMult = speedMult;
+      this._playerAnimOpts.action = this.playerAction;
+      this._playerAnimOpts.actionT = this.playerAction && this.playerActionDuration > 0
+        ? 1 - (this.playerActionTimer / this.playerActionDuration)
+        : 0;
+      this._playerAnimOpts.jumpY = this.playerJumpY;
       updatePlayerModelAnimation(
         this.playerModel,
         dt,
@@ -3790,10 +4011,269 @@ class TimberPortEngine {
     }
   }
 
+  updateYardPorters(dt) {
+    const piles = this.world?.yardLogPiles || [];
+    const porters = this.world?.yardPorters || [];
+    if (!piles.length || !porters.length) return;
+
+    if (this.workerRallyTimer > 0) {
+      this.workerRallyTimer = Math.max(0, this.workerRallyTimer - dt);
+    }
+    const rallyMult = this.workerRallyTimer > 0 ? 1.45 : 1.0;
+
+    // Gradually restock stacked yard timber piles so workers stay busy non-stop
+    for (const pile of piles) {
+      if (pile.count < pile.maxCount) {
+        pile.restockTimer += dt;
+        if (pile.restockTimer >= 6.8) {
+          pile.restockTimer = 0;
+          pile.restockOne();
+        }
+      }
+    }
+
+    const pickUnclaimedPile = (porter) => {
+      const candidates = [];
+      for (let idx = 0; idx < piles.length; idx++) {
+        if (piles[idx].count <= 0) continue;
+        const taken = porters.some(
+          (other) => other !== porter && (other.state === 'to_pile' || other.state === 'pickup') && other.pileIdx === idx
+        );
+        if (!taken) candidates.push(idx);
+      }
+      if (candidates.length > 0) {
+        return candidates[Math.floor(Math.random() * candidates.length)];
+      }
+      const anyAvail = piles.findIndex((pl) => pl.count > 0);
+      return anyAvail >= 0 ? anyAvail : (porter.pileIdx + 2) % piles.length;
+    };
+
+    const pickSpreadDrop = (porter) => {
+      const targets = porter.dropTargets;
+      const candidates = [];
+      for (const t of targets) {
+        const busy = porters.some((other) => other !== porter && other.state === 'to_drop' && other.dropTarget === t);
+        if (!busy) candidates.push(t);
+      }
+      const chosen = candidates.length > 0
+        ? candidates[Math.floor(Math.random() * candidates.length)]
+        : targets[Math.floor(Math.random() * targets.length)];
+      porter.dropOffset.set((Math.random() - 0.5) * 4.2, 0, (Math.random() - 0.5) * 3.8);
+      porter.curveSign = Math.random() < 0.5 ? -1 : 1;
+      porter.curveMag = 2.0 + Math.random() * 2.4;
+      return chosen;
+    };
+
+    for (let i = 0; i < porters.length; i++) {
+      const p = porters[i];
+      let isMoving = false;
+      let goalX = p.pos.x;
+      let goalZ = p.pos.z;
+      let wantMove = false;
+      let moveSpeed = p.speed * rallyMult;
+
+      if (p.state === 'to_pile') {
+        let pile = piles[p.pileIdx % piles.length];
+        if (pile.count <= 0) {
+          p.pileIdx = pickUnclaimedPile(p);
+          pile = piles[p.pileIdx];
+        }
+        goalX = pile.pickupPos.x;
+        goalZ = pile.pickupPos.z;
+        const dist = Math.hypot(goalX - p.pos.x, goalZ - p.pos.z);
+        if (dist > 0.85) {
+          wantMove = true;
+        } else {
+          p.state = 'pickup';
+          p.stateDuration = 0.82;
+          p.timer = p.stateDuration;
+          p.carrying = true;
+          p.mesh.userData?.setCarrying?.(true);
+          pile.takeLog();
+          this.world.spawnParticles(pile.pickupPos, 0xa16207, 4);
+        }
+      } else if (p.state === 'pickup') {
+        p.timer -= dt;
+        if (p.timer <= 0) {
+          p.dropTarget = pickSpreadDrop(p);
+          p.state = 'to_drop';
+        }
+      } else if (p.state === 'to_drop') {
+        goalX = p.dropTarget.pos.x + (p.dropOffset?.x || 0);
+        goalZ = p.dropTarget.pos.z + (p.dropOffset?.z || 0);
+        const dist = Math.hypot(goalX - p.pos.x, goalZ - p.pos.z);
+        moveSpeed *= 0.88;
+        if (dist > 1.2) {
+          wantMove = true;
+        } else {
+          p.state = 'drop';
+          p.stateDuration = 0.65;
+          p.timer = p.stateDuration;
+        }
+      } else if (p.state === 'drop') {
+        p.timer -= dt;
+        if (p.timer <= 0) {
+          p.carrying = false;
+          p.mesh.userData?.setCarrying?.(false);
+          this.world.spawnParticles(p.pos, 0xd97706, 5);
+          if (p.dropTarget.feedsSawmill && (gameState.sawmillBuffer || 0) < 14) {
+            gameState.sawmillBuffer = (gameState.sawmillBuffer || 0) + 1;
+            this.syncSawmillVisuals();
+          }
+          p.deliveriesSinceRest = (p.deliveriesSinceRest || 0) + 1;
+          if (p.deliveriesSinceRest >= 2 && this.workerRallyTimer <= 0) {
+            p.deliveriesSinceRest = 0;
+            p.state = 'rest';
+            p.stateDuration = 1.9 + Math.random() * 1.1;
+            p.timer = p.stateDuration;
+          } else {
+            p.pileIdx = pickUnclaimedPile(p);
+            p.state = 'to_pile';
+          }
+        }
+      } else if (p.state === 'rest') {
+        p.timer -= dt;
+        if (p.timer <= 0) {
+          p.pileIdx = pickUnclaimedPile(p);
+          p.state = 'to_pile';
+        }
+      }
+
+      if (wantMove) {
+        const dx = goalX - p.pos.x;
+        const dz = goalZ - p.pos.z;
+        const dist = Math.hypot(dx, dz) || 0.001;
+        let dirX = dx / dist;
+        let dirZ = dz / dist;
+
+        // Curved detour arc while far from goal so workers fan out naturally across the yard
+        const arcWeight = Math.min(1, Math.max(0, (dist - 2.5) / 10.0)) * 0.28 * (p.curveSign || 1);
+        dirX += -dirZ * arcWeight;
+        dirZ += dirX * arcWeight;
+
+        // Pairwise personal-space separation steering (ZERO lining up / crowding!)
+        let sepX = 0;
+        let sepZ = 0;
+        const minSep = 3.8;
+        for (let j = 0; j < porters.length; j++) {
+          if (i === j) continue;
+          const o = porters[j];
+          const sx = p.pos.x - o.pos.x;
+          const sz = p.pos.z - o.pos.z;
+          const sDist = Math.hypot(sx, sz);
+          if (sDist > 0.01 && sDist < minSep) {
+            const push = ((minSep - sDist) / minSep) * 1.85;
+            sepX += (sx / sDist) * push;
+            sepZ += (sz / sDist) * push;
+          }
+        }
+        dirX += sepX;
+        dirZ += sepZ;
+
+        const dLen = Math.hypot(dirX, dirZ) || 1;
+        dirX /= dLen;
+        dirZ /= dLen;
+
+        const step = Math.min(dist, moveSpeed * dt);
+        p.pos.x = THREE.MathUtils.clamp(p.pos.x + dirX * step, -110, -49);
+        p.pos.z = THREE.MathUtils.clamp(p.pos.z + dirZ * step, -94, -6);
+        p.yaw = Math.atan2(dirX, dirZ);
+        isMoving = true;
+
+        // Subtle dirt footstep dust puffs behind moving workers
+        p.dustTimer = (p.dustTimer || 0) - dt;
+        if (p.dustTimer <= 0) {
+          p.dustTimer = this.workerRallyTimer > 0 ? 0.24 : 0.44;
+          if (!this.world.lowSpec) {
+            this.world.spawnParticles(p.pos, 0xcab89d, 1);
+          }
+        }
+      }
+
+      p.mesh.position.copy(p.pos);
+      let diff = p.yaw - p.mesh.rotation.y;
+      while (diff > Math.PI) diff -= Math.PI * 2;
+      while (diff < -Math.PI) diff += Math.PI * 2;
+      p.mesh.rotation.y += diff * Math.min(1, dt * 9);
+
+      const stateProgress = p.stateDuration > 0
+        ? Math.min(1, Math.max(0, 1 - (p.timer / p.stateDuration)))
+        : 0;
+      p.mesh.userData?.updateAnim?.(
+        dt,
+        isMoving,
+        (p.carrying ? 0.92 : 1.05) * rallyMult,
+        p.state,
+        stateProgress
+      );
+    }
+  }
+
+  updateWoodenHouses(dt) {
+    const houses = this.world?.woodenHouses || [];
+    if (!houses.length) return;
+
+    for (const h of houses) {
+      if (!h.ready) {
+        h.timer = Math.max(0, h.timer - dt);
+        if (h.timer <= 0) h.ready = true;
+      }
+
+      if (h.readyRing) {
+        if (h.ready) {
+          const pulse = 1 + Math.sin(this.elapsed * 3.6 + h.x) * 0.08;
+          h.readyRing.scale.setScalar(pulse);
+          h.readyRing.material.opacity = 0.62 + Math.sin(this.elapsed * 3.6 + h.z) * 0.24;
+        } else {
+          h.readyRing.scale.setScalar(0.86);
+          h.readyRing.material.opacity = 0.16;
+        }
+      }
+
+      if (h.lantern) {
+        const flicker = 0.94 + Math.sin(this.elapsed * 4.5 + h.x * 0.7) * 0.08;
+        h.lantern.scale.setScalar(flicker);
+      }
+
+      if (h.artisan) {
+        const a = h.artisan;
+        let isMoving = false;
+        if (a.waitTimer > 0) {
+          a.waitTimer -= dt;
+        } else {
+          const goal = a.toB ? a.pointB : a.pointA;
+          const dx = goal.x - a.pos.x;
+          const dz = goal.z - a.pos.z;
+          const dist = Math.hypot(dx, dz);
+          if (dist > 0.35) {
+            const step = Math.min(dist, a.speed * dt);
+            a.pos.x += (dx / dist) * step;
+            a.pos.z += (dz / dist) * step;
+            const targetYaw = Math.atan2(dx, dz);
+            let diff = targetYaw - a.mesh.rotation.y;
+            while (diff > Math.PI) diff -= Math.PI * 2;
+            while (diff < -Math.PI) diff += Math.PI * 2;
+            a.mesh.rotation.y += diff * Math.min(1, dt * 8);
+            isMoving = true;
+          } else {
+            a.toB = !a.toB;
+            a.waitTimer = 1.6 + (Math.abs(h.x) % 2) * 0.5;
+            if (a.carriesWood) {
+              a.mesh.userData?.setCarrying?.(a.toB);
+            }
+          }
+        }
+        a.mesh.position.copy(a.pos);
+        a.mesh.userData?.updateAnim?.(dt, isMoving, 0.85);
+      }
+    }
+  }
+
   updateWorkforceAI(dt) {
     const forestSpeedMult = 1 + getManagerBonus('forestSpeed');
     const workerYield = forestSpeedMult >= 1.48 ? 3 : 2;
     for (const w of this.aiWorkers) {
+      let isMoving = false;
       if (w.state === 'to_tree') {
         if (!w.targetTree || !w.targetTree.alive) {
           w.targetTree = this.world.trees.find((t) => t.alive) || null;
@@ -3804,6 +4284,7 @@ class TimberPortEngine {
             this._tmpVec.subVectors(w.targetTree.pos, w.pos).normalize();
             w.pos.addScaledVector(this._tmpVec, 4.4 * forestSpeedMult * dt);
             w.mesh.rotation.y = Math.atan2(this._tmpVec.x, this._tmpVec.z);
+            isMoving = true;
           } else {
             w.state = 'chopping';
             w.timer = 1.4 / forestSpeedMult;
@@ -3811,11 +4292,14 @@ class TimberPortEngine {
         }
       } else if (w.state === 'chopping') {
         w.timer -= dt;
-        w.mesh.userData.rightArm.rotation.x = Math.sin(this.elapsed * 12) * 1.1;
+        if (w.mesh.userData?.rightArm) {
+          w.mesh.userData.rightArm.rotation.x = Math.sin(this.elapsed * 12) * 1.1;
+        }
         if (w.timer <= 0) {
           w.state = 'to_hopper';
           w.carrying = true;
           syncPlayerBackLogs(w.mesh, workerYield);
+          w.mesh.userData?.setCarrying?.(true);
         }
       } else if (w.state === 'to_hopper') {
         const dist = w.pos.distanceTo(ZONES.hopper);
@@ -3823,18 +4307,21 @@ class TimberPortEngine {
           this._tmpVec.subVectors(ZONES.hopper, w.pos).normalize();
           w.pos.addScaledVector(this._tmpVec, 4.2 * forestSpeedMult * dt);
           w.mesh.rotation.y = Math.atan2(this._tmpVec.x, this._tmpVec.z);
+          isMoving = true;
         } else {
           gameState.sawmillBuffer += workerYield;
           gameState.totalLogsCut += workerYield;
           advanceDailyQuest('logsCut', workerYield);
           syncPlayerBackLogs(w.mesh, 0);
           w.carrying = false;
+          w.mesh.userData?.setCarrying?.(false);
           w.state = 'to_tree';
           w.targetTree = null;
           this.syncSawmillVisuals();
         }
       }
       w.mesh.position.copy(w.pos);
+      w.mesh.userData?.updateAnim?.(dt, isMoving, forestSpeedMult);
     }
 
     const harborSpeedMult = 1 + getManagerBonus('contractBonus');
@@ -3908,68 +4395,12 @@ class TimberPortEngine {
   // 5B. Phase 9: Living Island AI Civilians (Stroll, Building Interaction & Collision Avoidance)
   // -------------------------------------------------------------------------
   rebuildCitizens() {
-    const targetCount = getActiveCitizenCount(this.activeProfile);
-    const hasIsland = (gameState.islandStationTier || 0) >= 1 || (gameState.islandResortTier || 0) >= 1;
-
-    while (this.aiCitizens.length > targetCount) {
+    while (this.aiCitizens.length > 0) {
       const removed = this.aiCitizens.pop();
       this.scene.remove(removed.mesh);
       if (removed.bubble?.material?.map) removed.bubble.material.map.dispose();
       if (removed.bubble?.material) removed.bubble.material.dispose();
       disposeObject3D(removed.mesh);
-    }
-
-    // Reusable steering output object (Zero GC per frame)
-    if (!this._avoidVec) {
-      this._avoidVec = { steerX: 0, steerZ: 0, speedFactor: 1.0, evadingPlayer: false };
-    }
-
-    while (this.aiCitizens.length < targetCount) {
-      const idx = this.aiCitizens.length;
-      const arch = CITIZEN_ARCHETYPES[idx % CITIZEN_ARCHETYPES.length];
-      const useResortLoop = hasIsland && (arch.id === 'resort_resident' || idx % 6 === 5);
-      const wpList = useResortLoop ? RESORT_WP_KEYS : MAINLAND_WP_KEYS;
-      const startKey = wpList[idx % wpList.length];
-      const startWp = ISLAND_WAYPOINTS[startKey] || ISLAND_WAYPOINTS.plaza_center;
-      const nextNeighbors = startWp.neighbors || ['plaza_center'];
-      const nextKey = nextNeighbors[idx % nextNeighbors.length];
-      const targetWp = ISLAND_WAYPOINTS[nextKey] || startWp;
-
-      const mesh = createCitizenModel(arch);
-      const laneOffset = ((idx % 3) - 1) * 0.55;
-      const jitterX = ((idx % 3) - 1) * 0.7;
-      const jitterZ = (((idx + 1) % 3) - 1) * 0.7;
-      const pos = new THREE.Vector3(startWp.x + jitterX, 0, startWp.z + jitterZ);
-      mesh.position.copy(pos);
-
-      this.scene.add(mesh);
-      this.aiCitizens.push({
-        idx,
-        arch,
-        mesh,
-        bubble: null,
-        pos,
-        useResortLoop,
-        prevWpKey: null,
-        currentWpKey: startKey,
-        targetWpKey: nextKey,
-        targetPos: new THREE.Vector3(targetWp.x + jitterX * 0.45, 0, targetWp.z + jitterZ * 0.45),
-        laneOffset,
-        currentSpeed: arch.speed || 2.35,
-        state: 'stroll', // 'stroll' | 'interact_building' | 'shelter' | 'greet_ceo'
-        stateTimer: 0,
-        interactPose: 'inspect',
-        interactLabel: '',
-        photoFlashed: false,
-        chatPartnerIdx: -1,
-        evadingPlayer: false,
-        walkPhase: idx * 1.35,
-        bubbleIdx: idx % arch.bubbles.length,
-        bubbleTimer: 3.5 + (idx % 4),
-        hasTip: idx % 3 === 0,
-        tipCooldown: idx % 3 === 0 ? 0 : 6 + (idx % 5) * 3.2,
-        greetCooldown: 0
-      });
     }
   }
 
@@ -4582,10 +5013,7 @@ class TimberPortEngine {
       this.scene.fog.color.lerpColors(this._dayFogBase, this._stormFogColor, 0.8);
       this.sunLight.intensity = 1.3;
       this.hemiLight.intensity = 0.65;
-      return;
-    }
-
-    if (hr >= 5.0 && hr < 7.8) {
+    } else if (hr >= 5.0 && hr < 7.8) {
       // Dawn / Binh Minh
       const t = 1 - Math.abs(hr - 6.4) / 1.4;
       this.scene.background.lerpColors(this._daySkyBase, this._dawnSkyColor, THREE.MathUtils.clamp(t, 0, 1) * 0.7);
@@ -4606,15 +5034,25 @@ class TimberPortEngine {
       this.sunLight.intensity = THREE.MathUtils.lerp(2.1, 0.74, nightFactor);
       this.hemiLight.intensity = THREE.MathUtils.lerp(0.95, 0.58, nightFactor);
     } else {
-      // Bright Golden Day
+      // Bright Sunlit Coastal Day
       const goldenBlend = this.activeProfile === 'high'
-        ? (0.5 - 0.5 * Math.cos(this.elapsed * 0.045)) * 0.35
+        ? (0.5 - 0.5 * Math.cos(this.elapsed * 0.045)) * 0.25
         : 0;
       this.scene.background.lerpColors(this._daySkyBase, this._skyGoldenColor, goldenBlend);
       this.scene.fog.color.lerpColors(this._dayFogBase, this._fogGoldenColor, goldenBlend);
-      this.sunLight.intensity = this.activeProfile === 'low' ? 2.08 : 2.25 - goldenBlend * 0.2;
-      this.hemiLight.intensity = this.activeProfile === 'low' ? 1.12 : this.activeProfile === 'balanced' ? 0.92 : 0.78;
+      this.sunLight.intensity = this.activeProfile === 'low' ? 2.1 : 2.38 - goldenBlend * 0.2;
+      this.hemiLight.intensity = this.activeProfile === 'low' ? 1.08 : this.activeProfile === 'balanced' ? 0.94 : 0.84;
     }
+
+    // Sync photorealistic ocean shader & atmospheric sky dome with live sun & weather
+    this.world?.updateOceanLighting(
+      this.sunLight.position,
+      this.sunLight.color,
+      this.scene.background,
+      this.scene.fog.color,
+      this.scene.fog.density || 0.0044,
+      nightFactor
+    );
   }
 
   updateCamera(dt) {
@@ -4680,6 +5118,9 @@ class TimberPortEngine {
 
     const alpha = 1 - Math.exp(-8.5 * dt);
     this.camera.position.lerp(this._camDesired, alpha);
+    if (this.world?.skyDome) {
+      this.world.skyDome.position.copy(this.camera.position);
+    }
     this.camera.lookAt(this._camLook);
   }
 

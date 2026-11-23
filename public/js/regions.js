@@ -1,8 +1,8 @@
-export const WORLD_BOUNDS = { minX: -5360, maxX: 5440, minZ: -10225, maxZ: 34 };
-export const LAND_EDGE_Z = 25;
+export const WORLD_BOUNDS = { minX: -5360, maxX: 5440, minZ: -10225, maxZ: 142 };
+export const LAND_EDGE_Z = 132;
 export const MINIMAP_BOUNDS = {
   minX: WORLD_BOUNDS.minX - 8, maxX: WORLD_BOUNDS.maxX + 8,
-  minZ: WORLD_BOUNDS.minZ - 8, maxZ: 154
+  minZ: WORLD_BOUNDS.minZ - 8, maxZ: 245
 };
 
 const COLUMNS = 120;

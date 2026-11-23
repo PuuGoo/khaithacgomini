@@ -6,8 +6,36 @@
 
 import * as THREE from 'three';
 import { GLTFLoader } from 'three/addons/loaders/GLTFLoader.js';
+import { MeshoptDecoder } from 'three/addons/libs/meshopt_decoder.module.js';
+import * as SkeletonUtils from 'three/addons/utils/SkeletonUtils.js';
 import { mergeGeometries } from 'three/addons/utils/BufferGeometryUtils.js';
 import { getBarkTexture, getTimberTexture, getTravertineTexture } from './textures.js';
+
+export const FOREST_ASSETS = {
+  lumberjackPlayer: '/models/forest/lumberjack_player.glb',
+  forestryWorker: '/models/forest/forestry_worker.glb',
+  pineTree1: '/models/forest/pine_tree_1.glb',
+  pineTree2: '/models/forest/pine_tree_2.glb',
+  pineTreeSilhouette: '/models/forest/pine_tree_silhouette.glb',
+  oakTree1: '/models/forest/oak_tree_1.glb',
+  oakTree2: '/models/forest/oak_tree_2.glb',
+  riverBoulder: '/models/forest/river_boulder.glb',
+  logBridge: '/models/forest/log_bridge.glb',
+  workerBunkhouse: '/models/forest/worker_bunkhouse.glb',
+  waterwheelSawmill: '/models/forest/waterwheel_sawmill.glb',
+  tradingPost: '/models/forest/trading_post.glb',
+  forestLogTruck: '/models/forest/forest_log_truck.glb',
+  logHandcart: '/models/forest/log_handcart.glb',
+  timberLogSingle: '/models/forest/timber_log_single.glb',
+  lumberShedStack: '/models/forest/lumber_shed_stack.glb',
+  stoneChimneyHearth: '/models/forest/stone_chimney_hearth.glb',
+  plankBundle: '/models/forest/plank_bundle.glb',
+  woodLanternPost: '/models/forest/wood_lantern_post.glb',
+  logPile: '/models/forest/log_pile.glb',
+  campfire1: '/models/forest/campfire_set_1.glb',
+  campfire2: '/models/forest/campfire_set_2.glb',
+  fellingAxe: '/models/forest/felling_axe.glb'
+};
 
 function markShared(resource) {
   if (!resource) return resource;
@@ -377,6 +405,9 @@ const _glbCenter = new THREE.Vector3();
 function getGltfLoader() {
   if (!sharedGltfLoader) {
     sharedGltfLoader = new GLTFLoader();
+    if (MeshoptDecoder) {
+      sharedGltfLoader.setMeshoptDecoder(MeshoptDecoder);
+    }
   }
   return sharedGltfLoader;
 }
@@ -464,6 +495,138 @@ export function mountNormalizedGlb(targetGroup, url, options = {}) {
   });
 }
 
+// ---------------------------------------------------------------------------
+// Cached Skinned/Static GLB Worker Character Loader (with Mixamo AnimationMixer)
+// ---------------------------------------------------------------------------
+const _workerGlbCache = new Map();
+
+function loadWorkerGlbTemplate(url) {
+  if (_workerGlbCache.has(url)) return _workerGlbCache.get(url);
+  const promise = new Promise((resolve) => {
+    const loader = getGltfLoader();
+    loader.load(
+      url,
+      (gltf) => {
+        const root = gltf?.scene;
+        if (!root) {
+          resolve(null);
+          return;
+        }
+        root.updateMatrixWorld(true);
+        const box = new THREE.Box3().setFromObject(root);
+        const size = new THREE.Vector3();
+        const center = new THREE.Vector3();
+        box.getSize(size);
+        box.getCenter(center);
+
+        let isSkinned = false;
+        root.traverse((obj) => {
+          if (obj.isSkinnedMesh) isSkinned = true;
+          if (obj.isMesh) {
+            obj.castShadow = false;
+            obj.receiveShadow = true;
+            obj.frustumCulled = false;
+            const mats = Array.isArray(obj.material) ? obj.material : [obj.material];
+            for (const m of mats) {
+              if (!m) continue;
+              if (m.map) m.map.colorSpace = THREE.SRGBColorSpace;
+              m.needsUpdate = true;
+            }
+          }
+        });
+
+        resolve({
+          scene: root,
+          animations: Array.isArray(gltf.animations) ? gltf.animations : [],
+          height: Math.max(size.y, 0.001),
+          centerX: center.x,
+          centerZ: center.z,
+          minY: box.min.y,
+          isSkinned
+        });
+      },
+      undefined,
+      () => resolve(null)
+    );
+  });
+  _workerGlbCache.set(url, promise);
+  return promise;
+}
+
+export function mountGlbWorker(targetGroup, url, options = {}) {
+  if (!targetGroup || !url) return Promise.resolve(false);
+  const { targetHeight = 1.95, yaw = 0, placeholder = null, autoRigStatic = true } = options;
+
+  return loadWorkerGlbTemplate(url).then((entry) => {
+    if (!entry?.scene || !targetGroup) return false;
+    const cloned = entry.isSkinned ? SkeletonUtils.clone(entry.scene) : entry.scene.clone(true);
+    const scale = targetHeight / entry.height;
+
+    const holder = new THREE.Group();
+    cloned.position.set(-entry.centerX, -entry.minY, -entry.centerZ);
+    holder.add(cloned);
+    holder.scale.setScalar(scale);
+    holder.rotation.y = yaw;
+
+    // Auto-rig static upright Meshy humanoid GLBs (e.g. forestry_worker.glb) with 13 articulated bones
+    if (!entry.isSkinned && autoRigStatic) {
+      holder.updateMatrixWorld(true);
+      const rig = buildBiomechanicalRig(holder, targetHeight, true);
+      if (rig && rig.meshCount > 0) {
+        if (rig.axeMesh) rig.axeMesh.visible = false;
+        const rigHolder = new THREE.Group();
+        rigHolder.rotation.y = yaw;
+        rigHolder.add(rig.rigRoot);
+        targetGroup.add(rigHolder);
+        targetGroup.userData.glbHolder = rigHolder;
+        targetGroup.userData.autoRig = rig;
+        targetGroup.userData.glbLoaded = true;
+        if (placeholder) placeholder.visible = false;
+        return true;
+      }
+    }
+
+    targetGroup.add(holder);
+    targetGroup.userData.glbHolder = holder;
+    targetGroup.userData.glbLoaded = true;
+
+    if (placeholder) placeholder.visible = false;
+
+    if (entry.animations.length > 0) {
+      const mixer = new THREE.AnimationMixer(cloned);
+      const walkClip =
+        entry.animations.find((c) => /walk/i.test(c.name)) ||
+        entry.animations.find((c) => /run/i.test(c.name)) ||
+        entry.animations[0];
+      const runClip = entry.animations.find((c) => /run/i.test(c.name)) || walkClip;
+      const walkAction = mixer.clipAction(walkClip);
+      walkAction.play();
+      targetGroup.userData.glbMixer = mixer;
+      targetGroup.userData.walkAction = walkAction;
+      targetGroup.userData.runAction = runClip !== walkClip ? mixer.clipAction(runClip) : walkAction;
+    }
+
+    // Bind named skeleton bones for additive carrying, bending, heaving & brow-wipe gestures
+    const bones = {};
+    cloned.traverse((obj) => {
+      if (!obj.name) return;
+      const n = obj.name.toLowerCase();
+      if (n === 'spine' || n === 'mixamorigspine') bones.spine = obj;
+      else if (n === 'spine01' || n === 'mixamorigspine1') bones.spine1 = obj;
+      else if (n === 'spine02' || n === 'mixamorigspine2') bones.spine2 = obj;
+      else if (n === 'head' || n === 'mixamorighead') bones.head = obj;
+      else if (n === 'leftarm' || n === 'mixamorigleftarm') bones.leftArm = obj;
+      else if (n === 'leftforearm' || n === 'mixamorigleftforearm') bones.leftForeArm = obj;
+      else if (n === 'rightarm' || n === 'mixamorigrightarm') bones.rightArm = obj;
+      else if (n === 'rightforearm' || n === 'mixamorigrightforearm') bones.rightForeArm = obj;
+      else if (n === 'leftupleg' || n === 'mixamorigleftupleg') bones.leftUpLeg = obj;
+      else if (n === 'rightupleg' || n === 'mixamorigrightupleg') bones.rightUpLeg = obj;
+    });
+    targetGroup.userData.bones = Object.keys(bones).length > 0 ? bones : null;
+    return true;
+  });
+}
+
 function smoothstep(edge0, edge1, x) {
   const t = Math.max(0, Math.min(1, (x - edge0) / (edge1 - edge0)));
   return t * t * (3 - 2 * t);
@@ -536,6 +699,21 @@ function createHeroLumberjackAxe(scale = 1, lowSpec = false) {
   const poll = new THREE.Mesh(new THREE.BoxGeometry(0.064, 0.065, 0.085), ironMat);
   poll.position.set(0, 0.055, 0.53);
   axe.add(poll);
+
+  // Wrap procedural fallback so the real Meshy Pro felling_axe.glb replaces it seamlessly
+  const fallback = new THREE.Group();
+  for (const child of [...axe.children]) fallback.add(child);
+  axe.add(fallback);
+
+  const glbWrap = new THREE.Group();
+  glbWrap.position.set(0, 0, -0.14);
+  glbWrap.rotation.set(Math.PI / 2, 0, Math.PI / 2);
+  axe.add(glbWrap);
+  mountNormalizedGlb(glbWrap, FOREST_ASSETS.fellingAxe, {
+    targetHeight: 0.92,
+    yaw: 0,
+    placeholder: fallback
+  });
 
   axe.scale.setScalar(scale);
   return axe;
@@ -1270,6 +1448,94 @@ export function updatePlayerModelAnimation(playerModel, dt, moving, walkPhase, c
         fArmLRy = fArmLRy * (1 - ch) + (-chopElbowL * 0.65) * ch;
       }
 
+      // --- 7. Expressive Player Actions, Limb Gestures, Jump & Organic Idle Micro-Gestures ---
+      const action = options ? options.action : null;
+      const actionT = options ? (options.actionT || 0) : 0;
+      const jumpY = options ? (options.jumpY || 0) : 0;
+      const actionEnv = action ? (smoothstep(0.0, 0.14, actionT) * (1 - smoothstep(0.82, 1.0, actionT))) : 0;
+
+      // Subtle automatic idle gestures when standing still (periodic brow wipe & axe check)
+      if (!action && ch < 0.05 && idle > 0.75) {
+        const cycle = elapsed % 9.5;
+        if (cycle > 4.2 && cycle < 6.4) {
+          // Left hand lifts to wipe brow naturally
+          const wt = (cycle - 4.2) / 2.2;
+          const wEnv = smoothstep(0.0, 0.25, wt) * (1 - smoothstep(0.75, 1.0, wt)) * idle;
+          const swipe = Math.sin(wt * Math.PI * 3.0) * 0.22;
+          uArmLRx += (-1.25 + swipe * 0.2) * wEnv;
+          uArmLRz += (0.48 + swipe * 0.35) * wEnv;
+          fArmLRx += -0.88 * wEnv;
+          fArmLRy += -0.75 * wEnv;
+          headRx += -0.08 * wEnv;
+          headRy += swipe * 0.35 * wEnv;
+        } else if (cycle > 7.4 && cycle < 9.1) {
+          // Right hand gently hefts/inspects axe grip
+          const at = (cycle - 7.4) / 1.7;
+          const aEnv = smoothstep(0.0, 0.25, at) * (1 - smoothstep(0.75, 1.0, at)) * idle;
+          uArmRRx += -0.36 * aEnv;
+          fArmRRx += -0.35 * aEnv;
+          headRx += 0.12 * aEnv;
+          headRy += -0.18 * aEnv;
+        }
+      }
+
+      // Interactive manual gesture overlays (Phím 1-4 / Nút Cử chỉ)
+      if (action === 'wave' && actionEnv > 0.001) {
+        const waveOsc = Math.sin(actionT * Math.PI * 6.0);
+        chestRz += -0.08 * actionEnv;
+        headRz += 0.14 * actionEnv;
+        headRy += waveOsc * 0.08 * actionEnv;
+        uArmLRx = uArmLRx * (1 - actionEnv) + (-0.35) * actionEnv;
+        uArmLRz = uArmLRz * (1 - actionEnv) + (1.18 + waveOsc * 0.24) * actionEnv;
+        fArmLRx = fArmLRx * (1 - actionEnv) + (-0.28) * actionEnv;
+        fArmLRy = fArmLRy * (1 - actionEnv) + (-0.35 + waveOsc * 0.48) * actionEnv;
+      } else if (action === 'stretch' && actionEnv > 0.001) {
+        const stretchPeak = Math.sin(actionT * Math.PI);
+        spineRx += -0.16 * actionEnv;
+        chestRx += -0.22 * stretchPeak * actionEnv;
+        headRx += -0.2 * stretchPeak * actionEnv;
+        hipY += 0.03 * stretchPeak * s * actionEnv;
+        uArmLRx = uArmLRx * (1 - actionEnv) + (-2.25) * actionEnv;
+        uArmLRz = uArmLRz * (1 - actionEnv) + (0.45 + stretchPeak * 0.28) * actionEnv;
+        fArmLRx = fArmLRx * (1 - actionEnv) + (-0.38) * actionEnv;
+        uArmRRx = uArmRRx * (1 - actionEnv) + (-2.15) * actionEnv;
+        uArmRRz = uArmRRz * (1 - actionEnv) + (-0.45 - stretchPeak * 0.28) * actionEnv;
+        fArmRRx = fArmRRx * (1 - actionEnv) + (-0.38) * actionEnv;
+      } else if (action === 'cheer' && actionEnv > 0.001) {
+        const pump = Math.abs(Math.sin(actionT * Math.PI * 3.0));
+        hipY += pump * 0.085 * s * actionEnv;
+        chestRx += -0.14 * pump * actionEnv;
+        headRx += -0.16 * pump * actionEnv;
+        uArmLRx = uArmLRx * (1 - actionEnv) + (-1.95 - pump * 0.52) * actionEnv;
+        uArmLRz = uArmLRz * (1 - actionEnv) + (0.65 + pump * 0.22) * actionEnv;
+        fArmLRx = fArmLRx * (1 - actionEnv) + (-0.45 + pump * 0.25) * actionEnv;
+        uArmRRx = uArmRRx * (1 - actionEnv) + (-1.95 - pump * 0.52) * actionEnv;
+        uArmRRz = uArmRRz * (1 - actionEnv) + (-0.65 - pump * 0.22) * actionEnv;
+        fArmRRx = fArmRRx * (1 - actionEnv) + (-0.45 + pump * 0.25) * actionEnv;
+      } else if (action === 'command' && actionEnv > 0.001) {
+        const pulse = Math.sin(actionT * Math.PI * 2.0) * 0.08;
+        spineRx += 0.12 * actionEnv;
+        chestRy += 0.22 * actionEnv;
+        headRy += -0.16 * actionEnv;
+        uArmLRx = uArmLRx * (1 - actionEnv) + (-1.42 + pulse) * actionEnv;
+        uArmLRy = uArmLRy * (1 - actionEnv) + (0.14) * actionEnv;
+        uArmLRz = uArmLRz * (1 - actionEnv) + (0.18) * actionEnv;
+        fArmLRx = fArmLRx * (1 - actionEnv) + (-0.08) * actionEnv;
+        fArmLRy = fArmLRy * (1 - actionEnv) + (-0.08) * actionEnv;
+      }
+
+      // Midair Jump Pose (athletic knee tuck & arm balance)
+      if (jumpY > 0.02) {
+        const air = Math.min(1, jumpY / 0.85);
+        thighLRx = thighLRx * (1 - air) + (-0.72) * air;
+        shinLRx = shinLRx * (1 - air) + (0.95) * air;
+        thighRRx = thighRRx * (1 - air) + (-0.42) * air;
+        shinRRx = shinRRx * (1 - air) + (0.72) * air;
+        uArmLRz += 0.58 * air;
+        uArmRRz -= 0.52 * air;
+        spineRx += 0.14 * air;
+      }
+
       // Apply pose to 13-bone skeleton
       b.hips.position.set(hipX, hipY, hipZ);
       b.hips.rotation.set(hipRx, hipRy, hipRz);
@@ -1293,6 +1559,8 @@ export function updatePlayerModelAnimation(playerModel, dt, moving, walkPhase, c
 
     // Fallback for pre-skinned GLB without embedded AnimationClips
     const damp = 1 - Math.exp(-14 * dt);
+    const action = options ? options.action : null;
+    const actionT = options ? (options.actionT || 0) : 0;
     let targetY = Math.sin(elapsed * 2.4) * 0.018;
     let targetRotX = 0;
     let targetRotY = 0;
@@ -1311,6 +1579,19 @@ export function updatePlayerModelAnimation(playerModel, dt, moving, walkPhase, c
       targetRotY = -p * 0.42;
       targetRotZ += p * 0.14;
       targetY += p * 0.06;
+    } else if (action) {
+      const env = Math.sin(actionT * Math.PI);
+      if (action === 'cheer') {
+        targetY += Math.abs(Math.sin(actionT * Math.PI * 3)) * 0.24;
+        targetScaleY = 1 + env * 0.07;
+      } else if (action === 'wave') {
+        targetRotZ += Math.sin(actionT * Math.PI * 6) * 0.14 * env;
+      } else if (action === 'stretch') {
+        targetRotX -= env * 0.16;
+        targetScaleY = 1 + env * 0.08;
+      } else if (action === 'command') {
+        targetRotX += env * 0.18;
+      }
     }
 
     anim.position.y += (targetY - anim.position.y) * damp;
@@ -1321,17 +1602,46 @@ export function updatePlayerModelAnimation(playerModel, dt, moving, walkPhase, c
     return;
   }
 
-  // Fallback / Classic procedural humanoid limb animation
+  // Fallback / Classic procedural humanoid limb animation (with full gestures & jump)
   const { leftLeg, rightLeg, leftArm, rightArm } = ud;
   if (!leftLeg || !rightLeg || !leftArm || !rightArm) return;
+  const action = options ? options.action : null;
+  const actionT = options ? (options.actionT || 0) : 0;
+  const jumpY = options ? (options.jumpY || 0) : 0;
+
   const swing = moving ? Math.sin(walkPhase) * 0.65 : 0;
-  leftLeg.rotation.x = swing;
-  rightLeg.rotation.x = -swing;
-  leftArm.rotation.x = -swing * 0.7;
+  leftLeg.rotation.x = jumpY > 0.04 ? -0.55 : swing;
+  rightLeg.rotation.x = jumpY > 0.04 ? 0.35 : -swing;
+  leftArm.rotation.z = 0;
+  rightArm.rotation.z = 0;
+
   if (chopSwing > 0) {
+    leftArm.rotation.x = -swing * 0.5;
     rightArm.rotation.x = -Math.sin(chopSwing * Math.PI) * 1.45;
+  } else if (action === 'wave') {
+    const env = Math.sin(actionT * Math.PI);
+    leftArm.rotation.x = -2.5 * env;
+    leftArm.rotation.z = (0.35 + Math.sin(actionT * Math.PI * 6) * 0.35) * env;
+    rightArm.rotation.x = swing * 0.4;
+  } else if (action === 'stretch') {
+    const env = Math.sin(actionT * Math.PI);
+    leftArm.rotation.x = -2.65 * env;
+    rightArm.rotation.x = -2.65 * env;
+    leftArm.rotation.z = 0.4 * env;
+    rightArm.rotation.z = -0.4 * env;
+  } else if (action === 'cheer') {
+    const pump = Math.abs(Math.sin(actionT * Math.PI * 3));
+    leftArm.rotation.x = -2.1 - pump * 0.65;
+    rightArm.rotation.x = -2.1 - pump * 0.65;
+    leftArm.rotation.z = 0.3;
+    rightArm.rotation.z = -0.3;
+  } else if (action === 'command') {
+    const env = Math.sin(actionT * Math.PI);
+    leftArm.rotation.x = -1.55 * env;
+    rightArm.rotation.x = 0.25 * env;
   } else {
-    rightArm.rotation.x = swing * 0.7;
+    leftArm.rotation.x = -swing * 0.7 + (moving ? 0 : Math.sin(elapsed * 2.2) * 0.06);
+    rightArm.rotation.x = swing * 0.7 - (moving ? 0 : Math.sin(elapsed * 2.2) * 0.06);
   }
 }
 
@@ -1465,30 +1775,58 @@ function getTreeAssets(kind) {
   return sharedTreeAssets[kind];
 }
 
-export function createTreeModel(kind = 'pine') {
+export function createTreeModel(kind = 'pine', variant = 0) {
   const assets = getTreeAssets(kind);
   const g = new THREE.Group();
 
+  // Persistent natural cut stump revealed whenever the tree is felled
+  const stump = new THREE.Group();
+  const stumpBase = new THREE.Mesh(assets.rootGeo, assets.barkMat);
+  stumpBase.position.y = 0.2;
+  const stumpTop = new THREE.Mesh(
+    markShared(new THREE.CylinderGeometry(0.32, 0.36, 0.45, 8)),
+    [assets.barkMat, markShared(new THREE.MeshStandardMaterial({ color: 0xe6c396, roughness: 0.78 })), assets.barkMat]
+  );
+  stumpTop.position.y = 0.32;
+  stump.add(stumpBase, stumpTop);
+  stump.visible = false;
+  g.add(stump);
+
+  // Full tree canopy group (wobbles on chop & hides when felled)
+  const canopy = new THREE.Group();
+  const fallback = new THREE.Group();
+
   const rootFlare = new THREE.Mesh(assets.rootGeo, assets.barkMat);
   rootFlare.position.y = 0.22;
-  g.add(rootFlare);
+  fallback.add(rootFlare);
 
   const trunk = new THREE.Mesh(assets.trunkGeo, assets.barkMat);
   trunk.position.y = assets.trunkH / 2;
   trunk.castShadow = true;
   trunk.receiveShadow = true;
-  g.add(trunk);
+  fallback.add(trunk);
 
-  const canopy = new THREE.Group();
   for (const def of assets.canopyDefs) {
     const part = new THREE.Mesh(def.geo, def.mat);
     part.position.set(def.pos[0], def.pos[1], def.pos[2]);
     part.rotation.y = def.ry;
     part.castShadow = true;
-    canopy.add(part);
+    fallback.add(part);
   }
+  canopy.add(fallback);
+
+  const glbHolder = new THREE.Group();
+  canopy.add(glbHolder);
+  const url = kind === 'oak'
+    ? (variant % 2 === 0 ? FOREST_ASSETS.oakTree1 : FOREST_ASSETS.oakTree2)
+    : kind === 'redwood'
+      ? FOREST_ASSETS.pineTree2
+      : (variant % 2 === 0 ? FOREST_ASSETS.pineTree1 : FOREST_ASSETS.pineTree2);
+  const targetHeight = kind === 'redwood' ? 9.8 : kind === 'oak' ? 7.6 : 8.4;
+  mountNormalizedGlb(glbHolder, url, { targetHeight, yaw: 0, placeholder: fallback });
+
   g.add(canopy);
-  g.userData = { canopy, trunk };
+  g.userData = { canopy, trunk, stump, glbHolder };
   return g;
 }
 
@@ -2031,13 +2369,242 @@ export function createFishingBoatModel(index = 0) {
   return g;
 }
 
+const WORKER_ROLE_GLB = {
+  porter: FOREST_ASSETS.forestryWorker,
+  yard: FOREST_ASSETS.forestryWorker,
+  lumberjack: FOREST_ASSETS.forestryWorker,
+  harvester: FOREST_ASSETS.forestryWorker,
+  artisan_woman: FOREST_ASSETS.forestryWorker,
+  artisan_trader: FOREST_ASSETS.forestryWorker,
+  artisan_dock: FOREST_ASSETS.forestryWorker
+};
+
 export function createWorkerModel(role = 'lumberjack') {
-  const palette = role === 'lumberjack'
+  const root = new THREE.Group();
+  const palette = role === 'lumberjack' || role === 'harvester'
     ? { shirt: 0x16a34a, pants: 0x1e3a8a, hat: 0xf59e0b, accent: 0x84cc16 }
-    : { shirt: 0x0284c7, pants: 0x0f172a, hat: 0xffffff, accent: 0x38bdf8 };
-  const m = createPlayerModel(palette, 0);
-  m.scale.setScalar(0.86);
-  return m;
+    : { shirt: 0x0284c7, pants: 0x0f172a, hat: 0xfacc15, accent: 0x38bdf8 };
+
+  // Lightweight fallback body hidden automatically as soon as forestry_worker.glb loads
+  const fallback = createPlayerModel(palette, 0);
+  fallback.scale.setScalar(0.86);
+  root.add(fallback);
+
+  // Visible 3D timber log held in front/shoulder when worker is carrying logs (uses Meshy timber_log_single.glb)
+  const carriedLog = new THREE.Group();
+  carriedLog.position.set(0, 1.18, 0.36);
+  const carriedFallback = new THREE.Group();
+  const logMesh = createLogMesh(false);
+  logMesh.scale.set(1.32, 1.12, 1.12);
+  carriedFallback.add(logMesh);
+  carriedLog.add(carriedFallback);
+  const carriedGlbWrap = new THREE.Group();
+  carriedGlbWrap.rotation.y = Math.PI / 2;
+  carriedGlbWrap.position.y = -0.18;
+  carriedLog.add(carriedGlbWrap);
+  mountNormalizedGlb(carriedGlbWrap, FOREST_ASSETS.timberLogSingle, {
+    targetFootprint: 1.45,
+    yaw: 0,
+    placeholder: carriedFallback
+  });
+  carriedLog.visible = false;
+  root.add(carriedLog);
+
+  const shadow = makeContactShadow(0.75, 0.32);
+  root.add(shadow);
+
+  root.userData = {
+    rightArm: fallback.userData.rightArm,
+    leftArm: fallback.userData.leftArm,
+    backLogs: fallback.userData.backLogs,
+    carriedLog,
+    fallbackBody: fallback,
+    glbMixer: null,
+    glbHolder: null,
+    autoRig: null,
+    glbLoaded: false,
+    bones: null,
+    walkBobPhase: Math.random() * Math.PI * 2,
+    carryBlend: 0,
+    setCarrying(active) {
+      carriedLog.visible = Boolean(active);
+    },
+    updateAnim(dt, isMoving, speedMult = 1, workerState = 'walk', stateProgress = 0) {
+      const damp = 1 - Math.exp(-10 * dt);
+      const targetCarry = carriedLog.visible ? 1 : 0;
+      this.carryBlend += (targetCarry - this.carryBlend) * damp;
+
+      if (isMoving) {
+        this.walkBobPhase += dt * 9.5 * speedMult;
+      }
+
+      if (this.glbMixer) {
+        this.glbMixer.update(isMoving ? dt * (1.15 * speedMult) : dt * 0.08);
+      }
+
+      // Expressive 13-bone animation for auto-rigged forestry_worker.glb
+      const rig = this.autoRig;
+      if (rig?.bones) {
+        const b = rig.bones;
+        const p = this.walkBobPhase;
+        const c = this.carryBlend;
+        const moveAmp = isMoving ? 1 : 0;
+        const legSwing = Math.sin(p) * 0.62 * moveAmp;
+        const armSwing = Math.sin(p) * 0.48 * moveAmp * (1 - c * 0.85);
+        const bob = Math.abs(Math.cos(p)) * 0.065 * moveAmp;
+
+        let spineX = isMoving ? 0.06 - c * 0.1 : 0;
+        let chestY = Math.sin(p) * 0.08 * moveAmp;
+        let headY = 0;
+        let armLX = armSwing;
+        let armLZ = 0.08;
+        let foreLX = -0.18;
+        let armRX = -armSwing;
+        let armRZ = -0.08;
+        let foreRX = -0.18;
+        let hipY = rig.hipsRestY + bob;
+        let thighLX = -legSwing;
+        let thighRX = legSwing;
+        const shinLX = Math.max(0, Math.sin(p + 0.5)) * 0.55 * moveAmp;
+        const shinRX = Math.max(0, -Math.sin(p + 0.5)) * 0.55 * moveAmp;
+
+        if (workerState === 'pickup') {
+          const bend = Math.sin(Math.min(1, stateProgress) * Math.PI);
+          spineX = bend * 0.58;
+          hipY = rig.hipsRestY - bend * 0.16;
+          armLX = -bend * 0.95;
+          armRX = -bend * 0.95;
+          foreLX = -bend * 0.35;
+          foreRX = -bend * 0.35;
+          thighLX = -bend * 0.32;
+          thighRX = -bend * 0.32;
+        } else if (workerState === 'drop') {
+          const heave = Math.sin(Math.min(1, stateProgress) * Math.PI);
+          spineX = heave * 0.36;
+          armLX = -0.75 - heave * 0.55;
+          armRX = -0.75 - heave * 0.55;
+        } else if (workerState === 'rest') {
+          const env = Math.sin(Math.min(1, stateProgress) * Math.PI);
+          const wipe = Math.sin(stateProgress * Math.PI * 2.5);
+          headY = Math.sin(stateProgress * Math.PI * 2) * 0.38 * env;
+          armRX = -1.25 * env;
+          armRZ = (-0.28 + wipe * 0.24) * env;
+          foreRX = -1.05 * env;
+        } else if (c > 0.02) {
+          armLX = THREE.MathUtils.lerp(armLX, -0.82, c);
+          armRX = THREE.MathUtils.lerp(armRX, -0.82, c);
+          armLZ = THREE.MathUtils.lerp(armLZ, -0.22, c);
+          armRZ = THREE.MathUtils.lerp(armRZ, 0.22, c);
+          foreLX = THREE.MathUtils.lerp(foreLX, -0.68, c);
+          foreRX = THREE.MathUtils.lerp(foreRX, -0.68, c);
+        }
+
+        b.hips.position.y += (hipY - b.hips.position.y) * damp;
+        b.spine.rotation.x += (spineX - b.spine.rotation.x) * damp;
+        b.chest.rotation.y += (chestY - b.chest.rotation.y) * damp;
+        b.head.rotation.y += (headY - b.head.rotation.y) * damp;
+        b.upperArmL.rotation.x += (armLX - b.upperArmL.rotation.x) * damp;
+        b.upperArmL.rotation.z += (armLZ - b.upperArmL.rotation.z) * damp;
+        b.foreArmL.rotation.x += (foreLX - b.foreArmL.rotation.x) * damp;
+        b.upperArmR.rotation.x += (armRX - b.upperArmR.rotation.x) * damp;
+        b.upperArmR.rotation.z += (armRZ - b.upperArmR.rotation.z) * damp;
+        b.foreArmR.rotation.x += (foreRX - b.foreArmR.rotation.x) * damp;
+        b.thighL.rotation.x += (thighLX - b.thighL.rotation.x) * damp;
+        b.shinL.rotation.x += (shinLX - b.shinL.rotation.x) * damp;
+        b.thighR.rotation.x += (thighRX - b.thighR.rotation.x) * damp;
+        b.shinR.rotation.x += (shinRX - b.shinR.rotation.x) * damp;
+      } else if (this.bones) {
+        // Expressive articulated limb & torso gestures for skinned GLB workers
+        const bones = this.bones;
+        const c = this.carryBlend;
+        if (workerState === 'pickup') {
+          const bend = Math.sin(Math.min(1, stateProgress) * Math.PI);
+          if (bones.spine) bones.spine.rotation.x += bend * 0.42;
+          if (bones.spine1) bones.spine1.rotation.x += bend * 0.25;
+          if (bones.leftArm) bones.leftArm.rotation.x += bend * 0.72;
+          if (bones.rightArm) bones.rightArm.rotation.x += bend * 0.72;
+          if (bones.leftForeArm) bones.leftForeArm.rotation.x += -bend * 0.45;
+          if (bones.rightForeArm) bones.rightForeArm.rotation.x += -bend * 0.45;
+          if (bones.leftUpLeg) bones.leftUpLeg.rotation.x += -bend * 0.28;
+          if (bones.rightUpLeg) bones.rightUpLeg.rotation.x += -bend * 0.28;
+        } else if (workerState === 'drop') {
+          const heave = Math.sin(Math.min(1, stateProgress) * Math.PI);
+          if (bones.spine) bones.spine.rotation.x += heave * 0.34;
+          if (bones.leftArm) bones.leftArm.rotation.x += -0.65 - heave * 0.55;
+          if (bones.rightArm) bones.rightArm.rotation.x += -0.65 - heave * 0.55;
+        } else if (workerState === 'rest') {
+          const wipe = Math.sin(stateProgress * Math.PI * 2.5);
+          const env = Math.sin(Math.min(1, stateProgress) * Math.PI);
+          if (bones.head) bones.head.rotation.y += Math.sin(stateProgress * Math.PI * 2) * 0.38 * env;
+          if (bones.rightArm) {
+            bones.rightArm.rotation.x += -1.15 * env;
+            bones.rightArm.rotation.z += (-0.35 + wipe * 0.22) * env;
+          }
+          if (bones.rightForeArm) bones.rightForeArm.rotation.x += -0.95 * env;
+        } else if (c > 0.02) {
+          if (bones.spine) bones.spine.rotation.x += -0.09 * c;
+          if (bones.leftArm) {
+            bones.leftArm.rotation.x += -0.78 * c;
+            bones.leftArm.rotation.z += 0.28 * c;
+          }
+          if (bones.rightArm) {
+            bones.rightArm.rotation.x += -0.78 * c;
+            bones.rightArm.rotation.z += -0.28 * c;
+          }
+          if (bones.leftForeArm) bones.leftForeArm.rotation.y += -0.52 * c;
+          if (bones.rightForeArm) bones.rightForeArm.rotation.y += 0.52 * c;
+        }
+      } else if (this.glbHolder) {
+        let targetY = 0;
+        let targetPitch = 0;
+        let targetRoll = 0;
+        let targetYaw = 0;
+        if (workerState === 'pickup') {
+          const bend = Math.sin(Math.min(1, stateProgress) * Math.PI);
+          targetPitch = bend * 0.36;
+          targetY = -bend * 0.14;
+        } else if (workerState === 'drop') {
+          const heave = Math.sin(Math.min(1, stateProgress) * Math.PI);
+          targetPitch = heave * 0.28;
+          targetY = heave * 0.06;
+        } else if (workerState === 'rest') {
+          targetYaw = Math.sin(stateProgress * Math.PI * 2) * 0.28;
+          targetRoll = Math.sin(stateProgress * Math.PI * 3) * 0.05;
+        } else if (isMoving) {
+          targetY = Math.abs(Math.sin(this.walkBobPhase)) * 0.11;
+          targetRoll = Math.sin(this.walkBobPhase) * 0.065;
+          targetPitch = this.carryBlend > 0.3 ? -0.05 : 0.07;
+        }
+        this.glbHolder.position.y += (targetY - this.glbHolder.position.y) * damp;
+        this.glbHolder.rotation.x += (targetPitch - this.glbHolder.rotation.x) * damp;
+        this.glbHolder.rotation.z += (targetRoll - this.glbHolder.rotation.z) * damp;
+        this.glbHolder.rotation.y += (targetYaw - this.glbHolder.rotation.y) * damp;
+      }
+
+      if (carriedLog.visible) {
+        let logY = 1.16;
+        let logZ = 0.42;
+        if (workerState === 'pickup') {
+          const lift = smoothstep(0.25, 1.0, stateProgress);
+          logY = 0.52 + lift * 0.64;
+          logZ = 0.52 - lift * 0.1;
+        } else if (workerState === 'drop') {
+          const toss = smoothstep(0.0, 0.85, stateProgress);
+          logY = 1.16 - toss * 0.32;
+          logZ = 0.42 + toss * 0.32;
+        } else if (isMoving) {
+          logY = 1.16 + Math.abs(Math.sin(this.walkBobPhase)) * 0.055;
+        }
+        carriedLog.position.set(0, logY, logZ);
+      }
+    }
+  };
+
+  const url = WORKER_ROLE_GLB[role] || WORKER_ROLE_GLB.porter;
+  const targetHeight = role === 'porter' || role === 'lumberjack' ? 2.02 : 1.92;
+  mountGlbWorker(root, url, { targetHeight, yaw: 0, placeholder: fallback, autoRigStatic: true });
+
+  return root;
 }
 
 export function createCargoFreighterModel(lowSpec = false) {
@@ -4123,39 +4690,94 @@ export function createLoggingTruckModel(cabColor = 0xea580c, lowSpec = false) {
 
   // Stacked Timber Log Cargo Load (toggled visible when truck carries wood)
   const cargoVisual = new THREE.Group();
-  cargoVisual.position.set(0, 1.08, -1.02);
-  const logGeo = new THREE.CylinderGeometry(0.24, 0.25, 3.45, 8);
+  cargoVisual.position.set(0, 1.32, -1.05);
+  const logCargoFallback = new THREE.Group();
+  const logGeo = new THREE.CylinderGeometry(0.24, 0.25, 3.2, 8);
   logGeo.rotateX(Math.PI / 2);
   const logOffsets = [
-    [-0.64, 0.24], [0, 0.24], [0.64, 0.24],
-    [-0.32, 0.68], [0.32, 0.68],
-    [0, 1.1]
+    [-0.58, 0.22], [0, 0.22], [0.58, 0.22],
+    [-0.28, 0.62], [0.28, 0.62]
   ];
   for (const [lx, ly] of logOffsets) {
     const log = new THREE.Mesh(logGeo, [logMat, logEndMat, logEndMat]);
     log.position.set(lx, ly, 0);
     log.castShadow = !lowSpec;
-    cargoVisual.add(log);
+    logCargoFallback.add(log);
   }
+  cargoVisual.add(logCargoFallback);
+  mountNormalizedGlb(cargoVisual, FOREST_ASSETS.logPile, {
+    targetFootprint: 2.35,
+    yaw: Math.PI / 2,
+    yOffset: -0.08,
+    placeholder: logCargoFallback
+  });
   g.add(cargoVisual);
 
-  // Hired AI Driver Indicator (hard-hat worker visible inside/above cab when hired)
+  // Hired AI Driver Indicator
   const driverVisual = new THREE.Group();
-  driverVisual.position.set(-0.42, 2.08, 1.88);
-  const head = new THREE.Mesh(new THREE.SphereGeometry(0.2, 8, 8), new THREE.MeshStandardMaterial({ color: 0xfdba74, roughness: 0.7 }));
-  const hat = new THREE.Mesh(new THREE.CylinderGeometry(0.24, 0.26, 0.14, 8), new THREE.MeshStandardMaterial({ color: 0xfacc15, roughness: 0.35 }));
-  hat.position.y = 0.16;
+  driverVisual.position.set(0, 3.05, 1.6);
   const aiOrb = new THREE.Mesh(
-    new THREE.OctahedronGeometry(0.22, 0),
-    new THREE.MeshStandardMaterial({ color: 0x38bdf8, emissive: 0x0ea5e9, emissiveIntensity: 0.8 })
+    new THREE.OctahedronGeometry(0.24, 0),
+    new THREE.MeshStandardMaterial({ color: 0x38bdf8, emissive: 0x0ea5e9, emissiveIntensity: 0.85 })
   );
-  aiOrb.position.set(0.42, 1.25, 0);
-  driverVisual.add(head, hat, aiOrb);
+  driverVisual.add(aiOrb);
   driverVisual.visible = false;
   g.add(driverVisual);
 
-  g.add(chassis, cabLower, cabUpper, windshield, bumper, grille, beacon, bed);
+  const fallbackBody = new THREE.Group();
+  fallbackBody.add(chassis, cabLower, cabUpper, windshield, bumper, grille, beacon, bed);
+  for (const w of wheels) fallbackBody.add(w);
+  g.add(fallbackBody);
+
+  // Mount real vintage green Meshy Pro Forest Log Truck GLB
+  const truckGlbSlot = new THREE.Group();
+  g.add(truckGlbSlot);
+  mountNormalizedGlb(truckGlbSlot, FOREST_ASSETS.forestLogTruck, {
+    targetFootprint: 6.4,
+    yaw: 0,
+    placeholder: fallbackBody
+  });
+
   g.userData = { wheels, cargoVisual, driverVisual, beacon };
+  return g;
+}
+
+export function createLogHandcartModel(lowSpec = false) {
+  const g = new THREE.Group();
+  g.add(makeContactShadow(1.4, 0.35));
+
+  const fallback = new THREE.Mesh(
+    new THREE.BoxGeometry(1.5, 0.8, 2.2),
+    new THREE.MeshStandardMaterial({ color: 0x8b5a2b, roughness: 0.86 })
+  );
+  fallback.position.y = 0.55;
+  fallback.castShadow = !lowSpec;
+  g.add(fallback);
+
+  const glbSlot = new THREE.Group();
+  g.add(glbSlot);
+  mountNormalizedGlb(glbSlot, FOREST_ASSETS.logHandcart, {
+    targetFootprint: 3.1,
+    yaw: Math.PI / 2,
+    placeholder: fallback
+  });
+
+  const cargoVisual = new THREE.Group();
+  cargoVisual.position.set(0, 1.05, -0.15);
+  mountNormalizedGlb(cargoVisual, FOREST_ASSETS.plankBundle, { targetFootprint: 1.5, yaw: Math.PI / 2 });
+  g.add(cargoVisual);
+
+  const driverVisual = new THREE.Group();
+  driverVisual.position.set(0, 2.35, 0);
+  const aiOrb = new THREE.Mesh(
+    new THREE.OctahedronGeometry(0.2, 0),
+    new THREE.MeshStandardMaterial({ color: 0x38bdf8, emissive: 0x0ea5e9, emissiveIntensity: 0.85 })
+  );
+  driverVisual.add(aiOrb);
+  driverVisual.visible = false;
+  g.add(driverVisual);
+
+  g.userData = { wheels: [], cargoVisual, driverVisual };
   return g;
 }
 

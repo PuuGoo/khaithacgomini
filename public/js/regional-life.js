@@ -19,18 +19,6 @@ export class RegionalLife {
     this.walkerPool = [];
     this.people = [];
     this.buildSettlements();
-
-    const createBatch = (geometry, color) => {
-      const batch = new THREE.InstancedMesh(geometry, new THREE.MeshStandardMaterial({ color, roughness: 0.85 }), MAX_VISIBLE);
-      batch.count = 0;
-      batch.frustumCulled = false;
-      batch.instanceMatrix.setUsage(THREE.DynamicDrawUsage);
-      this.group.add(batch);
-      return batch;
-    };
-    this.body = createBatch(new THREE.BoxGeometry(0.57, 0.76, 0.34), 0xffffff);
-    this.head = createBatch(new THREE.BoxGeometry(0.38, 0.4, 0.36), 0xe0b486);
-    this.legs = createBatch(new THREE.BoxGeometry(0.48, 0.56, 0.29), 0x303b4b);
   }
 
   place(batch, index, x, y, z, sx = 1, sy = 1, sz = 1, yaw = 0) {
@@ -54,9 +42,9 @@ export class RegionalLife {
     this.roads = makeBatch(new THREE.PlaneGeometry(1, 1).rotateX(-Math.PI / 2),
       new THREE.MeshStandardMaterial({ color: '#93877a', roughness: 1 }), MAX_TOWNS * 2 + CONNECTOR_ROADS.length);
     this.walls = makeBatch(new THREE.BoxGeometry(1, 1, 1),
-      new THREE.MeshStandardMaterial({ color: 0xffffff, roughness: 0.9 }), MAX_TOWNS * 4);
+      new THREE.MeshStandardMaterial({ color: 0xb97a45, roughness: 0.88 }), MAX_TOWNS * 4);
     this.roofs = makeBatch(new THREE.ConeGeometry(0.8, 1, 4).rotateY(Math.PI / 4),
-      new THREE.MeshStandardMaterial({ color: '#77534e', roughness: 0.9 }), MAX_TOWNS * 4);
+      new THREE.MeshStandardMaterial({ color: '#5c3317', roughness: 0.88 }), MAX_TOWNS * 4);
     this.checkpoints = makeBatch(new THREE.CylinderGeometry(0.6, 0.85, 2.4, 6),
       new THREE.MeshBasicMaterial({ color: '#54e1b8' }), MAX_TOWNS);
     this.stations = makeBatch(new THREE.BoxGeometry(1, 1, 1),
@@ -65,7 +53,7 @@ export class RegionalLife {
       new THREE.MeshStandardMaterial({ color: 0xffffff, roughness: 0.75 }), MAX_TOWNS * 3);
     this.detail = makeBatch(new THREE.BoxGeometry(1, 1, 1),
       new THREE.MeshStandardMaterial({ color: '#455c72', roughness: 0.65 }), MAX_TOWNS * 3);
-    this.wallBase = new THREE.Color(0xffebcd);
+    this.wallBase = new THREE.Color(0xc68b53);
   }
 
   updateSettlements(row, column, activeHome) {
@@ -130,60 +118,7 @@ export class RegionalLife {
   update(player, elapsed, lowSpec, activeHome = null) {
     const { row, column } = districtIndex(player.x, player.z);
     this.updateSettlements(row, column, activeHome);
-    const nearby = this.nearby;
-    nearby.length = 0;
-    if (player.z <= LAND_EDGE_Z + 20) {
-      for (const line of DISTRICTS.slice(Math.max(0, row - 1), row + 2)) {
-        for (const district of line.slice(Math.max(0, column - 1), column + 2)) {
-          this.collectWalkers(district, player, elapsed);
-        }
-      }
-    }
-
-    nearby.sort((a, b) => a.distance - b.distance);
-    const count = Math.min(nearby.length, lowSpec ? 28 : MAX_VISIBLE);
-    this.people.length = count;
-    this.body.count = this.head.count = this.legs.count = count;
-    for (let i = 0; i < count; i++) {
-      const walker = nearby[i];
-      const { x, z, yaw, stride, color } = walker;
-      this.place(this.body, i, x, 0.96 + stride * 0.055, z, 1, 1, 1, yaw);
-      this.place(this.head, i, x, 1.56 + stride * 0.055, z, 1, 1, 1, yaw);
-      this.place(this.legs, i, x, 0.29, z, 1, 1, 1 + stride * 0.75, yaw);
-      this.body.setColorAt(i, this.tint.setHex(color));
-      this.people[i] = walker;
-    }
-    for (const batch of [this.body, this.head, this.legs]) batch.instanceMatrix.needsUpdate = true;
-    if (this.body.instanceColor) this.body.instanceColor.needsUpdate = true;
-  }
-
-  collectWalkers(district, player, elapsed) {
-    const { row, column, x: centerX, z: centerZ } = district;
-    for (let i = 0; i < WALKERS_PER_DISTRICT; i++) {
-      const seed = (row * DISTRICTS[0].length + column) * WALKERS_PER_DISTRICT + i;
-      const axisX = i % 2 === 0;
-      const phase = elapsed * (0.034 + (seed % 5) * 0.003) + seed * 0.618;
-      const cycle = phase % 1;
-      const outbound = cycle < 0.5;
-      const along = (outbound ? cycle * 4 - 1 : 3 - cycle * 4) * (axisX ? 43 : 49);
-      let lane = ((i * 7) % 29 - 14) * (axisX ? 3.4 : 3);
-      if (district.developed && Math.abs(lane) >= 9 && Math.abs(lane) <= 26) {
-        lane = Math.sign(lane) * (Math.abs(lane) < 18 ? 8 : 27);
-      }
-      const x = centerX + (axisX ? along : lane);
-      const z = centerZ + (axisX ? lane : along);
-      const distance = (player.x - x) ** 2 + (player.z - z) ** 2;
-      if (z > LAND_EDGE_Z || x < WORLD_BOUNDS.minX || x > WORLD_BOUNDS.maxX || distance > VIEW_RADIUS ** 2) continue;
-      const index = this.nearby.length;
-      const walker = this.walkerPool[index] ??= {};
-      walker.x = x;
-      walker.z = z;
-      walker.yaw = axisX ? (outbound ? Math.PI / 2 : -Math.PI / 2) : (outbound ? 0 : Math.PI);
-      walker.distance = distance;
-      walker.stride = Math.abs(Math.sin(elapsed * 6 + seed));
-      walker.color = COLORS[seed % COLORS.length];
-      this.nearby.push(walker);
-    }
+    this.people.length = 0;
   }
 
   dispose() {
