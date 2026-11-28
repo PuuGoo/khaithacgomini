@@ -104,6 +104,7 @@ import {
   createPlayerModel,
   updatePlayerModelSkin,
   syncPlayerBackLogs,
+  syncPlayerAxeTier,
   attachGlbToPlayerModel,
   setPlayerGlbActive,
   setPlayerGlbYawOffset,
@@ -122,8 +123,39 @@ import {
   applyLiveryToModel,
   disposeObject3D
 } from './models.js';
-import { WorldManager, WORLD_BOUNDS, LAND_EDGE_Z, SEA_BOUNDS, AIR_BOUNDS, ZONES, MAP_ZONES, DELIVERY_DROPOFFS, FISHING_PIER_DOCKS } from './world.js';
+import {
+  WorldManager,
+  WORLD_BOUNDS,
+  LAND_EDGE_Z,
+  SEA_BOUNDS,
+  AIR_BOUNDS,
+  ZONES,
+  MAP_ZONES,
+  DELIVERY_DROPOFFS,
+  FISHING_PIER_DOCKS,
+  WILDERNESS_RADIUS,
+  WILDERNESS_MAP_360,
+  groundHeightAt,
+  groundSlopeAt,
+  getGradedFactorAt,
+  getStreamInfo,
+  getWildernessZoneAt
+} from './world.js';
 import { UIManager } from './ui.js';
+import {
+  WildernessCampSystem,
+  CAMP_BLUEPRINTS,
+  WILDERNESS_UPGRADES,
+  WILDERNESS_WORKER_DEFS,
+  RAFT_UNIT_PRICES,
+  EXCAVATOR_UNLOCK,
+  INFRA_CATALOG,
+  getWildernessXpForLevel
+} from './wilderness-camp.js';
+import { WildernessEcosystem } from './wilderness-ecosystem.js';
+import { CharacterVfxSystem } from './character-vfx.js';
+import { TimberComboTracker } from './wilderness-progression.js';
+import { WildernessAtmosphereSystem } from './wilderness-atmosphere.js';
 
 // ---------------------------------------------------------------------------
 // 0. Island Pedestrian Waypoint Graph, Building POIs & Obstacle Colliders
@@ -348,6 +380,7 @@ class TimberPortEngine {
     this.rafId = 0;
     this.disposed = false;
     this.paused = false;
+    this.infrastructureCleared = false;
     this.fpsSamples = 0;
     this.fpsAccum = 0;
     this.currentFps = 60;
@@ -366,15 +399,76 @@ class TimberPortEngine {
     this._sunsetFogColor = new THREE.Color('#9a3412');
     this._dawnSkyColor = new THREE.Color('#38bdf8');
     this._dawnFogColor = new THREE.Color('#7dd3fc');
+    this._lightRainSkyColor = new THREE.Color('#6b8fa3');
+    this._lightRainFogColor = new THREE.Color('#95b2be');
 
     this.initThree();
 
-    this.world = new WorldManager(this.scene, { lowSpec: this.activeProfile !== 'high' });
+    this.world = new WorldManager(this.scene, {
+      lowSpec: this.activeProfile !== 'high',
+      wildernessMode: true
+    });
+    this.camp = this.world.wildernessMode
+      ? new WildernessCampSystem(this.world, { lowSpec: this.activeProfile === 'low' })
+      : null;
+    this.ecosystem = this.world.wildernessMode
+      ? new WildernessEcosystem(this.world, { lowSpec: this.activeProfile === 'low' })
+      : null;
+    this.atmosphere = this.world.wildernessMode
+      ? new WildernessAtmosphereSystem(this.scene, { lowSpec: this.activeProfile === 'low' })
+      : null;
+    this._atmoCtx = {
+      weatherMode: 'auto',
+      isStorm: false,
+      nightFactor: 0,
+      playerPos: null,
+      playerYaw: 0,
+      campfirePos: null
+    };
+    if (this.ecosystem && this.camp) {
+      this.ecosystem.loadSaplings(this.camp.state.saplings);
+    }
+    this.critActive = false;
+    this.critPhase = 0;
+    this.critTargetTree = null;
+    this.critTargetTrunk = null;
+    this.critStrikeCooldown = 0;
+    this._saplingSyncAccum = 0;
+    this.charVfx = new CharacterVfxSystem(this.scene, { lowSpec: this.activeProfile === 'low' });
+    this.timberCombo = new TimberComboTracker();
+    this._actionHitStopTimer = 0;
+    this._isCritSwing = false;
+    this._camShakePos = new THREE.Vector3();
+    this._camShakeVel = new THREE.Vector3();
+    this._camFovPunch = 0;
+    this._vfxCtx = {
+      playerPos: null,
+      playerYaw: 0,
+      speed: 0,
+      inVehicle: false,
+      combo: 0,
+      axeTier: 1,
+      slashActive: false,
+      isCritSwing: false,
+      getGroundHeight: null,
+      getBladeSegment: null
+    };
+    if (this.camp) {
+      this.world.onTreeFelledLanded = (tree) => {
+        if (!this.camp) return;
+        this.camp.spawnFelledTrunk(tree);
+        const ancientTag = tree.isAncient ? '✨ Cổ Thụ Cao Nguyên đổ! ' : '🪓 Cây đổ! ';
+        this.spawnWorldText(tree.pos, `${ancientTag}Chặt khúc thân cây`, 'log');
+      };
+    }
+    this.infrastructureCleared = this.world.wildernessMode;
     this.applyBranchAtmosphere(getActiveBranch());
-    this.world.syncEvolution(getSawmillVisualTier(), getHarborVisualTier());
-    this.world.syncRailwayTier(gameState.railwayTier || 0);
-    this.world.syncHeliTier(gameState.heliTier || 0);
-    this.world.syncCivicTier(gameState.civicTier || 0);
+    if (!this.world.wildernessMode) {
+      this.world.syncEvolution(getSawmillVisualTier(), getHarborVisualTier());
+      this.world.syncRailwayTier(gameState.railwayTier || 0);
+      this.world.syncHeliTier(gameState.heliTier || 0);
+      this.world.syncCivicTier(gameState.civicTier || 0);
+    }
 
     // Pre-allocated math vectors (Zero GC inside render loop)
     this._vecForward = new THREE.Vector3();
@@ -387,17 +481,22 @@ class TimberPortEngine {
     this._arcStart = new THREE.Vector3();
     this._arcEnd = new THREE.Vector3();
 
-    // Player & simulation state (spawn on South Avenue facing Residential Park, with Logging West & Infrastructure East)
-    this.playerPos = new THREE.Vector3(5, 0, 10);
-    const checkpoint = gameState.checkpoint;
-    if (checkpoint) {
-      const { x, z } = DISTRICTS[checkpoint.row][checkpoint.column];
-      this.playerPos.set(x, 0, z);
+    // Player & simulation state (spawn in Central Clearing for 360° wilderness mode)
+    if (this.world.wildernessMode) {
+      const sp = WILDERNESS_MAP_360.meta.spawnPoint;
+      this.playerPos = new THREE.Vector3(sp.x, groundHeightAt(sp.x, sp.z), sp.z);
+    } else {
+      this.playerPos = new THREE.Vector3(5, 0, 10);
+      const checkpoint = gameState.checkpoint;
+      if (checkpoint) {
+        const { x, z } = DISTRICTS[checkpoint.row][checkpoint.column];
+        this.playerPos.set(x, 0, z);
+      }
     }
     this.vehicleHome = null;
     this.activeYardVehicle = null;
     this.activeBoardedBoat = null;
-    this.playerYaw = 0;
+    this.playerYaw = this.world.wildernessMode ? 2.02 : 0;
     this.inVehicle = false;
     this.controlMode = 'foot'; // 'foot' | 'land' | 'yard_vehicle' | 'yacht' | 'plane' | 'heli'
     this.syncYardVehicleDrivers();
@@ -421,6 +520,10 @@ class TimberPortEngine {
     this.stockAccum = 0;
     this.chopCooldown = 0;
     this.chopSwing = 0;
+    this.chopHitStopTimer = 0;
+    this.isBuckingChop = false;
+    this.wadeSplashTimer = 0;
+    this.runDustTimer = 0;
     this.unloadTimer = 0;
     this.sawTimer = 0;
     this.palletTimer = 0;
@@ -437,6 +540,48 @@ class TimberPortEngine {
     this.lastVisualPallets = -1;
     this.walkPhase = 0;
     this.playerMoving = false;
+    this.sprintToggle = false;
+    this.isSprinting = false;
+    this.currentMoveSpeed = 0;
+    this._prevMoveSpeed = 0;
+    this.runBlend = 0;
+    this.playerYawRate = 0;
+    this.playerAccelForward = 0;
+    this.playerBraking = 0;
+    this._lastMoveDir = new THREE.Vector3(0, 0, 1);
+    this._treeBrushCooldown = 0;
+    this._camStepBob = 0;
+    this._camTurnRoll = 0;
+    this._frameMsEma = 16.6;
+    this._qualityEvalTimer = 0;
+    this.natureQualityScale = 1.0;
+    this.prefersReducedMotion = Boolean(
+      typeof window !== 'undefined' &&
+      window.matchMedia &&
+      window.matchMedia('(prefers-reduced-motion: reduce)').matches
+    );
+    this._sunDirTmp = new THREE.Vector3(36, 48, 26);
+    this._footStepVec = new THREE.Vector3();
+    this._natureActors = Array.from({ length: 6 }, () => ({ x: 9999, y: 0, z: 9999, radius: 0 }));
+    this._natureEnv = {
+      nightFactor: 0,
+      isStorm: false,
+      hour: 10.5,
+      playerPos: this.playerPos,
+      sunPosition: this._sunDirTmp
+    };
+    this._onPlayerFootstep = (side, intensity = 0.65) => this.handlePlayerFootstep(side, intensity);
+    this._getWalkableGroundY = (gx, gz) => {
+      if (this.world?.wildernessMode) {
+        return this.camp ? this.camp.getWalkableHeightAt(gx, gz) : groundHeightAt(gx, gz);
+      }
+      const onWestPier = gz > 23.5 && gz <= 36.2 && Math.abs(gx + 58) < 4.0;
+      const onCenterPier = gz > 23.5 && gz <= 36.2 && Math.abs(gx - 5) < 5.6;
+      const onEastPier = gz > 23.5 && gz <= 36.2 && Math.abs(gx - 52) < 4.0;
+      const onPier = !this.infrastructureCleared && (onWestPier || onCenterPier || onEastPier);
+      return onPier ? 0.62 : 0;
+    };
+    this.sprintRampTimer = 0;
     this.chopTargetYaw = null;
     this.playerAction = null;
     this.playerActionTimer = 0;
@@ -445,12 +590,38 @@ class TimberPortEngine {
     this.playerJumpVel = 0;
     this.playerJumpY = 0;
     this.workerRallyTimer = 0;
-    this._playerAnimOpts = { carryRatio: 0, speedMult: 1, action: null, actionT: 0, jumpY: 0 };
+    this._raycaster = new THREE.Raycaster();
+    this._pointerNdc = new THREE.Vector2();
+    this._placeDownPos = { x: 0, y: 0 };
+    this._placePointerId = null;
+    this._usingMousePlacement = false;
+    this._playerAnimOpts = {
+      carryRatio: 0,
+      carryCount: 0,
+      loadWeight: 0,
+      speedMult: 1,
+      speed: 0,
+      yawRate: 0,
+      accelForward: 0,
+      braking: 0,
+      runBlend: 0,
+      isBucking: false,
+      slopePitch: 0,
+      inWater: false,
+      chopHitStop: 0,
+      action: null,
+      actionT: 0,
+      jumpY: 0,
+      pullingCart: false,
+      rootYaw: 0,
+      getGroundHeight: this._getWalkableGroundY,
+      onFootstep: this._onPlayerFootstep
+    };
 
     // Camera Orbit & Choreography state
-    this.camYaw = 0.42;
-    this.camPitch = 0.62;
-    this.camDist = 17.5;
+    this.camYaw = this.world.wildernessMode ? -1.12 : 0.42;
+    this.camPitch = this.world.wildernessMode ? 0.44 : 0.62;
+    this.camDist = this.world.wildernessMode ? 14.2 : 17.5;
     this.cameraMode = 'follow'; // 'follow' | 'tactical' | 'orbit' | 'train'
     this.orbitAngle = 0;
     this.screenShake = 0;
@@ -460,7 +631,10 @@ class TimberPortEngine {
     this.playerModel = createPlayerModel(getSkinData(), gameState.vipLevel);
     this.playerModel.position.copy(this.playerPos);
     this.scene.add(this.playerModel);
-    syncPlayerBackLogs(this.playerModel, gameState.logs);
+    syncPlayerBackLogs(this.playerModel, this.world?.wildernessMode ? 0 : gameState.logs);
+    if (this.camp) {
+      syncPlayerAxeTier(this.playerModel, this.camp.state.upgrades?.axe || 1);
+    }
     this.playerGlbStatus = {
       exists: false,
       loaded: false,
@@ -650,13 +824,48 @@ class TimberPortEngine {
       getOnlinePlayers: () => this.getOnlinePlayersList(),
       getGraphicsInfo: () => this.getGraphicsInfo(),
       onGraphicsChange: (mode) => this.setGraphicsQuality(mode),
-      onFlushGpu: () => this.flushGpuCaches()
+      onFlushGpu: () => this.flushGpuCaches(),
+      wildernessMode: Boolean(this.world?.wildernessMode),
+      getWildernessState: () => this.getWildernessHudState(),
+      onTrackCampSite: (id) => {
+        const bp = this.camp?.setTrackedSite(id);
+        if (bp) this.ui.toast(`🧭 Đang dẫn đường tới ${bp.name}`);
+        this.ui.refreshHUD();
+      },
+      onQuickFeedSite: (id) => this.quickFeedCampSite(id),
+      onStartPlacement: (id) => this.startCampPlacement(id),
+      onRotatePlacement: () => this.rotateCampPlacement(),
+      onConfirmPlacement: () => this.confirmCampPlacement(),
+      onCancelPlacement: () => this.cancelCampPlacement(),
+      onToggleSprint: () => this.toggleSprintMode(),
+      onToggleHandcart: () => this.handleToggleHandcart(true),
+      onDropLogs: () => this.dropCarriedLogs(),
+      onResetWildernessCamp: () => this.resetWildernessCamp(),
+      onBuyWildernessUpgrade: (kind) => this.handleBuyWildernessUpgrade(kind),
+      onHireWildernessWorker: (role) => this.handleHireWildernessWorker(role),
+      onLaunchRaft: (resource) => this.handleLaunchRaft(resource),
+      onDeliverMerchantOrder: (orderId) => this.handleDeliverMerchantOrder(orderId),
+      onSummonMerchant: () => this.handleSummonMerchant(),
+      onPlantSapling: () => this.handlePlantSapling(),
+      onCraftAtCabin: () => this.handleCraftAtCabin(),
+      onRestUntilDawn: () => this.handleRestUntilDawn(),
+      onCritStrike: () => this.tryCritChopStrike(),
+      onBuyExcavator: () => this.handleBuyExcavator(),
+      onToggleDriveExcavator: (allowTeleport = true) => this.handleToggleDriveExcavator(allowTeleport),
+      onStartAiGrading: () => this.startAiGradingPlacement(),
+      onStartInfraPlacement: (infraId) => this.startInfraPlacement(infraId),
+      onDispatchGradeAtGhost: () => this.handleDispatchGradeAtGhost(),
+      onSetExcavatorGradingHeld: (held) => { this._mobileExcavatorGrade = Boolean(held); },
+      onClaimForestryContract: (id) => this.handleClaimForestryContract(id),
+      onToggleLightRain: () => this.toggleLightRain(),
+      onUpgradeSkill: (skillId) => this.handleUpgradeSkill(skillId),
+      onResetSkills: () => this.handleResetSkills()
     });
 
     this.initPlayerGlbModel();
 
     this.archipelago = new Archipelago(this);
-    if (gameState.islandRoute.arrivalAt || (!gameState.checkpoint && gameState.islandRoute.fish)) {
+    if (!this.world.wildernessMode && (gameState.islandRoute.arrivalAt || (!gameState.checkpoint && gameState.islandRoute.fish))) {
       this.playerPos.copy(ZONES.ferryPier);
       this.playerModel.position.copy(this.playerPos);
     }
@@ -666,7 +875,9 @@ class TimberPortEngine {
     fetchMetropolisState();
     this.syncSawmillVisuals();
     this.ui.refreshHUD();
-    this.ui.showWelcomeOverlay(offlineData, this.getGraphicsInfo(), (data) => this.applyOfflineEarnings(data));
+    if (!this.world.wildernessMode) {
+      this.ui.showWelcomeOverlay(offlineData, this.getGraphicsInfo(), (data) => this.applyOfflineEarnings(data));
+    }
 
     this.autoSaveAccum = 0;
     this.hudSyncAccum = 0;
@@ -675,6 +886,13 @@ class TimberPortEngine {
     this.lastTime = performance.now();
     this.lastRenderTime = this.lastTime;
     this.elapsed = 0;
+
+    // Start from zero infrastructure: keep only forest terrain and the player with their axe
+    this.clearInfrastructureForFreshStart({
+      resetProgress: false,
+      repositionPlayer: true,
+      silent: true
+    });
 
     this.scheduleNextTick();
   }
@@ -721,8 +939,8 @@ class TimberPortEngine {
     });
     this.renderer.outputColorSpace = THREE.SRGBColorSpace;
     this.renderer.toneMapping = THREE.ACESFilmicToneMapping;
-    this.renderer.toneMappingExposure = 1.12;
-    this.renderer.shadowMap.type = high ? THREE.PCFSoftShadowMap : THREE.BasicShadowMap;
+    this.renderer.toneMappingExposure = 1.24;
+    this.renderer.shadowMap.type = THREE.PCFSoftShadowMap;
     this.renderer.setSize(window.innerWidth, window.innerHeight);
 
     this.container.innerHTML = '';
@@ -741,40 +959,40 @@ class TimberPortEngine {
       this.scheduleNextTick();
     });
 
-    // Studio IBL environment baked once (skip heavy PMREM cubemap on software/low GPU, keep 3-point lighting crisp)
+    // Studio IBL environment baked once on every device so PBR foliage, timber & metals look rich and luminous
     this.envRT = null;
-    if (!low) {
+    {
       const pmrem = new THREE.PMREMGenerator(this.renderer);
       const roomEnv = new RoomEnvironment();
       this.envRT = pmrem.fromScene(roomEnv, 0.04);
       this.scene.environment = this.envRT.texture;
-      this.scene.environmentIntensity = 0.78;
+      this.scene.environmentIntensity = 0.92;
       roomEnv.dispose();
       pmrem.dispose();
-    } else {
-      this.scene.environment = null;
     }
 
-    // Photorealistic 3-Point Sunlit Coastal Lighting Rig (Warm Sun + Crisp Sky Fill + Turquoise Sea Bounce)
-    const hemiIntensity = low ? 1.08 : 0.84;
-    this.hemiLight = new THREE.HemisphereLight(0xcbe9ff, 0x4b5e3d, hemiIntensity);
+    // Photorealistic 3-Point Sunlit Woodland Rig (Warm Key Sun + Bright Sky/Meadow Bounce + Crisp Sky Rim)
+    this.hemiLight = new THREE.HemisphereLight(0xdcf3ff, 0x6c8754, 1.12);
     this.scene.add(this.hemiLight);
 
-    this.sunLight = new THREE.DirectionalLight(0xfff1d6, low ? 2.1 : 2.38);
-    this.sunLight.position.set(34, 44, 24);
-    this.sunLight.shadow.camera.left = -45;
-    this.sunLight.shadow.camera.right = 45;
-    this.sunLight.shadow.camera.top = 45;
-    this.sunLight.shadow.camera.bottom = -45;
+    this.sunLight = new THREE.DirectionalLight(0xfff6e2, 2.72);
+    this.sunLight.position.set(36, 48, 26);
+    this.sunLight.shadow.camera.left = -42;
+    this.sunLight.shadow.camera.right = 42;
+    this.sunLight.shadow.camera.top = 42;
+    this.sunLight.shadow.camera.bottom = -42;
     this.sunLight.shadow.camera.near = 2;
-    this.sunLight.shadow.camera.far = 135;
-    this.sunLight.shadow.bias = -0.0005;
-    this.sunLight.shadow.normalBias = 0.02;
+    this.sunLight.shadow.camera.far = 140;
+    this.sunLight.shadow.bias = -0.0004;
+    this.sunLight.shadow.normalBias = 0.025;
+    this.sunLight.shadow.radius = 2.5;
     this.scene.add(this.sunLight);
+    this.scene.add(this.sunLight.target);
 
-    const rimLight = new THREE.DirectionalLight(0x7dd3fc, 0.62);
-    rimLight.position.set(-28, 18, 26);
+    const rimLight = new THREE.DirectionalLight(0xa8e0ff, 0.82);
+    rimLight.position.set(-30, 22, -26);
     this.scene.add(rimLight);
+    this.rimLight = rimLight;
 
     this.applyGraphicsSettings();
 
@@ -795,49 +1013,28 @@ class TimberPortEngine {
     const p = this.activeProfile;
     const dpr = window.devicePixelRatio || 1;
 
+    if (!this.envRT) {
+      const pmrem = new THREE.PMREMGenerator(this.renderer);
+      const roomEnv = new RoomEnvironment();
+      this.envRT = pmrem.fromScene(roomEnv, 0.04);
+      this.scene.environment = this.envRT.texture;
+      roomEnv.dispose();
+      pmrem.dispose();
+    }
+    this.scene.environmentIntensity = 0.92;
+
     if (p === 'low') {
-      if (this.envRT) {
-        this.envRT.dispose();
-        this.envRT = null;
-      }
-      this.scene.environment = null;
-      this.hemiLight.intensity = 1.12;
-      this.sunLight.intensity = 2.08;
+      this.hemiLight.intensity = 1.18;
+      this.sunLight.intensity = 2.62;
       this.renderer.setPixelRatio(Math.min(dpr, 1.2));
       this.renderer.shadowMap.enabled = false;
       this.sunLight.castShadow = false;
-      this.minFrameMs = 0; // Uncapped 60 FPS VSync for smooth Max-FPS performance
+      this.minFrameMs = 0;
       setTextureAnisotropy(1);
     } else if (p === 'balanced') {
-      if (!this.envRT) {
-        const pmrem = new THREE.PMREMGenerator(this.renderer);
-        const roomEnv = new RoomEnvironment();
-        this.envRT = pmrem.fromScene(roomEnv, 0.04);
-        this.scene.environment = this.envRT.texture;
-        this.scene.environmentIntensity = 0.7;
-        roomEnv.dispose();
-        pmrem.dispose();
-      }
-      this.hemiLight.intensity = 0.92;
-      this.sunLight.intensity = 2.18;
-      this.renderer.setPixelRatio(Math.min(dpr, 1.25));
-      this.renderer.shadowMap.enabled = false;
-      this.sunLight.castShadow = false;
-      this.minFrameMs = 0;
-      setTextureAnisotropy(2);
-    } else {
-      if (!this.envRT) {
-        const pmrem = new THREE.PMREMGenerator(this.renderer);
-        const roomEnv = new RoomEnvironment();
-        this.envRT = pmrem.fromScene(roomEnv, 0.04);
-        this.scene.environment = this.envRT.texture;
-        this.scene.environmentIntensity = 0.72;
-        roomEnv.dispose();
-        pmrem.dispose();
-      }
-      this.hemiLight.intensity = 0.78;
-      this.sunLight.intensity = 2.25;
-      this.renderer.setPixelRatio(Math.min(dpr, 1.5));
+      this.hemiLight.intensity = 1.14;
+      this.sunLight.intensity = 2.7;
+      this.renderer.setPixelRatio(Math.min(dpr, 1.35));
       const enableShadow = !this.isSoftwareGl;
       this.renderer.shadowMap.enabled = enableShadow;
       this.sunLight.castShadow = enableShadow;
@@ -847,7 +1044,21 @@ class TimberPortEngine {
         this.sunLight.shadow.mapSize.set(1024, 1024);
       }
       this.minFrameMs = 0;
-      setTextureAnisotropy(Math.min(4, this.renderer.capabilities.getMaxAnisotropy()));
+      setTextureAnisotropy(2);
+    } else {
+      this.hemiLight.intensity = 1.12;
+      this.sunLight.intensity = 2.75;
+      this.renderer.setPixelRatio(Math.min(dpr, 1.75));
+      const enableShadow = !this.isSoftwareGl;
+      this.renderer.shadowMap.enabled = enableShadow;
+      this.sunLight.castShadow = enableShadow;
+      if (enableShadow && this.sunLight.shadow.mapSize.x !== 2048) {
+        this.sunLight.shadow.map?.dispose();
+        this.sunLight.shadow.map = null;
+        this.sunLight.shadow.mapSize.set(2048, 2048);
+      }
+      this.minFrameMs = 0;
+      setTextureAnisotropy(Math.min(8, this.renderer.capabilities.getMaxAnisotropy()));
     }
 
     this.renderer.shadowMap.needsUpdate = true;
@@ -892,7 +1103,12 @@ class TimberPortEngine {
       }
       this.playerGlbStatus.exists = true;
       this.playerGlbStatus.sizeBytes = info.sizeBytes || 0;
-      await this.loadPlayerGlbFromUrl(info.url || '/models/lumberjack.glb', false);
+      const modelUrl = info.url || '/models/forest/lumberjack_player.glb';
+      if (String(modelUrl).includes('lumberjack_player.glb')) {
+        gameState.useGlbPlayer = true;
+        gameState.glbPlayerYawOffset = 0;
+      }
+      await this.loadPlayerGlbFromUrl(modelUrl, false);
     } catch (err) {
       this.playerGlbStatus.loading = false;
       this.playerGlbStatus.error = err?.message || 'Không thể kiểm tra lumberjack.glb.';
@@ -923,6 +1139,9 @@ class TimberPortEngine {
       this.playerGlbStatus.clipNames = result.clipNames || [];
       this.playerGlbStatus.autoRigged = Boolean(result.autoRigged);
       this.playerGlbStatus.error = null;
+      if (this.camp) {
+        syncPlayerAxeTier(this.playerModel, this.camp.state.upgrades?.axe || 1);
+      }
       if (showToast) {
         const animNote = result.hasAnimations
           ? `${result.clipNames.length} clip animation`
@@ -1065,6 +1284,9 @@ class TimberPortEngine {
     try { this.ws?.close(); } catch (e) {}
 
     this.archipelago?.dispose();
+    if (this.atmosphere) this.atmosphere.dispose();
+    if (this.ecosystem) this.ecosystem.dispose();
+    if (this.camp) this.camp.dispose();
     if (this.world) this.world.dispose();
     if (this.playerModel?.userData?.glbMixer) {
       this.playerModel.userData.glbMixer.stopAllAction();
@@ -1093,21 +1315,273 @@ class TimberPortEngine {
     this.renderer?.dispose();
   }
 
+  /**
+   * Remove all infrastructure entities (factories, docks/harbors, vehicles, buildings, NPCs)
+   * from the active 3D scene, leaving only the natural forest terrain and the player with their axe
+   * to start the journey from 0.
+   */
+  clearInfrastructureForFreshStart(options = {}) {
+    const {
+      resetProgress = true,
+      repositionPlayer = true,
+      silent = false
+    } = options;
+
+    let removedCount = 0;
+    const removeAndDispose = (parent, obj) => {
+      if (!obj) return;
+      if (parent && obj.parent === parent) {
+        parent.remove(obj);
+      } else if (obj.parent) {
+        obj.parent.remove(obj);
+      }
+      disposeObject3D(obj);
+      removedCount++;
+    };
+
+    // 1. Force player back on foot and clear active vehicle bindings
+    this.controlMode = 'foot';
+    this.inVehicle = false;
+    this.vehicleHome = null;
+    this.activeYardVehicle = null;
+    this.activeBoardedBoat = null;
+    this.vehicleSpeed = 0;
+    this.walkToFerry = false;
+
+    // 2. Remove all standalone vehicles, boats, aircraft, pets, workers & NPCs from scene
+    removeAndDispose(this.scene, this.parkedVehicle);
+    this.parkedVehicle = null;
+    removeAndDispose(this.scene, this.drivableYacht);
+    this.drivableYacht = null;
+    removeAndDispose(this.scene, this.drivablePlane);
+    this.drivablePlane = null;
+    removeAndDispose(this.scene, this.drivableHeli);
+    this.drivableHeli = null;
+    removeAndDispose(this.scene, this.petModel);
+    this.petModel = null;
+
+    const sceneAgentLists = [
+      this.aiWorkers,
+      this.aiForklifts,
+      this.fishingBoats,
+      this.aiSeaYachts,
+      this.aiAirPlanes
+    ];
+    for (const list of sceneAgentLists) {
+      if (!Array.isArray(list)) continue;
+      while (list.length > 0) {
+        const item = list.pop();
+        removeAndDispose(this.scene, item?.mesh);
+      }
+    }
+
+    while (this.aiCitizens.length > 0) {
+      const c = this.aiCitizens.pop();
+      if (c?.bubble?.material?.map) c.bubble.material.map.dispose();
+      if (c?.bubble?.material) c.bubble.material.dispose();
+      removeAndDispose(this.scene, c?.mesh);
+    }
+
+    // 3. Remove all built infrastructure inside WorldManager, preserving only forest terrain & nature
+    if (this.world) {
+      if (Array.isArray(this.world.arcadePads)) {
+        for (const pad of this.world.arcadePads) {
+          pad?.radialTex?.dispose();
+          pad?.badgeTex?.dispose();
+        }
+      }
+      if (this.world.regionalLife) {
+        this.world.regionalLife.dispose();
+        this.world.regionalLife = null;
+      }
+
+      if (this.world.worldGroup) {
+        const worldChildren = [...this.world.worldGroup.children];
+        for (const child of worldChildren) {
+          if (child?.userData?.wildernessKeep === true) continue;
+          removeAndDispose(this.world.worldGroup, child);
+        }
+      }
+
+      if (this.world.ambientLifeGroup) {
+        const lifeChildren = [...this.world.ambientLifeGroup.children];
+        for (const child of lifeChildren) {
+          if (child?.userData?.wildernessRemove === true) {
+            removeAndDispose(this.world.ambientLifeGroup, child);
+          }
+        }
+      }
+
+      // Nullify deleted infrastructure references
+      this.world.sawmill = null;
+      this.world.harbor = null;
+      this.world.cargoFreighter = null;
+      this.world.vipYacht = null;
+      this.world.gantryCrane = null;
+      this.world.airport = null;
+      this.world.islandOutpost = null;
+      this.world.fisheryIsland = null;
+      this.world.corporateHq = null;
+      this.world.furnitureFactory = null;
+      this.world.lighthouse = null;
+      this.world.deepContainerPort = null;
+      this.world.railwaySystem = null;
+      this.world.helipad = null;
+      this.world.civicPromenade = null;
+      this.world.stormBeacon = null;
+      this.world.seaBeaconRing = null;
+      this.world.airBeaconRing = null;
+      this.world.harborBeaconLight = null;
+      this.world.questRing = null;
+      this.world.currentQuestTarget = null;
+      this.world.waterwheel = null;
+      this.world.smokePuffs = null;
+      this.world.fountainRipple = null;
+      this.world.landDetailGroup = null;
+      this.world.fountainJetsGroup = null;
+      this.world.waterfallFoamGroup = null;
+      this.world.streetLampMat = null;
+
+      // Clear deleted infrastructure collections
+      this.world.yardVehicles = [];
+      this.world.deliveryRings = [];
+      this.world.yardLogPiles = [];
+      this.world.yardPorters = [];
+      this.world.woodenHouses = [];
+      this.world.houseSmokePuffs = [];
+      this.world.mooredFishingBoats = [];
+      this.world.floatingLogRafts = [];
+      this.world.seaTreasures = [];
+      this.world.arcadePads = [];
+      this.world.flags = [];
+      this.world.smokeData = [];
+      this.world.fountainJets = [];
+      this.world.landPointLights = [];
+    }
+
+    this.infrastructureCleared = true;
+
+    // 4. Optionally reset progression & infrastructure tiers to 0
+    if (resetProgress) {
+      gameState.cash = 0;
+      gameState.logs = 0;
+      gameState.sawmillBuffer = 0;
+      gameState.planks = 0;
+      gameState.pallets = 0;
+      gameState.freshFish = 0;
+      gameState.cannedFish = 0;
+      gameState.furniture = 0;
+      gameState.axeTier = 1;
+      gameState.lumberjacks = 0;
+      gameState.autoForklifts = 0;
+      gameState.fishingBoats = 0;
+      gameState.yachtTier = 0;
+      gameState.airportTier = 0;
+      gameState.islandStationTier = 0;
+      gameState.hqTier = 0;
+      gameState.islandResortTier = 0;
+      gameState.furnitureMillTier = 0;
+      gameState.lighthouseTier = 0;
+      gameState.deepPortTier = 0;
+      gameState.greenEnergyTier = 0;
+      gameState.railwayTier = 0;
+      gameState.heliTier = 0;
+      gameState.civicTier = 0;
+      gameState.autoSeaFleet = 0;
+      gameState.autoAirFleet = 0;
+      gameState.equippedPet = 'none';
+      gameState.checkpoint = null;
+    }
+
+    // 5. Ensure the plaid-shirt lumberjack and his felling axe remain visible with NO wood held at startup
+    if (this.world?.wildernessMode) {
+      gameState.logs = 0;
+    }
+    if (this.playerModel) {
+      this.playerModel.visible = true;
+      if (this.playerModel.parent !== this.scene) {
+        this.scene.add(this.playerModel);
+      }
+      if (this.playerModel.userData?.axeBlade?.parent) {
+        this.playerModel.userData.axeBlade.parent.visible = true;
+      }
+      if (this.playerModel.userData?.glbRig) {
+        const rig = this.playerModel.userData.glbRig;
+        if (rig.axeMesh) rig.axeMesh.visible = true;
+        if (rig.beltAxeMesh) rig.beltAxeMesh.visible = false;
+        if (rig.shoulderLogAnchor) rig.shoulderLogAnchor.visible = false;
+      }
+      syncPlayerBackLogs(this.playerModel, gameState.logs || 0);
+    }
+
+    if (repositionPlayer) {
+      if (this.world?.wildernessMode) {
+        const sp = WILDERNESS_MAP_360.meta.spawnPoint;
+        this.playerPos.set(sp.x, groundHeightAt(sp.x, sp.z), sp.z);
+        this.playerYaw = 2.02;
+        this.camYaw = -1.12;
+        this.camPitch = 0.44;
+        this.camDist = 14.2;
+      } else {
+        this.playerPos.set(-80, 0, -106);
+        this.playerYaw = Math.PI;
+        this.camYaw = 0.12;
+        this.camPitch = 0.56;
+      }
+      if (this.playerModel) {
+        this.playerModel.position.copy(this.playerPos);
+        this.playerModel.rotation.y = this.playerYaw;
+      }
+      if (this.camera) {
+        const camHeight = Math.sin(this.camPitch) * this.camDist;
+        const camHoriz = Math.cos(this.camPitch) * this.camDist;
+        const camX = this.playerPos.x + Math.sin(this.camYaw) * camHoriz;
+        const camZ = this.playerPos.z + Math.cos(this.camYaw) * camHoriz;
+        const camY = this.world?.wildernessMode
+          ? Math.max(groundHeightAt(camX, camZ) + 1.6, this.playerPos.y + camHeight + 1.4)
+          : this.playerPos.y + camHeight + 1.4;
+        this.camera.position.set(camX, camY, camZ);
+        this.camera.lookAt(this.playerPos.x, this.playerPos.y + 1.4, this.playerPos.z);
+      }
+    }
+
+    this.ui?.setPrompt(false);
+    this.ui?.updateVehicleHud({ mode: 'foot' });
+    this.ui?.refreshHUD();
+    this.renderer?.renderLists?.dispose();
+
+    if (!silent) {
+      this.ui?.toast('🌲 Đã xóa toàn bộ hạ tầng — bắt đầu hành trình từ khu rừng nguyên sơ cùng chiếc rìu!');
+    }
+
+    return {
+      ok: true,
+      removedCount,
+      remainingTrees: this.world?.trees?.length || 0,
+      playerPosition: this.playerPos.clone()
+    };
+  }
+
   applyBranchAtmosphere(branch) {
-    this._daySkyBase.set(branch.skyColor);
-    this._dayFogBase.set(branch.fogColor);
-    this._skyGoldenColor.copy(this._daySkyBase).lerp(this._warmSunTint, 0.25);
-    this._fogGoldenColor.copy(this._dayFogBase).lerp(this._warmSunTint, 0.22);
+    const isWild = Boolean(this.world?.wildernessMode);
+    const skyHex = isWild ? '#5fb4f2' : branch.skyColor;
+    const fogHex = isWild ? '#d4ebf7' : branch.fogColor;
+    const fogDensity = isWild ? 0.0029 : 0.0044;
+    this._daySkyBase.set(skyHex);
+    this._dayFogBase.set(fogHex);
+    this._skyGoldenColor.copy(this._daySkyBase).lerp(this._warmSunTint, 0.22);
+    this._fogGoldenColor.copy(this._dayFogBase).lerp(this._warmSunTint, 0.18);
     if (!this.scene.background || !(this.scene.background instanceof THREE.Color)) {
-      this.scene.background = new THREE.Color(branch.skyColor);
+      this.scene.background = new THREE.Color(skyHex);
     } else {
       this.scene.background.copy(this._daySkyBase);
     }
-    this.scene.fog = new THREE.FogExp2(branch.fogColor, 0.0044);
+    this.scene.fog = new THREE.FogExp2(fogHex, fogDensity);
     this.world?.applyBranchTheme(branch);
   }
 
   rebuildPet() {
+    if (this.infrastructureCleared) return;
     if (this.petModel) {
       this.scene.remove(this.petModel);
       disposeObject3D(this.petModel);
@@ -1122,6 +1596,7 @@ class TimberPortEngine {
   }
 
   rebuildVehicle() {
+    if (this.infrastructureCleared) return;
     if (this.parkedVehicle) {
       this.scene.remove(this.parkedVehicle);
       disposeObject3D(this.parkedVehicle);
@@ -1135,6 +1610,7 @@ class TimberPortEngine {
   }
 
   rebuildWorkforce() {
+    if (this.infrastructureCleared) return;
     const low = this.activeProfile === 'low';
     while (this.aiWorkers.length < (gameState.lumberjacks || 0)) {
       const idx = this.aiWorkers.length;
@@ -1200,6 +1676,7 @@ class TimberPortEngine {
   }
 
   rebuildAirSeaFleet() {
+    if (this.infrastructureCleared) return;
     const low = this.activeProfile === 'low';
 
     // Drivable Boat / Yacht (always available from coastal fishing piers even at Tier 0)
@@ -1347,6 +1824,10 @@ class TimberPortEngine {
       this.keys.add(code);
 
       if (code === 'Escape') {
+        if (this.world?.wildernessMode && this.isAnyWildernessPlacementActive()) {
+          this.cancelCampPlacement();
+          return;
+        }
         document.getElementById('hub-modal').hidden = true;
         document.getElementById('account-modal').hidden = true;
         document.getElementById('leaderboard-modal').hidden = true;
@@ -1354,10 +1835,23 @@ class TimberPortEngine {
         if (shiftEl) shiftEl.hidden = true;
         const notifEl = document.getElementById('notif-drawer');
         if (notifEl) notifEl.hidden = true;
+        const campEl = document.getElementById('camp-drawer-backdrop');
+        if (campEl) campEl.hidden = true;
+        const skillEl = document.getElementById('skill-tree-modal');
+        if (skillEl) skillEl.hidden = true;
         return;
       }
       if (code === 'KeyH') {
         this.ui.toggleDock();
+        return;
+      }
+      if (code === 'KeyM') {
+        this.ui.toggleMinimap();
+        return;
+      }
+      if (code === 'KeyK' && this.world?.wildernessMode) {
+        if (this.isAnyWildernessPlacementActive()) this.cancelCampPlacement(true);
+        this.ui.toggleSkillTree();
         return;
       }
       if (code === 'KeyZ') {
@@ -1365,30 +1859,60 @@ class TimberPortEngine {
         return;
       }
       if (code === 'KeyB') {
+        if (this.world?.wildernessMode) {
+          if (this.isAnyWildernessPlacementActive()) this.cancelCampPlacement(true);
+          this.ui.toggleCampDrawer();
+          return;
+        }
         const hub = document.getElementById('hub-modal');
         if (hub.hidden) this.ui.openHub('upgrades');
         else hub.hidden = true;
         return;
       }
-      if (code === 'KeyF') {
+      if (code === 'KeyC' && this.world?.wildernessMode && !this.ui.isAnyModalOpen()) {
+        this.handleToggleHandcart(true);
+        return;
+      }
+      if (code === 'KeyP' && this.world?.wildernessMode && !this.ui.isAnyModalOpen()) {
+        this.handlePlantSapling();
+        return;
+      }
+      if (code === 'KeyF' && !this.world?.wildernessMode) {
         const hub = document.getElementById('hub-modal');
         if (hub.hidden || this.ui.activeTab !== 'finance') this.ui.openHub('finance');
         else hub.hidden = true;
         return;
       }
+      if (code === 'KeyF' && this.world?.wildernessMode && !this.ui.isAnyModalOpen()) {
+        this.handleToggleDriveExcavator(false);
+        return;
+      }
       if (code === 'KeyR') {
+        if (this.world?.wildernessMode) {
+          if (this.isAnyWildernessPlacementActive()) this.rotateCampPlacement();
+          return;
+        }
         this.ui.activateBoost();
+        return;
+      }
+      if (code === 'Enter' && this.world?.wildernessMode && this.isAnyWildernessPlacementActive() && !this.ui.isAnyModalOpen()) {
+        e.preventDefault();
+        this.confirmCampPlacement();
         return;
       }
       if (code === 'KeyV') {
         this.cycleCameraMode();
         return;
       }
-      if (code === 'KeyT') {
+      if (code === 'KeyT' && !this.world?.wildernessMode) {
         this.triggerTrainBoost();
         return;
       }
       if (code === 'KeyG') {
+        if (this.world?.wildernessMode && this.camp?.infra?.isPlacing() && this.camp.infra.placement.needsGrading) {
+          this.handleDispatchGradeAtGhost();
+          return;
+        }
         if (!this.ui.isAnyModalOpen()) this.cyclePlayerGesture();
         return;
       }
@@ -1408,6 +1932,12 @@ class TimberPortEngine {
         this.triggerPlayerAction('command');
         return;
       }
+      if (code === 'KeyQ' && !this.ui.isAnyModalOpen()) {
+        if (this.world?.wildernessMode && (gameState.logs || 0) > 0) {
+          this.dropCarriedLogs();
+        }
+        return;
+      }
       if (code === 'KeyF') {
         if (!this.ui.isAnyModalOpen()) {
           this.hireOrToggleYardDriver();
@@ -1418,7 +1948,20 @@ class TimberPortEngine {
       if (code === 'KeyE' || (code === 'Space' && !isAircraft)) {
         if (!this.ui.isAnyModalOpen()) {
           e.preventDefault();
+          if (this.world?.wildernessMode && this.camp?.infra?.drivingExcavator) {
+            // Space is held continuously for live excavator grading; E exits excavator
+            if (code === 'KeyE') this.handleToggleDriveExcavator(false);
+            return;
+          }
+          if (code === 'KeyE' && this.world?.wildernessMode && this.isAnyWildernessPlacementActive()) {
+            this.confirmCampPlacement();
+            return;
+          }
           if (code === 'Space' && this.controlMode === 'foot') {
+            if (this.world?.wildernessMode && this.critActive && (this.critTargetTree || this.critTargetTrunk)) {
+              this.tryCritChopStrike();
+              return;
+            }
             const prompt = this.getContextPromptState();
             if (prompt && prompt.key === 'SPACE') {
               this.handleContextAction(true);
@@ -1442,6 +1985,9 @@ class TimberPortEngine {
       this.keys.clear();
       this.resetJoystick();
       this.orbitActiveId = null;
+      this._placePointerId = null;
+      this._excavatorMouseGrade = false;
+      this._mobileExcavatorGrade = false;
     });
 
     const canvas = this.renderer.domElement;
@@ -1450,7 +1996,20 @@ class TimberPortEngine {
 
     canvas.addEventListener('pointerdown', (e) => {
       if (this.ui.isAnyModalOpen()) return;
+
+      const placing = Boolean(this.world?.wildernessMode && this.isAnyWildernessPlacementActive());
+      if (placing && e.button === 0) {
+        this._placeDownPos.x = e.clientX;
+        this._placeDownPos.y = e.clientY;
+        this._placePointerId = e.pointerId;
+        this.raycastPlacementPointer(e.clientX, e.clientY);
+      }
+      if (this.world?.wildernessMode && this.camp?.infra?.drivingExcavator && e.button === 0 && e.pointerType === 'mouse' && !e.shiftKey && e.clientX <= window.innerWidth * 0.42) {
+        this._excavatorMouseGrade = true;
+      }
+
       const isOrbit = e.button === 2
+        || (placing && e.button === 0 && e.pointerType === 'mouse')
         || (e.button === 0 && e.clientX > window.innerWidth * 0.45 && e.pointerType !== 'mouse')
         || (e.button === 0 && e.pointerType === 'mouse' && e.shiftKey)
         || (e.button === 0 && e.pointerType === 'mouse' && e.clientX > window.innerWidth * 0.42);
@@ -1459,7 +2018,7 @@ class TimberPortEngine {
         this.orbitActiveId = e.pointerId;
         this.orbitLast.x = e.clientX;
         this.orbitLast.y = e.clientY;
-      } else if (e.button === 0 && this.joyActiveId === null) {
+      } else if (e.button === 0 && this.joyActiveId === null && !this._excavatorMouseGrade) {
         this.joyActiveId = e.pointerId;
         this.joyOrigin.x = e.clientX;
         this.joyOrigin.y = e.clientY;
@@ -1496,10 +2055,31 @@ class TimberPortEngine {
         if (joyStick) {
           joyStick.style.transform = `translate(calc(-50% + ${nx * maxR}px), calc(-50% + ${ny * maxR}px))`;
         }
+      } else if (
+        this.world?.wildernessMode
+        && this.isAnyWildernessPlacementActive()
+        && !this.ui.isAnyModalOpen()
+        && e.pointerType === 'mouse'
+      ) {
+        this.raycastPlacementPointer(e.clientX, e.clientY);
       }
     });
 
     const endPointer = (e) => {
+      this._excavatorMouseGrade = false;
+      if (
+        e.type === 'pointerup'
+        && this.world?.wildernessMode
+        && this.isAnyWildernessPlacementActive()
+        && e.pointerId === this._placePointerId
+      ) {
+        const moved = Math.hypot(e.clientX - this._placeDownPos.x, e.clientY - this._placeDownPos.y);
+        if (moved < 8 && e.target === canvas) {
+          this.raycastPlacementPointer(e.clientX, e.clientY);
+          this.confirmCampPlacement();
+        }
+      }
+      if (e.pointerId === this._placePointerId) this._placePointerId = null;
       if (e.pointerId === this.orbitActiveId) this.orbitActiveId = null;
       if (e.pointerId === this.joyActiveId) this.resetJoystick();
     };
@@ -1764,7 +2344,1034 @@ class TimberPortEngine {
     }
   }
 
+  getWildernessShoulderCap() {
+    if (!this.world?.wildernessMode || !this.camp) return 3;
+    return this.camp.getShoulderLogCap ? this.camp.getShoulderLogCap() : 3;
+  }
+
+  isLightRainNow() {
+    const mode = gameState.weatherMode || 'auto';
+    const isStorm = Boolean(mode === 'storm' || stormState.active);
+    if (this.atmosphere) {
+      return this.atmosphere.isLightRainActive(mode, isStorm);
+    }
+    return mode === 'rain' && !isStorm;
+  }
+
+  isAnyRainNow() {
+    const mode = gameState.weatherMode || 'auto';
+    return Boolean(mode === 'storm' || stormState.active || this.isLightRainNow());
+  }
+
+  toggleLightRain() {
+    if (!this.atmosphere) return false;
+    if (gameState.weatherMode === 'storm') {
+      gameState.weatherMode = 'auto';
+    } else if (gameState.weatherMode === 'rain') {
+      gameState.weatherMode = 'auto';
+      this.atmosphere.setLightRain(false);
+      sound.playCameraShutter();
+      saveGameLocal();
+      this.ui.refreshHUD();
+      this.ui.toast('🌤️ Đã tắt Mưa Rừng Nhẹ — bầu trời đang quang dần.');
+      return false;
+    }
+    const enabled = this.atmosphere.toggleLightRain();
+    sound.playCameraShutter();
+    saveGameLocal();
+    this.ui.refreshHUD();
+    this.ui.toast(
+      enabled
+        ? '🌦️ Mưa Rừng Nhẹ đang rơi (+40% tốc độ Guồng Nước Xưởng Cưa).'
+        : '🌤️ Mưa Rừng Nhẹ đã tạnh — trời trong trở lại.'
+    );
+    return enabled;
+  }
+
+  handleUpgradeSkill(skillId) {
+    if (!this.camp) return { ok: false };
+    const res = this.camp.upgradeSkill(skillId);
+    if (!res.ok) {
+      this.ui.toast(res.reason || 'Không thể nâng cấp kỹ năng này.');
+      return res;
+    }
+    sound.playUpgrade();
+    this.world.spawnParticles(this.playerPos, 0x10b981, 8);
+    this.spawnWorldText(this.playerPos, `✨ ${res.node.name} Cấp ${res.newRank}!`, 'cash');
+    saveGameLocal();
+    this.ui.refreshHUD();
+    this.ui.renderSkillTree?.();
+    this.ui.toast(`🌿 Đã nâng ${res.node.name} lên bậc ${res.newRank}/${res.node.maxRank}!`);
+    return res;
+  }
+
+  handleResetSkills() {
+    if (!this.camp) return { ok: false };
+    const cur = this.camp.getSkillSummary();
+    if (!cur || cur.spent <= 0) {
+      this.ui.toast('Bạn chưa phân bổ điểm kỹ năng nào.');
+      return { ok: false };
+    }
+    const res = this.camp.resetSkills();
+    // Clamp carried shoulder logs if shoulder cap dropped below current carried count
+    const newCap = this.getWildernessShoulderCap();
+    if ((gameState.logs || 0) > newCap) {
+      const overflow = Math.floor(gameState.logs) - newCap;
+      gameState.logs = newCap;
+      syncPlayerBackLogs(this.playerModel, gameState.logs);
+      for (let i = 0; i < overflow; i++) {
+        this.camp.spawnGroundLog?.(this.playerPos.x + 0.5 + i * 0.25, this.playerPos.z + 0.4);
+      }
+    }
+    sound.playCameraShutter();
+    saveGameLocal();
+    this.ui.refreshHUD();
+    this.ui.renderSkillTree?.();
+    this.ui.toast(`↺ Đã hoàn lại toàn bộ ${res.summary.available} điểm kỹ năng miễn phí!`);
+    return res;
+  }
+
+  getWildernessHudState() {
+    if (!this.world?.wildernessMode || !this.camp) return null;
+    const zone = getWildernessZoneAt(this.playerPos.x, this.playerPos.z);
+    const st = this.camp.state;
+    const cartBuilt = this.camp.isBuilt('handcart');
+    const cartCap = this.camp.getHandcartCapacity();
+    const isLightRain = this.isLightRainNow();
+    const isRain = this.isAnyRainNow();
+    const nightFactor = this.lastAppliedNightFactor >= 0 ? this.lastAppliedNightFactor : 0;
+    const hr = gameState.worldClockHours || 10.5;
+    const weatherLabel = this.atmosphere
+      ? this.atmosphere.getWeatherStatusLabel(gameState.weatherMode || 'auto', hr, Boolean(gameState.weatherMode === 'storm' || stormState.active))
+      : (isRain ? 'Mưa bão' : 'Nắng trong');
+    const shoulderCap = this.getWildernessShoulderCap();
+    const skillSummary = this.camp.getSkillSummary();
+    const skillBonuses = this.camp.getSkillBonuses();
+    const blueprints = CAMP_BLUEPRINTS.map((bp) => {
+      const tf = this.camp.getSiteTransform(bp.id);
+      const sx = tf ? tf.x : bp.x;
+      const sz = tf ? tf.z : bp.z;
+      const placed = Boolean(tf?.placed);
+      const built = Boolean(tf?.built);
+      return {
+        ...bp,
+        x: sx,
+        z: sz,
+        placed,
+        deliveredLogs: tf?.deliveredLogs || 0,
+        built,
+        tracked: st.trackedSiteId === bp.id && placed && !built,
+        dist: placed ? Math.round(Math.hypot(this.playerPos.x - sx, this.playerPos.z - sz)) : null
+      };
+    });
+    return {
+      zoneName: zone?.name || 'Bãi Trống Trung Tâm',
+      cash: Math.floor(gameState.cash || 0),
+      shoulderLogs: Math.max(0, Math.floor(gameState.logs || 0)),
+      shoulderCap,
+      cartBuilt,
+      cartAttached: Boolean(this.camp.cartAttached),
+      cartLogs: this.camp.handcart ? this.camp.handcart.logs : 0,
+      cartCap,
+      campLogStock: st.campLogStock || 0,
+      campPlankStock: st.campPlankStock || 0,
+      campCraftStock: st.campCraftStock || 0,
+      sawmillQueue: st.sawmillQueue || 0,
+      craftQueue: st.craftQueue || 0,
+      builtCount: this.camp.getBuiltCount(),
+      totalBlueprints: CAMP_BLUEPRINTS.length,
+      trackedSiteId: st.trackedSiteId,
+      logYardBuilt: this.camp.isBuilt('log_yard'),
+      sawmillBuilt: this.camp.isBuilt('waterwheel_sawmill'),
+      dockBuilt: this.camp.isBuilt('river_dock'),
+      cabinBuilt: this.camp.isBuilt('craft_cabin'),
+      upgrades: { ...st.upgrades },
+      upgradeCatalog: WILDERNESS_UPGRADES,
+      workers: { ...st.workers },
+      workerDefs: {
+        porter: { ...WILDERNESS_WORKER_DEFS.porter, max: this.camp.getMaxWorkersForRole('porter'), desc: WILDERNESS_WORKER_DEFS.porter.roleText },
+        chopper: { ...WILDERNESS_WORKER_DEFS.chopper, max: this.camp.getMaxWorkersForRole('chopper'), desc: WILDERNESS_WORKER_DEFS.chopper.roleText }
+      },
+      raftPrices: RAFT_UNIT_PRICES,
+      merchant: st.merchant ? {
+        ...st.merchant,
+        orders: (st.merchant.orders || []).map((o) => ({
+          ...o,
+          available: this.camp.getAvailableResourceCount(o.resource)
+        }))
+      } : null,
+      availLogs: this.camp.getAvailableResourceCount('log'),
+      saplingCount: this.ecosystem ? this.ecosystem.saplings.length : 0,
+      level: st.level || 1,
+      xp: st.xp || 0,
+      nextXp: getWildernessXpForLevel(st.level || 1),
+      infra: this.camp.infra ? {
+        excavatorUnlock: EXCAVATOR_UNLOCK,
+        excavatorOwned: Boolean(st.excavator?.owned),
+        drivingExcavator: Boolean(this.camp.infra.drivingExcavator),
+        aiGradingActive: Boolean(this.camp.infra.aiJob),
+        aiGradingPct: this.camp.infra.aiJob ? Math.round((this.camp.infra.aiJob.progress || 0) * 100) : 0,
+        gradedPadCount: this.camp.infra.getCompletedPadCount(),
+        passiveCashPerCycle: this.camp.infra.getPassiveCashPerCycle(),
+        workerCapBonus: this.camp.infra.getWorkerCapBonus(),
+        merchantBonusPct: Math.round((this.camp.infra.getMerchantBonusMult() - 1) * 100),
+        builtCount: this.camp.infra.getBuiltInfraList().length,
+        catalog: INFRA_CATALOG.map((item) => ({
+          ...item,
+          builtCount: this.camp.infra.getBuiltCountOf(item.id),
+          levelUnlocked: (st.level || 1) >= item.minLevel,
+          canAfford: Math.floor(gameState.cash || 0) >= item.cost
+        }))
+      } : null,
+      isRain,
+      isLightRain,
+      weatherLabel,
+      nightFactor,
+      skills: {
+        summary: skillSummary,
+        bonuses: skillBonuses
+      },
+      crit: (() => {
+        const [sMin, sMax] = this.getCritSweetRange();
+        return {
+          active: Boolean(this.critActive),
+          phase: this.critPhase,
+          sweetMin: sMin,
+          sweetMax: sMax,
+          inSweetSpot: Boolean(this.critActive && this.critPhase >= sMin && this.critPhase <= sMax)
+        };
+      })(),
+      combo: this.timberCombo ? this.timberCombo.getBonuses() : null,
+      progression: st.progression ? {
+        reputation: st.progression.reputation || 0,
+        contractsCompleted: st.progression.contractsCompleted || 0,
+        bestCombo: Math.max(st.progression.bestCombo || 0, this.timberCombo?.bestThisSession || 0),
+        contracts: (st.progression.contracts || []).map((c) => ({ ...c, ready: c.progress >= c.target }))
+      } : null,
+      sprintToggle: Boolean(this.sprintToggle),
+      isSprinting: Boolean(this.isSprinting),
+      placement: this.getActivePlacementInfo(),
+      blueprints
+    };
+  }
+
+  getCritSweetRange() {
+    const forgeBonus = this.camp?.getForgeStats?.()?.sweetBonus || 0;
+    const comboBonus = this.timberCombo ? this.timberCombo.getBonuses().critWindowBonus : 0;
+    const skillBonus = this.camp?.getSkillBonuses?.()?.critSweetBonus || 0;
+    const extra = Math.min(0.30, forgeBonus + comboBonus + skillBonus);
+    const center = 0.78;
+    const half = 0.12 + extra * 0.5;
+    return [Math.max(0.48, center - half), Math.min(0.96, center + half)];
+  }
+
+  recordWildernessContract(eventType, amount = 1) {
+    if (!this.camp) return;
+    if (eventType === 'combo_peak' && this.camp.state.progression) {
+      this.camp.state.progression.bestCombo = Math.max(this.camp.state.progression.bestCombo || 0, amount);
+    }
+    const newlyDone = this.camp.recordProgressionEvent(eventType, amount);
+    if (newlyDone && newlyDone.length > 0) {
+      for (const c of newlyDone) {
+        sound.playUpgrade();
+        this.ui.toast(`📋 Hợp đồng hoàn tất: "${c.title}" — Bấm nhận +$${c.rewardCash.toLocaleString()}!`);
+      }
+      this.ui.refreshHUD();
+      this.ui.renderCampDrawer(true);
+    }
+  }
+
+  handleClaimForestryContract(contractId) {
+    if (!this.camp) return;
+    const res = this.camp.claimContract(contractId);
+    if (!res.ok) {
+      this.ui.toast(`⚠️ ${res.reason}`);
+      return;
+    }
+    sound.playCash();
+    sound.playUpgrade();
+    this.world.spawnParticles(this.playerPos, 0xfbbf24, 10);
+    this.spawnWorldText(this.playerPos, `📋 +$${res.claimed.rewardCash.toLocaleString()} · +${res.claimed.rewardRep} Danh vọng`, 'cash');
+    this.ui.triggerCelebration(
+      `Hoàn tất: ${res.claimed.title}!`,
+      `Nhận +$${res.claimed.rewardCash.toLocaleString()} · +${res.claimed.rewardRep} Danh vọng Trại`
+    );
+    saveGameLocal();
+    saveGameServer();
+    this.ui.refreshHUD();
+    this.ui.renderCampDrawer(true);
+  }
+
+  isAnyWildernessPlacementActive() {
+    return Boolean(this.camp?.isPlacing() || this.camp?.infra?.isPlacing());
+  }
+
+  getActivePlacementInfo() {
+    if (this.camp?.infra?.isPlacing()) return this.camp.infra.getPlacementInfo();
+    if (this.camp?.isPlacing()) return this.camp.getPlacementInfo();
+    return null;
+  }
+
+  awardWildernessXp(amount, reasonLabel = '') {
+    if (!this.camp || amount <= 0) return null;
+    const res = this.camp.awardXp(amount);
+    if (res.leveledUp) {
+      sound.playInfraComplete();
+      this.world.spawnParticles(this.playerPos, 0xfbbf24, 14);
+      const nextUnlock = res.level === 2
+        ? 'Đã mở khóa: Máy Xúc San Lấp ($180) trong mục Hạ tầng!'
+        : (INFRA_CATALOG.find((c) => c.minLevel === res.level)?.name
+          ? `Đã mở khóa: ${INFRA_CATALOG.find((c) => c.minLevel === res.level).name} trong mục Hạ tầng!`
+          : 'Mở rộng cơ sở hạ tầng rừng của bạn!');
+      this.ui?.triggerCelebration(`Lên Cấp ${res.level}!`, nextUnlock);
+      this.ui?.toast(`⭐ Đạt Cấp ${res.level}! ${nextUnlock}`);
+    } else if (reasonLabel) {
+      this.spawnWorldText(this.playerPos, `+${amount} XP`, 'gem');
+    }
+    return res;
+  }
+
+  toggleSprintMode() {
+    this.sprintToggle = !this.sprintToggle;
+    this.ui?.toast(this.sprintToggle ? '🏃 Chế độ Chạy nhanh đang bật (giữ hoặc bấm lại để đi bộ)' : '🚶 Đã chuyển về chế độ Đi bộ tự nhiên');
+    this.ui?.refreshHUD();
+  }
+
+  startCampPlacement(siteId) {
+    if (!this.world?.wildernessMode || !this.camp) return;
+    this.camp.infra?.cancelPlacement();
+    const aheadX = this.playerPos.x + Math.sin(this.playerYaw) * 5.6;
+    const aheadZ = this.playerPos.z + Math.cos(this.playerYaw) * 5.6;
+    const info = this.camp.startPlacement(siteId, aheadX, aheadZ);
+    if (!info) {
+      this.ui?.toast('Công trình này đã hoàn thành.');
+      return;
+    }
+    this._usingMousePlacement = false;
+    this.ui?.toggleCampDrawer(false);
+    this.ui?.setPrompt(false);
+    this.ui?.toast(`📍 Di chuột hoặc đi tới nơi muốn đặt ${info.name} — R để xoay, Click hoặc E để đặt.`);
+    this.ui?.refreshHUD();
+  }
+
+  startAiGradingPlacement() {
+    if (!this.world?.wildernessMode || !this.camp?.infra) return;
+    if (this.camp.infra.drivingExcavator) {
+      const exitPos = this.camp.infra.exitExcavator();
+      if (exitPos) this.playerPos.set(exitPos.x, exitPos.y, exitPos.z);
+      this.playerModel.visible = true;
+    }
+    const aheadX = this.playerPos.x + Math.sin(this.playerYaw) * 8.5;
+    const aheadZ = this.playerPos.z + Math.cos(this.playerYaw) * 8.5;
+    const res = this.camp.infra.startGradingPlacement(aheadX, aheadZ);
+    if (!res.ok) {
+      this.ui?.toast(`⚠️ ${res.reason}`);
+      return;
+    }
+    this._usingMousePlacement = false;
+    this.ui?.toggleCampDrawer(false);
+    this.ui?.setPrompt(false);
+    this.ui?.toast('🚜 Chọn khu đồi gồ ghề cần san phẳng — Click hoặc nhấn E để gọi Máy Xúc AI tới san nền!');
+    this.ui?.refreshHUD();
+  }
+
+  startInfraPlacement(infraId) {
+    if (!this.world?.wildernessMode || !this.camp?.infra) return;
+    if (this.camp.infra.drivingExcavator) {
+      const exitPos = this.camp.infra.exitExcavator();
+      if (exitPos) this.playerPos.set(exitPos.x, exitPos.y, exitPos.z);
+      this.playerModel.visible = true;
+    }
+    const aheadX = this.playerPos.x + Math.sin(this.playerYaw) * 8.0;
+    const aheadZ = this.playerPos.z + Math.cos(this.playerYaw) * 8.0;
+    const res = this.camp.infra.startInfraPlacement(infraId, aheadX, aheadZ);
+    if (!res.ok) {
+      this.ui?.toast(`⚠️ ${res.reason}`);
+      return;
+    }
+    this._usingMousePlacement = false;
+    this.ui?.toggleCampDrawer(false);
+    this.ui?.setPrompt(false);
+    this.ui?.toast(`🏗️ Chọn mặt bằng phẳng để xây ${res.info.name} — Nếu đất gồ ghề, nhấn G gọi Máy Xúc AI san ngay!`);
+    this.ui?.refreshHUD();
+  }
+
+  handleDispatchGradeAtGhost() {
+    if (!this.camp?.infra?.isPlacing()) return;
+    const res = this.camp.infra.dispatchAiGradingAtGhost();
+    if (!res.ok) {
+      this.ui?.toast(`⚠️ ${res.reason}`);
+      return;
+    }
+    sound.playExcavatorGrade();
+    this._usingMousePlacement = false;
+    this.ui?.toast('🚜 Đã điều Máy Xúc AI tiến tới san phẳng bãi đồi — hãy chờ hoàn tất để xây nhà!');
+    saveGameLocal();
+    this.ui?.refreshHUD();
+  }
+
+  handleBuyExcavator() {
+    if (!this.camp?.infra) return;
+    const res = this.camp.infra.buyExcavator(this.playerPos);
+    if (!res.ok) {
+      this.ui?.toast(`⚠️ ${res.reason}`);
+      return;
+    }
+    sound.playInfraComplete();
+    this.world.spawnParticles(this.playerPos, 0xfbbf24, 14);
+    this.ui?.triggerCelebration('Đã mua Máy Xúc San Lấp!', 'Nhấn F để tự lái máy xúc (giữ Space san phẳng đồi) hoặc gọi Máy Xúc AI san nền.');
+    if (res.xpRes?.leveledUp) {
+      this.ui?.toast(`⭐ Đạt Cấp ${res.xpRes.level}!`);
+    }
+    saveGameLocal();
+    saveGameServer();
+    this.ui?.refreshHUD();
+    this.ui?.renderCampDrawer(true);
+  }
+
+  handleToggleDriveExcavator(allowTeleport = false) {
+    if (!this.camp?.infra) return;
+    if (this.camp.infra.drivingExcavator) {
+      const exitPos = this.camp.infra.exitExcavator();
+      if (exitPos) {
+        this.playerPos.set(exitPos.x, exitPos.y, exitPos.z);
+      }
+      this.playerModel.visible = true;
+      this._excavatorMouseGrade = false;
+      this._mobileExcavatorGrade = false;
+      sound.playChop(0.8);
+      this.ui?.toast('🚶 Đã xuống khỏi Máy Xúc San Lấp.');
+      saveGameLocal();
+      this.ui?.refreshHUD();
+      return;
+    }
+    if (!this.camp.state.excavator?.owned) {
+      this.ui?.openCampDrawer('infra');
+      this.ui?.toast(`🚜 Máy Xúc San Lấp mở khóa ở Cấp ${EXCAVATOR_UNLOCK.minLevel} ($${EXCAVATOR_UNLOCK.cost}).`);
+      return;
+    }
+    if (this.camp.cartAttached) {
+      this.camp.cartAttached = false;
+    }
+    this.cancelCampPlacement(true);
+    const res = this.camp.infra.enterExcavator(allowTeleport, this.playerPos);
+    if (!res.ok) {
+      this.ui?.toast(`⚠️ ${res.reason}`);
+      return;
+    }
+    this.playerPos.set(res.x, res.y, res.z);
+    this.playerYaw = res.yaw;
+    this.playerModel.visible = false;
+    sound.playExcavatorGrade();
+    this.ui?.toggleCampDrawer(false);
+    this.ui?.toast('🚜 Đang lái Máy Xúc! Dùng WASD lái lên đồi, giữ Space (hoặc nút San Đất) để san phẳng mặt bằng.');
+    this.ui?.refreshHUD();
+  }
+
+  raycastPlacementPointer(clientX, clientY) {
+    if (!this.isAnyWildernessPlacementActive() || !this.camera || !this.world?.terrainMesh) return false;
+    const rect = this.renderer.domElement.getBoundingClientRect();
+    if (!rect.width || !rect.height) return false;
+    this._pointerNdc.x = ((clientX - rect.left) / rect.width) * 2 - 1;
+    this._pointerNdc.y = -((clientY - rect.top) / rect.height) * 2 + 1;
+    this._raycaster.setFromCamera(this._pointerNdc, this.camera);
+    const hits = this._raycaster.intersectObject(this.world.terrainMesh, false);
+    if (hits.length > 0) {
+      this._usingMousePlacement = true;
+      const pt = hits[0].point;
+      if (this.camp?.infra?.isPlacing()) {
+        this.camp.infra.updatePlacementPreview(pt.x, pt.z);
+      } else {
+        this.camp.updatePlacementPreview(pt.x, pt.z);
+      }
+      return true;
+    }
+    return false;
+  }
+
+  rotateCampPlacement() {
+    if (this.camp?.infra?.isPlacing()) {
+      this.camp.infra.rotatePlacement(Math.PI / 6);
+      sound.playChop(1.28);
+      this.ui?.refreshHUD();
+      return;
+    }
+    if (!this.camp?.isPlacing()) return;
+    this.camp.rotatePlacement(Math.PI / 6);
+    sound.playChop(1.28);
+    this.ui?.refreshHUD();
+  }
+
+  confirmCampPlacement() {
+    if (this.camp?.infra?.isPlacing()) {
+      const res = this.camp.infra.confirmPlacement();
+      if (!res.ok) {
+        this.ui?.toast(`⚠️ ${res.reason}`);
+        return;
+      }
+      this._usingMousePlacement = false;
+      if (res.mode === 'grade') {
+        sound.playExcavatorGrade();
+        this.ui?.toast('🚜 Đã điều Máy Xúc AI tiến tới san phẳng bãi đồi!');
+      } else {
+        sound.playInfraComplete();
+        this.triggerScreenShake(0.12);
+        this.ui?.triggerCelebration(`Hoàn thành: ${res.def.name}!`, res.def.benefit);
+        this.ui?.toast(`🏡 Đã xây xong ${res.def.name} (+${res.def.xpReward} XP)!`);
+        if (res.xpRes?.leveledUp) {
+          this.ui?.toast(`⭐ Chúc mừng đạt Cấp ${res.xpRes.level}! Mở khóa hạ tầng mới.`);
+        }
+      }
+      saveGameLocal();
+      saveGameServer();
+      this.ui?.refreshHUD();
+      this.ui?.renderCampDrawer(true);
+      return;
+    }
+    if (!this.camp?.isPlacing()) return;
+    const res = this.camp.confirmPlacement();
+    if (!res.ok) {
+      this.ui?.toast(`⚠️ ${res.reason}`);
+      return;
+    }
+    sound.playUpgrade();
+    this._usingMousePlacement = false;
+    const verb = res.relocated ? 'Đã di dời cọc gỗ' : 'Đã cắm cọc vị trí';
+    this.ui?.toast(`📍 ${verb} ${res.bp.name}! Mang gỗ tới nạp để xây dựng.`);
+    saveGameLocal();
+    saveGameServer();
+    this.ui?.refreshHUD();
+  }
+
+  cancelCampPlacement(silent = false) {
+    const wasAny = this.isAnyWildernessPlacementActive();
+    if (!wasAny) return;
+    this.camp?.cancelPlacement();
+    this.camp?.infra?.cancelPlacement();
+    this._usingMousePlacement = false;
+    if (!silent) this.ui?.toast('Đã hủy chọn vị trí.');
+    this.ui?.refreshHUD();
+  }
+
+  consumeHeldLogs(amount) {
+    let remaining = Math.max(0, Math.floor(amount || 0));
+    if (remaining <= 0) return 0;
+    let consumed = 0;
+
+    const shoulder = Math.max(0, Math.floor(gameState.logs || 0));
+    const fromShoulder = Math.min(shoulder, remaining);
+    if (fromShoulder > 0) {
+      gameState.logs = shoulder - fromShoulder;
+      syncPlayerBackLogs(this.playerModel, gameState.logs);
+      consumed += fromShoulder;
+      remaining -= fromShoulder;
+    }
+
+    if (remaining > 0 && this.camp?.cartAttached && this.camp.handcart && this.camp.handcart.logs > 0) {
+      const fromCart = Math.min(this.camp.handcart.logs, remaining);
+      this.camp.handcart.logs -= fromCart;
+      this.camp.syncHandcartVisuals();
+      consumed += fromCart;
+      remaining -= fromCart;
+    }
+    return consumed;
+  }
+
+  handleToggleHandcart(allowSummon = false) {
+    if (!this.camp) return;
+    const res = this.camp.toggleHandcartAttach(this.playerPos, this.playerYaw, allowSummon);
+    if (!res.ok) {
+      this.ui.toast(res.reason);
+      return;
+    }
+    sound.playChop(res.attached ? 1.1 : 0.8);
+    this.ui.toast(res.message);
+    this.ui.refreshHUD();
+  }
+
+  quickFeedCampSite(siteId) {
+    if (!this.camp) return;
+    const res = this.camp.quickFeedFromLogYard(siteId);
+    if (!res.ok) {
+      this.ui.toast(res.reason);
+      return;
+    }
+    sound.playUpgrade();
+    if (res.completed) {
+      this.awardWildernessXp(45);
+      this.ui.triggerCelebration(`Hoàn thành: ${res.bp.name}!`, res.bp.benefit);
+      this.ui.toast(`🏕️ Đã dựng xong ${res.bp.name}! (+45 XP)`);
+    } else {
+      this.ui.toast(`🪵 Đã nạp ${res.delivered} khúc gỗ từ Bãi Tập Kết vào ${res.bp.name} (${res.deliveredLogs}/${res.costLogs}).`);
+    }
+    saveGameLocal();
+    saveGameServer();
+    this.ui.refreshHUD();
+  }
+
+  handleBuyWildernessUpgrade(kind) {
+    if (!this.camp) return;
+    const res = this.camp.buyUpgrade(kind);
+    if (!res.ok) {
+      this.ui.toast(`⚠️ ${res.reason}`);
+      return;
+    }
+    if (kind === 'axe') {
+      syncPlayerAxeTier(this.playerModel, res.tier.level);
+    }
+    sound.playUpgrade();
+    this.awardWildernessXp(35);
+    this.world.spawnParticles(this.playerPos, 0xfbbf24, 10);
+    this.ui.triggerCelebration(`Nâng cấp: ${res.tier.name}!`, res.tier.desc);
+    this.ui.toast(`⚒️ Đã nâng cấp lên ${res.tier.name}! (+35 XP)`);
+    saveGameLocal();
+    saveGameServer();
+    this.ui.refreshHUD();
+    this.ui.renderCampDrawer(true);
+  }
+
+  handleHireWildernessWorker(role) {
+    if (!this.camp) return;
+    const res = this.camp.hireWorker(role);
+    if (!res.ok) {
+      this.ui.toast(`⚠️ ${res.reason}`);
+      return;
+    }
+    sound.playUpgrade();
+    this.awardWildernessXp(30);
+    this.world.spawnParticles(this.playerPos, 0x4ade80, 10);
+    this.ui.triggerCelebration(`Đã thuê ${res.name} #${res.count}!`, 'Nhân công đã bắt đầu làm việc tự động quanh trại.');
+    this.ui.toast(`👷 Đã thuê ${res.name} #${res.count} (-$${res.cost.toLocaleString()})!`);
+    saveGameLocal();
+    saveGameServer();
+    this.ui.refreshHUD();
+    this.ui.renderCampDrawer(true);
+  }
+
+  handleLaunchRaft(resource = 'log') {
+    if (!this.camp) return;
+    const res = this.camp.launchQuickRaft(resource);
+    if (!res.ok) {
+      this.ui.toast(`⚠️ ${res.reason}`);
+      return;
+    }
+    syncPlayerBackLogs(this.playerModel, Math.max(0, Math.floor(gameState.logs || 0)));
+    sound.playRaftLaunch();
+    sound.playCash();
+    this.awardWildernessXp(18);
+    const pos = res.dockPos
+      ? this._tmpVec.set(res.dockPos.x, groundHeightAt(res.dockPos.x, res.dockPos.z) + 1.6, res.dockPos.z)
+      : this.playerPos;
+    this.world.spawnParticles(pos, 0x38bdf8, 8);
+    this.spawnWorldText(pos, `🚣 +$${res.earned.toLocaleString()}`, 'cash');
+    const names = { log: 'khúc gỗ', plank: 'ván xẻ', craft: 'đồ gỗ thủ công' };
+    this.recordWildernessContract('sell_raft', 1);
+    this.ui.toast(`🚣 Đã thả bè ${res.shipped} ${names[resource] || 'hàng'} xuôi sông — thu +$${res.earned.toLocaleString()} (+18 XP)!`);
+    saveGameLocal();
+    saveGameServer();
+    this.ui.refreshHUD();
+    this.ui.renderCampDrawer(true);
+  }
+
+  handleDeliverMerchantOrder(orderId) {
+    if (!this.camp) return;
+    const res = this.camp.deliverMerchantOrder(orderId);
+    if (!res.ok) {
+      this.ui.toast(`⚠️ ${res.reason}`);
+      return;
+    }
+    syncPlayerBackLogs(this.playerModel, Math.max(0, Math.floor(gameState.logs || 0)));
+    sound.playRaftLaunch();
+    sound.playCash();
+    this.awardWildernessXp(res.allDone ? 70 : 48);
+    this.recordWildernessContract('sell_raft', 1);
+    const dockTf = this.camp.getSiteTransform('river_dock');
+    const pos = dockTf
+      ? this._tmpVec.set(dockTf.x, groundHeightAt(dockTf.x, dockTf.z) + 1.8, dockTf.z)
+      : this.playerPos;
+    this.spawnWorldText(pos, `⛵ +$${res.earned.toLocaleString()}`, 'cash');
+    if (res.allDone) {
+      this.ui.triggerCelebration('Hoàn tất toàn bộ đơn Thuyền Thương Lái!', `+$${res.earned.toLocaleString()} (gồm thưởng hoàn tất +$${res.bonus})`);
+    } else {
+      this.ui.toast(`⛵ Giao đơn ${res.order.qty} ${res.order.resourceLabel} thành công — thu +$${res.earned.toLocaleString()} (+48 XP)!`);
+    }
+    saveGameLocal();
+    saveGameServer();
+    this.ui.refreshHUD();
+    this.ui.renderCampDrawer(true);
+  }
+
+  handleSummonMerchant() {
+    if (!this.camp) return;
+    const res = this.camp.summonMerchantBoat();
+    if (!res.ok) {
+      this.ui.toast(`⚠️ ${res.reason}`);
+      return;
+    }
+    sound.playMerchantBell();
+    this.ui.toast('🔔 Đã kéo chuông gọi Thuyền Thương Lái — thuyền đang xuôi dòng tới bến!');
+    this.ui.refreshHUD();
+    this.ui.renderCampDrawer(true);
+  }
+
+  handlePlantSapling() {
+    if (!this.ecosystem || !this.camp) return;
+    const tx = this.playerPos.x + Math.sin(this.playerYaw) * 1.9;
+    const tz = this.playerPos.z + Math.cos(this.playerYaw) * 1.9;
+    const res = this.ecosystem.plantSapling(tx, tz, 'pine');
+    if (!res.ok) {
+      this.ui.toast(`⚠️ ${res.reason}`);
+      return;
+    }
+    this.camp.state.saplings = this.ecosystem.serializeSaplings();
+    sound.playSaplingPlant();
+    const sapPos = this._tmpVec.set(res.sapling.x, res.sapling.y + 0.5, res.sapling.z);
+    this.world.spawnParticles(sapPos, 0x4ade80, 7);
+    this.spawnWorldText(sapPos, '🌱 Đã trồng cây non (90s)', 'log');
+    this.ui.toast('🌱 Đã trồng 1 cây rừng non — lớn thành cây gỗ sau 90 giây (mưa giúp lớn nhanh hơn)!');
+    saveGameLocal();
+    this.ui.refreshHUD();
+  }
+
+  handleCraftAtCabin() {
+    if (!this.camp) return;
+    const res = this.camp.depositPlanksToCabin(4);
+    if (!res.ok) {
+      this.ui.toast(`⚠️ ${res.reason}`);
+      return;
+    }
+    sound.playSaw();
+    const tf = this.camp.getSiteTransform('craft_cabin');
+    const pos = tf ? this._tmpVec.set(tf.x, groundHeightAt(tf.x, tf.z) + 1.8, tf.z) : this.playerPos;
+    this.spawnWorldText(pos, `🪑 Đang đóng ${res.queued} Đồ Gỗ`, 'cash');
+    this.ui.toast(`🪑 Đã đưa ${res.usedPlanks} Ván xẻ vào Xưởng Mộc (đóng ${res.queued} Đồ Gỗ Thủ Công)!`);
+    saveGameLocal();
+    this.ui.refreshHUD();
+    this.ui.renderCampDrawer(true);
+  }
+
+  handleRestUntilDawn() {
+    if (!this.camp || !this.camp.isBuilt('craft_cabin')) {
+      this.ui.toast('⚠️ Hãy xây Nhà Gỗ Tiều Phu trước để nghỉ qua đêm.');
+      return;
+    }
+    gameState.worldClockHours = 6.2;
+    if (gameState.weatherMode === 'night') {
+      gameState.weatherMode = 'dawn';
+    }
+    this.lastAppliedNightFactor = -1;
+    sound.playMerchantBell();
+    this.ui.toast('🌅 Đã nghỉ ngơi tại Nhà Gỗ Tiều Phu — Bình minh sương sớm trên Sông Rừng!');
+    saveGameLocal();
+    this.ui.refreshHUD();
+  }
+
+  chooseSafeFallYaw(treePos, defaultYaw) {
+    if (!this.camp) return defaultYaw;
+    const candidates = [defaultYaw, defaultYaw + 1.15, defaultYaw - 1.15, defaultYaw + 2.2, defaultYaw - 2.2];
+    for (const yaw of candidates) {
+      const tipX = treePos.x + Math.sin(yaw) * 4.8;
+      const tipZ = treePos.z + Math.cos(yaw) * 4.8;
+      let clear = true;
+      for (const bp of CAMP_BLUEPRINTS) {
+        if (!this.camp.isBuilt(bp.id)) continue;
+        const tf = this.camp.getSiteTransform(bp.id);
+        if (!tf) continue;
+        if (Math.hypot(tipX - tf.x, tipZ - tf.z) < bp.radius + 1.2) {
+          clear = false;
+          break;
+        }
+      }
+      if (clear) return yaw;
+    }
+    return defaultYaw;
+  }
+
+  tryCritChopStrike() {
+    if (!this.world?.wildernessMode || !this.camp) return false;
+    if (!this.critActive || this.critStrikeCooldown > 0) return false;
+    const [sweetMin, sweetMax] = this.getCritSweetRange();
+    const inSweet = this.critPhase >= sweetMin && this.critPhase <= sweetMax;
+    const axeStats = this.camp.getAxeStats();
+    const forgeStats = this.camp.getForgeStats?.() || { critMult: 2.0 };
+
+    if (!inSweet) {
+      this.critStrikeCooldown = 0.28;
+      sound.playChop(0.72);
+      this.spawnWorldText(this.playerPos, 'Lệch nhịp!', 'log');
+      return false;
+    }
+
+    const comboBonuses = this.timberCombo ? this.timberCombo.registerHit(true) : { cooldownMult: 1, count: 1, extraLogChance: 0 };
+    this.recordWildernessContract('crit_chops', 1);
+    this.recordWildernessContract('combo_peak', comboBonuses.count);
+
+    this.critStrikeCooldown = 0.34;
+    this.critPhase = 0.0;
+    this.chopCooldown = Math.max(0.22, axeStats.cooldown * 0.55 * comboBonuses.cooldownMult);
+    this.chopSwing = 1.0;
+    this._isCritSwing = true;
+    this.chopHitStopTimer = 0.12;
+    this._actionHitStopTimer = 0.055;
+    sound.playCritChop();
+    this.triggerChopImpulse(0.24, Math.sin(this.playerYaw), Math.cos(this.playerYaw), true);
+
+    if (this.critTargetTree && this.critTargetTree.alive && (!this.critTargetTree.state || this.critTargetTree.state === 'standing')) {
+      const tree = this.critTargetTree;
+      this.isBuckingChop = false;
+      this.chopTargetYaw = Math.atan2(tree.pos.x - this.playerPos.x, tree.pos.z - this.playerPos.z);
+      const critDmg = Math.max(2, Math.round(axeStats.dmg * (forgeStats.critMult || 2.0)));
+      tree.hp -= critDmg;
+      tree.wobble = 1.42;
+      this._tmpVec.set(tree.pos.x, tree.pos.y + 1.3, tree.pos.z);
+      this.world.spawnParticles(this._tmpVec, 0xfbbf24, 8);
+      this.charVfx?.spawnChopImpact(
+        this._tmpVec,
+        Math.sin(this.chopTargetYaw),
+        Math.cos(this.chopTargetYaw),
+        true,
+        Boolean(tree.isAncient)
+      );
+      this.world.spawnCanopyLeafBurst?.(tree.pos.x, tree.pos.y + 5.2, tree.pos.z, 10);
+      this.spawnWorldText(this._tmpVec, `⚡ CHÍ MẠNG -${critDmg} (x${comboBonuses.count})!`, 'cash');
+      if (tree.hp <= 0) {
+        tree.alive = false;
+        tree.state = 'falling';
+        const rawYaw = Math.atan2(tree.pos.x - this.playerPos.x, tree.pos.z - this.playerPos.z);
+        tree.fallYaw = this.chooseSafeFallYaw(tree.pos, rawYaw);
+        tree.fallAngle = 0;
+        tree.fallVel = 0.44;
+        tree.landed = false;
+        tree.fallenHoldTimer = 0.42;
+        sound.playTreeFall();
+        this.triggerChopImpulse(0.32, Math.sin(rawYaw), Math.cos(rawYaw), true);
+        const sb = this.camp.getSkillBonuses?.() || {};
+        const ancientMult = tree.isAncient ? (sb.ancientRewardMult || 1) : 1;
+        this.awardWildernessXp(Math.round((tree.isAncient ? 30 : 15) * ancientMult));
+        if (tree.isAncient && ancientMult > 1) {
+          const bonusCash = Math.round(45 * (ancientMult - 1));
+          if (bonusCash > 0) {
+            gameState.cash = (gameState.cash || 0) + bonusCash;
+            this.spawnWorldText(tree.pos, `🌲 Cổ Thụ +$${bonusCash}!`, 'cash');
+          }
+        }
+        this.recordWildernessContract('fell_trees', 1);
+        const totalExtraChance = Math.min(0.85, (comboBonuses.extraLogChance || 0) + (sb.extraLogChanceBonus || 0));
+        if (totalExtraChance > 0 && Math.random() < totalExtraChance) {
+          this.camp.spawnGroundLog?.(tree.pos.x + 0.6, tree.pos.z + 0.4);
+          this.spawnWorldText(tree.pos, '🪵 +1 Khúc gỗ thưởng!', 'cash');
+        }
+      }
+      return true;
+    }
+
+    if (this.critTargetTrunk) {
+      const trunk = this.critTargetTrunk;
+      const cutPos = this.camp.getTrunkActiveCutPos(trunk, this._tmpVec);
+      this.isBuckingChop = true;
+      this.chopTargetYaw = Math.atan2(cutPos.x - this.playerPos.x, cutPos.z - this.playerPos.z);
+      const res = this.camp.buckTrunkHit(trunk, Math.max(2, Math.round(forgeStats.critMult || 2)));
+      this.world.spawnParticles(cutPos, 0xfbbf24, 6);
+      this.charVfx?.spawnChopImpact(cutPos, Math.sin(this.chopTargetYaw), Math.cos(this.chopTargetYaw), true, false);
+      if (res?.cutCompleted) {
+        gameState.totalLogsCut = (gameState.totalLogsCut || 0) + 1;
+        gameState.xp = (gameState.xp || 0) + 8;
+        if (gameState.xp >= gameState.level * 120) gameState.level++;
+        this.recordWildernessContract('buck_logs', 1);
+        this.spawnWorldText(res.cutPos, `⚡ CHÍ MẠNG +1 Khúc gỗ (x${comboBonuses.count})!`, 'cash');
+      } else {
+        this.spawnWorldText(cutPos, `⚡ CHÍ MẠNG x${forgeStats.critMult || 2}!`, 'cash');
+      }
+      return true;
+    }
+    return false;
+  }
+
+  resetWildernessCamp() {
+    if (!this.camp) return;
+    this.camp.resetCampFromZero();
+    if (this.ecosystem) {
+      this.ecosystem.loadSaplings([]);
+    }
+    gameState.logs = 0;
+    syncPlayerBackLogs(this.playerModel, 0);
+    syncPlayerAxeTier(this.playerModel, 1);
+    const sp = WILDERNESS_MAP_360.meta.spawnPoint;
+    this.playerPos.set(sp.x, this.camp.getWalkableHeightAt(sp.x, sp.z), sp.z);
+    this.playerModel.position.copy(this.playerPos);
+    saveGameLocal();
+    saveGameServer();
+    this.ui.toast('🌲 Đã đặt lại căn cứ rừng về 0 — sẵn sàng xây dựng lại từ đầu!');
+    this.ui.refreshHUD();
+  }
+
   getContextPromptState() {
+    if (this.world?.wildernessMode && this.camp) {
+      if (this.isAnyWildernessPlacementActive()) return null;
+      if (this.camp.infra?.drivingExcavator) return null;
+      const shoulder = Math.max(0, Math.floor(gameState.logs || 0));
+      const cartLogs = (this.camp.cartAttached && this.camp.handcart) ? this.camp.handcart.logs : 0;
+      const totalHeld = shoulder + cartLogs;
+
+      // 0. Hero Excavator nearby -> quick enter prompt
+      if (this.camp.infra?.canEnterExcavator(this.playerPos) && totalHeld === 0) {
+        return {
+          action: 'camp_enter_excavator',
+          key: 'F',
+          label: '🚜 Lên lái Máy Xúc San Lấp (San phẳng đồi xây nhà)'
+        };
+      }
+
+      // 1. Unbuilt build site nearby + carrying/pulling logs
+      const nearSite = this.camp.findNearestBuildSite(this.playerPos);
+      if (nearSite && totalHeld > 0) {
+        const st = this.camp.state.structures[nearSite.id];
+        return {
+          action: 'camp_deliver_site',
+          key: 'E',
+          label: `Nạp gỗ dựng ${nearSite.name} (${st.deliveredLogs}/${nearSite.costLogs})`,
+          site: nearSite
+        };
+      }
+
+      // 2. Built Waterwheel Sawmill nearby + holding logs
+      if (this.camp.isNearBuiltSite(this.playerPos, 'waterwheel_sawmill', 1.2) && totalHeld > 0) {
+        return {
+          action: 'camp_deposit_sawmill',
+          key: 'E',
+          label: `Nạp ${totalHeld} khúc gỗ vào Xưởng Cưa Guồng Nước`
+        };
+      }
+
+      // 3. Built Log Yard nearby + holding logs
+      if (this.camp.isNearBuiltSite(this.playerPos, 'log_yard', 1.2) && totalHeld > 0) {
+        return {
+          action: 'camp_deposit_yard',
+          key: 'E',
+          label: `Cất ${totalHeld} khúc gỗ vào Bãi Tập Kết (${this.camp.state.campLogStock} khúc)`
+        };
+      }
+
+      // 3b. Built River Raft Dock & Merchant Pier nearby
+      if (this.camp.isNearBuiltSite(this.playerPos, 'river_dock', 1.4)) {
+        const mStatus = this.camp.state.merchant?.status;
+        return {
+          action: 'camp_river_dock',
+          key: 'E',
+          label: mStatus === 'docked'
+            ? '⛵ Giao đơn Thuyền Thương Lái / Thả bè gỗ'
+            : '🚣 Mở Bến Thả Bè & Lịch Thuyền Thương Lái'
+        };
+      }
+
+      // 3c. Built Lumberjack Craft Cabin nearby
+      if (this.camp.isNearBuiltSite(this.playerPos, 'craft_cabin', 1.4)) {
+        const nightFactor = this.lastAppliedNightFactor >= 0 ? this.lastAppliedNightFactor : 0;
+        if ((this.camp.state.campPlankStock || 0) >= 2) {
+          return {
+            action: 'camp_craft_cabin',
+            key: 'E',
+            label: `🪑 Chế tác Đồ Gỗ (2 Ván → 1 Đồ Gỗ $56 · còn ${this.camp.state.campPlankStock} Ván)`
+          };
+        }
+        if (nightFactor > 0.35) {
+          return {
+            action: 'camp_rest_dawn',
+            key: 'E',
+            label: '🌅 Nghỉ qua đêm tại Nhà Gỗ đón bình minh'
+          };
+        }
+        return {
+          action: 'camp_open_upgrades',
+          key: 'E',
+          label: '⚒️ Mở Xưởng Mộc & Nâng Cấp Dụng Cụ'
+        };
+      }
+
+      const cartCap = this.camp.getHandcartCapacity();
+      const shoulderCap = this.getWildernessShoulderCap();
+      const pickupRadius = 3.3 * (this.camp.getSkillBonuses?.()?.pickupRadiusMult || 1);
+
+      // 4. Loose GroundLog nearby -> load onto attached/nearby Handcart OR shoulder
+      const nearLog = this.camp.findNearestGroundLog(this.playerPos, pickupRadius);
+      if (nearLog) {
+        if (this.camp.cartAttached && this.camp.handcart && this.camp.handcart.logs < cartCap) {
+          return {
+            action: 'camp_pickup_log_cart',
+            key: 'E',
+            label: `Xếp khúc gỗ lên Xe Kéo (${this.camp.handcart.logs}/${cartCap})`,
+            groundLog: nearLog
+          };
+        }
+        if (this.camp.handcart && this.camp.handcart.logs < cartCap && shoulder >= shoulderCap) {
+          const dCart = Math.hypot(this.playerPos.x - this.camp.handcart.pos.x, this.playerPos.z - this.camp.handcart.pos.z);
+          if (dCart <= 4.6) {
+            return {
+              action: 'camp_pickup_log_cart',
+              key: 'E',
+              label: `Xếp khúc gỗ lên Xe Kéo (${this.camp.handcart.logs}/${cartCap})`,
+              groundLog: nearLog
+            };
+          }
+        }
+        if (shoulder < shoulderCap && !this.camp.cartAttached) {
+          return {
+            action: 'camp_pickup_log',
+            key: 'E',
+            label: `Vác khúc gỗ lên vai (${shoulder}/${shoulderCap})`,
+            groundLog: nearLog
+          };
+        }
+      }
+
+      // 5. Handcart interaction (detach / load shoulder logs / grab handles)
+      if (this.camp.isBuilt('handcart') && this.camp.handcart) {
+        if (this.camp.cartAttached) {
+          return {
+            action: 'camp_toggle_cart',
+            key: 'E',
+            label: `Dừng & thả càng Xe Kéo (${this.camp.handcart.logs}/${cartCap})`
+          };
+        }
+        const dCart = Math.hypot(this.playerPos.x - this.camp.handcart.pos.x, this.playerPos.z - this.camp.handcart.pos.z);
+        if (dCart <= 3.8) {
+          if (shoulder > 0 && this.camp.handcart.logs < cartCap) {
+            return {
+              action: 'camp_load_shoulder_to_cart',
+              key: 'E',
+              label: `Chuyển ${shoulder} khúc gỗ từ vai lên Xe Kéo (${this.camp.handcart.logs}/${cartCap})`
+            };
+          }
+          return {
+            action: 'camp_toggle_cart',
+            key: 'E',
+            label: `Nắm càng kéo Xe Kéo Gỗ (${this.camp.handcart.logs}/${cartCap})`
+          };
+        }
+      }
+
+      // 6. Hint when near unbuilt site with no logs
+      if (nearSite && totalHeld === 0) {
+        const st = this.camp.state.structures[nearSite.id];
+        return {
+          action: 'camp_site_info',
+          key: 'B',
+          label: `${nearSite.name}: cần thêm ${nearSite.costLogs - st.deliveredLogs} khúc gỗ (B mở sổ trại)`,
+          site: nearSite
+        };
+      }
+
+      // 7. Drop 1 shoulder log onto terrain
+      if (shoulder > 0 && this.controlMode === 'foot') {
+        return {
+          action: 'drop_logs',
+          key: 'Q',
+          label: `Đặt 1 khúc gỗ xuống đất (đang vác ${shoulder}/3)`
+        };
+      }
+      return null;
+    }
+    if (this.infrastructureCleared) return null;
     if (this.controlMode === 'yard_vehicle' && this.activeYardVehicle) {
       const v = this.activeYardVehicle;
       const driverHint = v.driverHired ? 'F: Giao tài xế AI' : `F: Thuê tài xế ($${v.driverCost})`;
@@ -1983,7 +3590,7 @@ class TimberPortEngine {
 
   triggerPlayerAction(actionName, silent = false) {
     if (this.controlMode !== 'foot' || this.inVehicle) return;
-    const durations = { wave: 1.75, stretch: 2.05, cheer: 1.85, command: 1.65 };
+    const durations = { wave: 1.75, stretch: 2.05, cheer: 1.85, command: 1.65, unload: 0.68 };
     const dur = durations[actionName] || 1.7;
     this.playerAction = actionName;
     this.playerActionDuration = dur;
@@ -2052,8 +3659,135 @@ class TimberPortEngine {
     else if (prompt.action === 'greet_citizen') this.greetNearbyCitizen(true);
     else if (prompt.action === 'vehicle') this.toggleVehicle();
     else if (prompt.action === 'export') this.handleDeliverContract(true);
+    else if (prompt.action === 'camp_enter_excavator') {
+      this.handleToggleDriveExcavator(false);
+    } else if (prompt.action === 'camp_deliver_site' && this.camp) {
+      const shoulder = Math.max(0, Math.floor(gameState.logs || 0));
+      const cartLogs = (this.camp.cartAttached && this.camp.handcart) ? this.camp.handcart.logs : 0;
+      const available = shoulder + cartLogs;
+      const res = this.camp.deliverLogsToSite(prompt.site.id, available);
+      if (res.delivered > 0) {
+        this.consumeHeldLogs(res.delivered);
+        this.triggerPlayerAction('unload', true);
+        if (res.completed) {
+          sound.playUpgrade();
+          this.awardWildernessXp(45);
+          this.triggerScreenShake(0.1);
+          this.ui.triggerCelebration(`Hoàn thành: ${res.bp.name}!`, res.bp.benefit);
+          this.ui.toast(`🏕️ Đã dựng xong ${res.bp.name}! (+45 XP)`);
+        } else {
+          sound.playChop(1.1);
+          this.spawnWorldText(this.playerPos, `-${res.delivered} 🪵 (${res.deliveredLogs}/${res.costLogs})`, 'log');
+        }
+        saveGameLocal();
+        saveGameServer();
+        this.ui.refreshHUD();
+      }
+    } else if (prompt.action === 'camp_deposit_sawmill' && this.camp) {
+      const shoulder = Math.max(0, Math.floor(gameState.logs || 0));
+      const cartLogs = (this.camp.cartAttached && this.camp.handcart) ? this.camp.handcart.logs : 0;
+      const total = shoulder + cartLogs;
+      if (total > 0) {
+        this.consumeHeldLogs(total);
+        this.camp.depositToSawmill(total);
+        this.triggerPlayerAction('unload', true);
+        sound.playSaw();
+        this.spawnWorldText(this.playerPos, `⚙️ Nạp ${total} khúc vào Xưởng Cưa`, 'cash');
+        saveGameLocal();
+        this.ui.refreshHUD();
+      }
+    } else if (prompt.action === 'camp_deposit_yard' && this.camp) {
+      const shoulder = Math.max(0, Math.floor(gameState.logs || 0));
+      const cartLogs = (this.camp.cartAttached && this.camp.handcart) ? this.camp.handcart.logs : 0;
+      const total = shoulder + cartLogs;
+      if (total > 0) {
+        this.consumeHeldLogs(total);
+        this.camp.depositToLogYard(total);
+        this.triggerPlayerAction('unload', true);
+        sound.playChop(1.05);
+        this.spawnWorldText(this.playerPos, `🪵 Cất +${total} khúc vào Bãi Gỗ`, 'log');
+        saveGameLocal();
+        this.ui.refreshHUD();
+      }
+    } else if (prompt.action === 'camp_pickup_log' && this.camp && prompt.groundLog) {
+      const shoulderCap = this.getWildernessShoulderCap();
+      if ((gameState.logs || 0) < shoulderCap && this.camp.removeGroundLog(prompt.groundLog)) {
+        gameState.logs = Math.min(shoulderCap, Math.floor(gameState.logs || 0) + 1);
+        syncPlayerBackLogs(this.playerModel, gameState.logs);
+        sound.playChop(1.18);
+        this.spawnWorldText(this.playerPos, `🪵 Vác lên vai (${gameState.logs}/${shoulderCap})`, 'log');
+        this.ui.refreshHUD();
+      }
+    } else if (prompt.action === 'camp_pickup_log_cart' && this.camp && prompt.groundLog && this.camp.handcart) {
+      const cartCap = this.camp.getHandcartCapacity();
+      if (this.camp.handcart.logs < cartCap && this.camp.removeGroundLog(prompt.groundLog)) {
+        this.camp.handcart.logs += 1;
+        this.camp.syncHandcartVisuals();
+        sound.playChop(1.15);
+        this.spawnWorldText(this.camp.handcart.pos, `🛒 +1 khúc lên Xe (${this.camp.handcart.logs}/${cartCap})`, 'log');
+        this.ui.refreshHUD();
+      }
+    } else if (prompt.action === 'camp_load_shoulder_to_cart' && this.camp && this.camp.handcart) {
+      const cartCap = this.camp.getHandcartCapacity();
+      const shoulder = Math.max(0, Math.floor(gameState.logs || 0));
+      const room = cartCap - this.camp.handcart.logs;
+      const moved = Math.min(shoulder, room);
+      if (moved > 0) {
+        gameState.logs = shoulder - moved;
+        syncPlayerBackLogs(this.playerModel, gameState.logs);
+        this.camp.handcart.logs += moved;
+        this.camp.syncHandcartVisuals();
+        this.triggerPlayerAction('unload', true);
+        sound.playChop(1.08);
+        this.spawnWorldText(this.camp.handcart.pos, `🛒 Xếp +${moved} khúc lên Xe (${this.camp.handcart.logs}/${cartCap})`, 'log');
+        this.ui.refreshHUD();
+      }
+    } else if (prompt.action === 'camp_river_dock') {
+      this.ui.openCampDrawerTab('merchant');
+    } else if (prompt.action === 'camp_craft_cabin') {
+      this.handleCraftAtCabin();
+    } else if (prompt.action === 'camp_rest_dawn') {
+      this.handleRestUntilDawn();
+    } else if (prompt.action === 'camp_open_upgrades') {
+      this.ui.openCampDrawerTab('upgrades');
+    } else if (prompt.action === 'camp_toggle_cart') {
+      this.handleToggleHandcart(false);
+    } else if (prompt.action === 'camp_site_info') {
+      this.ui.toggleCampDrawer(true);
+    }
+    else if (prompt.action === 'drop_logs') this.dropCarriedLogs();
     else if (prompt.action === 'sell_saw') this.sellAllAtSawmill();
     else if (prompt.action === 'sell_furniture') this.sellAllFurniture();
+  }
+
+  dropCarriedLogs() {
+    const qty = Math.floor(gameState.logs || 0);
+    if (qty <= 0 || !this.world) return;
+    const dropX = this.playerPos.x + Math.sin(this.playerYaw) * 1.35;
+    const dropZ = this.playerPos.z + Math.cos(this.playerYaw) * 1.35;
+    const dropY = this.camp ? this.camp.getWalkableHeightAt(dropX, dropZ) : this.playerPos.y;
+    const dropPos = this._tmpVec.set(dropX, dropY, dropZ);
+
+    if (this.world.wildernessMode && this.camp) {
+      this.camp.spawnGroundLog(dropX, dropZ, this.playerYaw + Math.PI * 0.5, 'pine');
+      gameState.logs = Math.max(0, qty - 1);
+      syncPlayerBackLogs(this.playerModel, gameState.logs);
+      this.triggerPlayerAction('unload', true);
+      sound.playChop(0.78);
+      this.world.spawnParticles(dropPos, 0x9a6b3e, 4);
+      this.spawnWorldText(dropPos, `🪵 Hạ 1 khúc gỗ (còn ${gameState.logs}/3)`, 'log');
+      this.ui?.refreshHUD();
+      return;
+    }
+
+    this.world.addDroppedLogPile(dropPos, qty, this.playerYaw);
+    gameState.logs = 0;
+    syncPlayerBackLogs(this.playerModel, 0);
+    this.triggerPlayerAction('unload', true);
+    sound.playChop(0.75);
+    this.world.spawnParticles(dropPos, 0x9a6b3e, 5);
+    this.spawnWorldText(dropPos, `🪵 Đã hạ ${qty} khúc gỗ`, 'log');
+    this.ui?.refreshHUD();
   }
 
   getParkingStatus() {
@@ -2077,6 +3811,7 @@ class TimberPortEngine {
   }
 
   updateCheckpoint() {
+    if (this.infrastructureCleared) return;
     if (this.controlMode !== 'foot' || this.archipelago.dialog.open) return;
     const district = findCheckpoint(this.playerPos);
     if (!district) return;
@@ -2235,7 +3970,7 @@ class TimberPortEngine {
   }
 
   cycleWeatherPreset() {
-    const order = ['auto', 'dawn', 'sunny', 'sunset', 'night', 'storm'];
+    const order = ['auto', 'dawn', 'sunny', 'rain', 'sunset', 'night', 'storm'];
     const cur = gameState.weatherMode || 'auto';
     const next = order[(order.indexOf(cur) + 1) % order.length];
     gameState.weatherMode = next;
@@ -2243,10 +3978,16 @@ class TimberPortEngine {
     if (typeof preset.hour === 'number') {
       gameState.worldClockHours = preset.hour;
     }
+    if (this.atmosphere) {
+      this.atmosphere.setLightRain(next === 'rain');
+    }
     sound.playCameraShutter();
     saveGameLocal();
     this.ui.refreshHUD();
-    this.ui.toast(`${preset.icon} Chế độ Thời tiết & Ánh sáng: ${preset.label}`);
+    const extraRainNote = (this.world?.wildernessMode && (next === 'storm' || next === 'rain'))
+      ? ' (+40% tốc độ Guồng Nước Xưởng Cưa!)'
+      : '';
+    this.ui.toast(`${preset.icon} Thời tiết & Ánh sáng: ${preset.label}${extraRainNote}`);
   }
 
   cycleCameraMode() {
@@ -2268,8 +4009,20 @@ class TimberPortEngine {
   }
 
   triggerScreenShake(intensity = 0.2) {
-    if (this.activeProfile === 'low') return;
+    if (this.activeProfile === 'low' || this.prefersReducedMotion) return;
     this.screenShake = Math.min(0.45, Math.max(this.screenShake, intensity));
+  }
+
+  triggerChopImpulse(strength = 0.12, dirX = 0, dirZ = 1, isCrit = false) {
+    if (this.prefersReducedMotion) return;
+    const scale = this.activeProfile === 'low' ? 0.55 : 1.0;
+    const s = strength * scale;
+    this._camShakeVel.x += (-dirX * 0.45 + (Math.random() - 0.5) * 0.5) * s * 16;
+    this._camShakeVel.y += -s * 18;
+    this._camShakeVel.z += (-dirZ * 0.45 + (Math.random() - 0.5) * 0.5) * s * 16;
+    if (isCrit) {
+      this._camFovPunch = Math.min(2.2, (this._camFovPunch || 0) + 1.65);
+    }
   }
 
   disembarkFleet() {
@@ -2648,6 +4401,26 @@ class TimberPortEngine {
       this.fpsAccum = 0;
     }
 
+    // Adaptive 60 FPS Governor for Living Forest foliage & atmosphere (zero GC)
+    const frameMs = dt * 1000;
+    this._frameMsEma += (frameMs - this._frameMsEma) * 0.08;
+    if (!this.isSoftwareGl && this.world?.wildernessMode) {
+      this._qualityEvalTimer += dt;
+      if (this._qualityEvalTimer >= 1.2) {
+        this._qualityEvalTimer = 0;
+        let nextQ = this.natureQualityScale;
+        if (this._frameMsEma > 19.5 && nextQ > 0.45) {
+          nextQ = Math.max(0.45, nextQ - 0.10);
+        } else if (this._frameMsEma < 15.5 && nextQ < 1.0) {
+          nextQ = Math.min(1.0, nextQ + 0.06);
+        }
+        if (Math.abs(nextQ - this.natureQualityScale) > 0.01) {
+          this.natureQualityScale = nextQ;
+          this.world.setNatureQualityScale?.(nextQ);
+        }
+      }
+    }
+
     this.updateTimers(dt);
     this.updatePlayerMovement(dt);
     this.updateCheckpoint();
@@ -2659,13 +4432,185 @@ class TimberPortEngine {
     this.updateYardPorters(dt);
     this.updateWoodenHouses(dt);
     this.updateCitizensAI(dt);
-    this.world.regionalLife.update(this.playerPos, this.elapsed, this.activeProfile === 'low', this.vehicleHome);
+    this.world.regionalLife?.update(this.playerPos, this.elapsed, this.activeProfile === 'low', this.vehicleHome);
     this.updatePet(dt);
     this.updateRemotePlayers(dt);
     this.updateCamera(dt);
 
     this.world.update(dt, this.elapsed, gameState.sawmillBuffer > 0);
+    if (this.camp) {
+      const nightFactor = this.lastAppliedNightFactor >= 0 ? this.lastAppliedNightFactor : 0;
+      const hr = gameState.worldClockHours || 10.5;
+      const isRain = this.isAnyRainNow();
+      const isDawn = hr >= 5.2 && hr <= 7.8;
+
+      this.camp.update(dt, this.elapsed, this.playerPos, this.playerYaw, nightFactor, (qty, pos) => {
+        sound.playSaw();
+        this.spawnWorldText(pos, `+${qty} Ván xẻ`, 'cash');
+        this.ui.refreshHUD();
+      }, {
+        isRain,
+        onCraftProduced: (qty, pos) => {
+          sound.playUpgrade();
+          this.spawnWorldText(pos, `🪑 +${qty} Đồ Gỗ Thủ Công`, 'cash');
+          this.ui.refreshHUD();
+        },
+        onMerchantArrived: () => {
+          sound.playMerchantBell();
+          this.ui.toast('⛵ Thuyền Thương Lái đã cập Bến Sông! Nhấn E tại Bến hoặc mở tab Thương Lái để giao đơn thưởng.');
+          this.ui.refreshHUD();
+        },
+        onWorkerDeposit: (dest, wx, wz) => {
+          const pos = this._tmpVec.set(wx, groundHeightAt(wx, wz) + 1.6, wz);
+          this.spawnWorldText(pos, dest === 'sawmill' ? '👷 +1 gỗ vào Xưởng' : '👷 +1 gỗ về Bãi', 'log');
+        },
+        onWorkerFellTree: (tree) => {
+          sound.playTreeFall();
+          this.spawnWorldText(tree.pos, '👷 Thợ cưa hạ cây!', 'log');
+        },
+        onPadFlattened: (pad, xpRes, isAi) => {
+          sound.playInfraComplete();
+          const p = this._tmpVec.set(pad.x, groundHeightAt(pad.x, pad.z) + 1.8, pad.z);
+          this.world.spawnParticles(p, 0x4ade80, 12);
+          this.spawnWorldText(p, '🚜 San phẳng xong!', 'cash');
+          this.ui.toast(
+            isAi
+              ? '🚜 Máy Xúc AI đã san phẳng xong bãi đồi! Bạn có thể xây Nhà hoặc Máy Cưa Tự Động lên đây ngay.'
+              : '🚜 Đã san phẳng một mặt bằng đồi mới (+32 XP)! Đủ phẳng để xây nhà.'
+          );
+          if (xpRes?.leveledUp) {
+            this.ui.triggerCelebration(`Lên Cấp ${xpRes.level}!`, 'Mở khóa thêm cơ sở hạ tầng mới trong mục Hạ tầng!');
+          }
+          saveGameLocal();
+          this.ui.refreshHUD();
+          this.ui.renderCampDrawer(true);
+        },
+        onGradeSfx: () => {
+          sound.playExcavatorGrade();
+        },
+        onAutoSawPlank: (qty, pos) => {
+          sound.playSaw();
+          this.spawnWorldText(pos, `⚙️ +${qty} Ván (Auto)`, 'cash');
+        },
+        onPassiveIncome: (amt, pos) => {
+          sound.playCash();
+          this.spawnWorldText(pos, `🏡 +$${amt} Thu nhập nhà`, 'cash');
+          this.ui.refreshHUD();
+        }
+      });
+
+      if (this.ecosystem) {
+        this.ecosystem.update(dt, this.elapsed, this.playerPos, {
+          nightFactor,
+          isRain,
+          isDawn,
+          playerMoving: this.currentMoveSpeed > 0.45,
+          onWaterStep: null,
+          onSaplingMatured: (sap) => {
+            this.camp.state.saplings = this.ecosystem.serializeSaplings();
+            const sapPos = this._tmpVec.set(sap.x, sap.y + 1.4, sap.z);
+            this.spawnWorldText(sapPos, '🌲 Cây non trưởng thành!', 'log');
+            this.ui.toast('🌲 Cây non bạn trồng đã lớn thành cây rừng thu hoạch được!');
+          }
+        });
+        this._saplingSyncAccum += dt;
+        if (this._saplingSyncAccum >= 5.0) {
+          this._saplingSyncAccum = 0;
+          this.camp.state.saplings = this.ecosystem.serializeSaplings();
+        }
+      }
+
+      // 3D Spatial Ambience (River babble, campfire crackle, rain hiss)
+      const streamInfo = getStreamInfo(this.playerPos.x, this.playerPos.z);
+      const riverDist = Math.max(0, streamInfo.dist - streamInfo.halfWidth);
+      let campfireDist = 99;
+      if (this.camp.isBuilt('campfire')) {
+        const cf = this.camp.getSiteTransform('campfire');
+        if (cf) campfireDist = Math.hypot(this.playerPos.x - cf.x, this.playerPos.z - cf.z);
+      }
+      sound.updateSpatialAmbience(dt, { riverDist, campfireDist, isRain });
+      const [sMin, sMax] = this.getCritSweetRange();
+      this.ui.updateCritRing(this.critActive, this.critPhase, sMin, sMax);
+      if (this.timberCombo) {
+        this.timberCombo.update(dt);
+        this.ui.updateComboHud?.(this.timberCombo.getBonuses());
+      }
+      if (this.atmosphere) {
+        this._atmoCtx.weatherMode = gameState.weatherMode || 'auto';
+        this._atmoCtx.isStorm = Boolean(gameState.weatherMode === 'storm' || stormState.active);
+        this._atmoCtx.nightFactor = nightFactor;
+        this._atmoCtx.playerPos = this.playerPos;
+        this._atmoCtx.playerYaw = this.playerYaw;
+        this._atmoCtx.campfirePos = this.camp.isBuilt('campfire') ? this.camp.getSiteTransform('campfire') : null;
+        this.atmosphere.update(dt, this._atmoCtx);
+      }
+    }
     this.updateDayNightAndWeather(dt);
+
+    // Update Character VFX Suite (Axe Slash Ribbon Trail, Wood Chips, Crit Sparks, Sprint Wind, Footprints)
+    if (this.charVfx) {
+      this.charVfx.qualityScale = this._fpsGovernorScale ?? 1.0;
+      const rig = this.playerModel?.userData?.glbRig;
+      this._vfxCtx.playerPos = this.playerPos;
+      this._vfxCtx.playerYaw = this.playerYaw;
+      this._vfxCtx.speed = this.currentMoveSpeed;
+      this._vfxCtx.inVehicle = Boolean(this.inVehicle || this.controlMode !== 'foot');
+      this._vfxCtx.combo = this.timberCombo ? this.timberCombo.count : 0;
+      this._vfxCtx.axeTier = this.camp ? (this.camp.state.upgrades?.axe || 1) : (gameState.axeTier || 1);
+      this._vfxCtx.slashActive = this.chopSwing > 0.14 && this.chopSwing < 0.88 && !this.inVehicle;
+      this._vfxCtx.isCritSwing = Boolean(this._isCritSwing);
+      this._vfxCtx.getGroundHeight = this._getWalkableGroundY;
+      this._vfxCtx.getBladeSegment = rig?.getAxeBladeWorldSegment || null;
+      this.charVfx.update(dt, this._vfxCtx);
+    }
+
+    // Update Living Forest GPU grass-parting actors, sunbeams, butterflies, pollen/fireflies & valley mist
+    if (this.world?.wildernessMode && this.world.natureSystem) {
+      let slot = 0;
+      const a0 = this._natureActors[slot++];
+      a0.x = this.playerPos.x;
+      a0.y = this.playerPos.y;
+      a0.z = this.playerPos.z;
+      a0.radius = this.inVehicle ? 2.4 : 1.55;
+
+      const ex = this.camp?.infra?.excavator;
+      if (ex && slot < this._natureActors.length) {
+        const ae = this._natureActors[slot++];
+        ae.x = ex.x;
+        ae.y = ex.y || groundHeightAt(ex.x, ex.z);
+        ae.z = ex.z;
+        ae.radius = 2.85;
+      }
+
+      const workers = this.camp?.workerSystem?.workers;
+      if (workers && workers.length > 0) {
+        for (let i = 0; i < workers.length && slot < this._natureActors.length; i++) {
+          const w = workers[i];
+          const aw = this._natureActors[slot++];
+          aw.x = w.x;
+          aw.y = w.group ? w.group.position.y : groundHeightAt(w.x, w.z);
+          aw.z = w.z;
+          aw.radius = 1.35;
+        }
+      }
+      while (slot < this._natureActors.length) {
+        const af = this._natureActors[slot++];
+        af.x = 9999;
+        af.y = 0;
+        af.z = 9999;
+        af.radius = 0;
+      }
+      this.world.updateInteractiveActors(this._natureActors);
+
+      this._natureEnv.nightFactor = this.lastAppliedNightFactor >= 0 ? this.lastAppliedNightFactor : 0;
+      this._natureEnv.isStorm = Boolean(gameState.weatherMode === 'storm' || stormState.active);
+      this._natureEnv.hour = gameState.worldClockHours || 10.5;
+      this._natureEnv.playerPos = this.playerPos;
+      if (this.sunLight) {
+        this._sunDirTmp.copy(this.sunLight.position).sub(this.sunLight.target.position);
+      }
+      this.world.updateLivingNature(dt, this.elapsed, this._natureEnv);
+    }
 
     this.hudSyncAccum += dt;
     if (this.hudSyncAccum >= 0.14) {
@@ -2686,39 +4631,67 @@ class TimberPortEngine {
         this.world.trees,
         this.world.currentQuestTarget,
         {
+          wildernessMode: Boolean(this.world?.wildernessMode),
+          wildernessMap: this.world?.wildernessMap,
+          forestClusters: this.world?.forestClusters || [],
+          droppedLogPiles: this.world?.droppedLogPiles || [],
+          campSites: this.camp ? CAMP_BLUEPRINTS.reduce((acc, bp) => {
+            const tf = this.camp.getSiteTransform(bp.id);
+            if (tf && (tf.placed || tf.built)) {
+              acc.push({
+                ...bp,
+                x: tf.x,
+                z: tf.z,
+                built: tf.built,
+                tracked: this.camp.state.trackedSiteId === bp.id && !tf.built
+              });
+            }
+            return acc;
+          }, []) : [],
+          placementPreview: this.getActivePlacementInfo(),
+          infraMap: this.camp?.infra?.getMinimapEntities() || null,
+          felledTrunks: this.camp?.felledTrunks || [],
+          groundLogs: this.camp?.groundLogs || [],
+          handcart: this.camp?.handcart || null,
+          merchantBoatPos: this.camp?.riverTraffic?.getMerchantWorldPos() || null,
+          rafts: this.camp?.riverTraffic?.rafts || [],
+          workers: this.camp?.workerSystem?.workers || [],
+          saplings: this.ecosystem?.saplings || [],
           treasures: this.world.seaTreasures,
           controlMode: this.controlMode,
           fleetMissionState,
           citizens: this.aiCitizens,
-          regionalCitizens: this.world.regionalLife.people,
+          regionalCitizens: this.world.regionalLife?.people || [],
           vehicleHome: this.vehicleHome,
           yardVehicles: this.world.yardVehicles
         }
       );
     }
 
-    this.marketAccum += dt;
-    if (this.marketAccum >= 18) {
-      this.marketAccum = 0;
-      const surged = updateMarketPrices();
-      if (surged.length) {
-        this.ui.toast(`📈 Sàn gỗ tăng mạnh: ${surged.join(', ')}`);
+    if (!this.world?.wildernessMode) {
+      this.marketAccum += dt;
+      if (this.marketAccum >= 18) {
+        this.marketAccum = 0;
+        const surged = updateMarketPrices();
+        if (surged.length) {
+          this.ui.toast(`📈 Sàn gỗ tăng mạnh: ${surged.join(', ')}`);
+        }
+        if (!this.ui.els.hubModal.hidden && this.ui.activeTab === 'contracts') {
+          this.ui.renderHub();
+        }
       }
-      if (!this.ui.els.hubModal.hidden && this.ui.activeTab === 'contracts') {
-        this.ui.renderHub();
-      }
-    }
 
-    this.stockAccum += dt;
-    if (this.stockAccum >= 20) {
-      this.stockAccum = 0;
-      const movers = updateStockPrices();
-      updateCarbonMarket();
-      if (movers.length) {
-        this.ui.toast(`📊 Cổ phiếu biến động: ${movers[0]}`);
-      }
-      if (!this.ui.els.hubModal.hidden && this.ui.activeTab === 'finance') {
-        this.ui.renderHub();
+      this.stockAccum += dt;
+      if (this.stockAccum >= 20) {
+        this.stockAccum = 0;
+        const movers = updateStockPrices();
+        updateCarbonMarket();
+        if (movers.length) {
+          this.ui.toast(`📊 Cổ phiếu biến động: ${movers[0]}`);
+        }
+        if (!this.ui.els.hubModal.hidden && this.ui.activeTab === 'finance') {
+          this.ui.renderHub();
+        }
       }
     }
 
@@ -2736,6 +4709,8 @@ class TimberPortEngine {
     if (gameState.boostTimer > 0) gameState.boostTimer = Math.max(0, gameState.boostTimer - dt);
     if (gameState.boostCooldown > 0) gameState.boostCooldown = Math.max(0, gameState.boostCooldown - dt);
     if (this.fullBagToastTimer > 0) this.fullBagToastTimer = Math.max(0, this.fullBagToastTimer - dt);
+
+    if (this.world?.wildernessMode) return;
 
     const newEv = tickTimedEvents(dt);
     if (newEv) {
@@ -3174,10 +5149,63 @@ class TimberPortEngine {
       return;
     }
 
+    // Hero Excavator Manual Driving Mode (Wilderness Terrain Grading!)
+    if (this.world?.wildernessMode && this.camp?.infra?.drivingExcavator) {
+      const gradingHeld = Boolean(
+        this.keys.has('Space') || this._excavatorMouseGrade || this._mobileExcavatorGrade
+      );
+      const exPos = this.camp.infra.updateManualDrive(dt, ix, iy, this.camYaw, gradingHeld, {
+        onPadFlattened: (pad, xpRes) => {
+          sound.playInfraComplete();
+          const p = this._tmpVec.set(pad.x, groundHeightAt(pad.x, pad.z) + 1.8, pad.z);
+          this.world.spawnParticles(p, 0x4ade80, 12);
+          this.spawnWorldText(p, '🚜 San phẳng xong (+32 XP)!', 'cash');
+          this.ui.toast('🚜 Đã san phẳng một mặt bằng đồi mới! Bạn có thể xây Nhà hoặc Máy Cưa Tự Động lên đây.');
+          if (xpRes?.leveledUp) {
+            this.ui.triggerCelebration(`Lên Cấp ${xpRes.level}!`, 'Mở khóa cơ sở hạ tầng mới trong mục Hạ tầng!');
+          }
+          saveGameLocal();
+          this.ui.refreshHUD();
+        },
+        onGradeSfx: () => sound.playExcavatorGrade()
+      });
+      if (exPos) {
+        this.playerPos.set(exPos.x, exPos.y, exPos.z);
+        this.playerYaw = exPos.yaw;
+      }
+      this.playerMoving = Math.hypot(ix, iy) > 0.08;
+      this.sendNetPose(dt, this.playerMoving, false);
+      return;
+    }
+
+    const prevPlayerX = this.playerPos.x;
+    const prevPlayerZ = this.playerPos.z;
+    const prevYaw = this.playerYaw;
+    const prevSpeed = this.currentMoveSpeed;
     const len = Math.hypot(ix, iy);
     const moving = len > 0.08;
     this.playerMoving = moving;
     let speedMult = 1;
+    let slopePitch = 0;
+    let inWater = false;
+
+    const carryCount = Math.max(0, Math.floor(gameState.logs || 0));
+    const pullingCart = Boolean(this.camp?.cartAttached && this.camp?.handcart);
+    const cartCap = this.camp ? this.camp.getHandcartCapacity() : 10;
+    const cartLoad = pullingCart ? (this.camp.handcart.logs / Math.max(1, cartCap)) : 0;
+    const loadWeight = Math.min(1, (carryCount / 3) + (pullingCart ? (0.18 + cartLoad * 0.55) : 0));
+
+    if (this.chopHitStopTimer > 0) {
+      this.chopHitStopTimer = Math.max(0, this.chopHitStopTimer - dt);
+    }
+    if (this._treeBrushCooldown > 0) {
+      this._treeBrushCooldown = Math.max(0, this._treeBrushCooldown - dt);
+    }
+
+    const shiftHeld = this.keys.has('ShiftLeft') || this.keys.has('ShiftRight');
+    const altSlowWalk = this.keys.has('AltLeft') || this.keys.has('AltRight');
+    const wantsFastPace = !this.inVehicle && !altSlowWalk && (shiftHeld || this.sprintToggle);
+    let activeSprint = false;
 
     if (moving) {
       ix /= Math.max(1, len);
@@ -3189,46 +5217,230 @@ class TimberPortEngine {
         .addScaledVector(this._vecForward, -iy)
         .addScaledVector(this._vecRight, ix)
         .normalize();
+      this._lastMoveDir.copy(this._moveDir);
 
       const skin = getSkinData();
-      let speed = 8.4 * (1 + ((gameState.bootsTier || 1) - 1) * 0.18 + (skin.speedBonus || 0));
-      if (gameState.equippedPet === 'shiba') speed *= 1.12;
-      if (gameState.vipLevel >= 2) speed *= 1.15;
-      if (gameState.boostTimer > 0) speed *= 1.35;
-      speedMult = speed / 8.4;
+      const gearMult = 1 + ((gameState.bootsTier || 1) - 1) * 0.16 + (skin.speedBonus || 0);
+      // Human-calibrated 4-Pace Speed Targets:
+      // Default WASD -> natural slow human Walk (~2.2 m/s); Alt -> Stroll (~1.45 m/s)
+      // Holding Shift / Run toggle -> smooth Jog (3.85) -> Run (5.85) -> Sprint (7.85)
+      const slowWalkSpeed = 1.45;
+      const baseWalkSpeed = this.world?.wildernessMode ? 2.20 : 2.45;
+      const baseJogSpeed = this.world?.wildernessMode ? 3.85 : 4.25;
+      const baseRunSpeed = this.world?.wildernessMode ? 5.85 : 6.35;
+      const baseSprintSpeed = this.world?.wildernessMode ? 7.85 : 8.45;
+
+      if (this.world?.wildernessMode && !this.inVehicle) {
+        const onBridge = Boolean(this.camp?.isOnBuiltBridge(this.playerPos.x, this.playerPos.z));
+        slopePitch = onBridge
+          ? 0
+          : groundSlopeAt(this.playerPos.x, this.playerPos.z, this._moveDir.x, this._moveDir.z);
+        const streamInfo = getStreamInfo(this.playerPos.x, this.playerPos.z);
+        inWater = !onBridge && streamInfo.inStream;
+      }
+
+      // Cannot Run/Sprint while wading deep water, pulling handcart, or hauling 2+ heavy logs
+      activeSprint = wantsFastPace && !pullingCart && carryCount < 2 && !inWater;
+      if (activeSprint && this.currentMoveSpeed > 2.8) {
+        this.sprintRampTimer = Math.min(1.20, this.sprintRampTimer + dt);
+      } else {
+        this.sprintRampTimer = Math.max(0, this.sprintRampTimer - dt * 2.4);
+      }
+      // Smoothly escalate Jog -> Run (0..0.38s) -> full Sprint (0.38..1.18s) while holding Shift
+      let shiftSpeed = baseJogSpeed;
+      if (this.sprintRampTimer < 0.38) {
+        shiftSpeed = THREE.MathUtils.lerp(baseJogSpeed, baseRunSpeed, this.sprintRampTimer / 0.38);
+      } else {
+        const sprintSurge = Math.max(0, Math.min(1, (this.sprintRampTimer - 0.38) / 0.80));
+        shiftSpeed = THREE.MathUtils.lerp(baseRunSpeed, baseSprintSpeed, sprintSurge);
+      }
+      let baseTarget = altSlowWalk
+        ? slowWalkSpeed
+        : activeSprint
+          ? shiftSpeed
+          : baseWalkSpeed;
+
+      const skillBonuses = (this.world?.wildernessMode && this.camp?.getSkillBonuses)
+        ? this.camp.getSkillBonuses()
+        : null;
+      let targetSpeed = baseTarget * gearMult * (skillBonuses?.moveSpeedMult || 1.0);
+      if (gameState.equippedPet === 'shiba') targetSpeed *= 1.1;
+      if (gameState.vipLevel >= 2) targetSpeed *= 1.12;
+      if (gameState.boostTimer > 0) targetSpeed *= 1.32;
+
+      // Realistic physical slowdown based on carried shoulder load & pulled handcart weight
+      if (!this.inVehicle && (carryCount > 0 || pullingCart)) {
+        const penaltyScale = 0.36 * (1 - (skillBonuses?.carrySlowdownRelief || 0));
+        targetSpeed *= (1 - loadWeight * penaltyScale);
+        if (pullingCart && this.camp) {
+          targetSpeed *= this.camp.getHandcartSpeedMult();
+        }
+      }
+
+      if (this.world?.wildernessMode && !this.inVehicle) {
+        if (slopePitch > 0.06) {
+          targetSpeed *= Math.max(0.72, 1 - slopePitch * 0.42);
+        }
+        if (inWater) {
+          targetSpeed *= (skillBonuses?.waterSpeedMult || 0.68);
+          this.wadeSplashTimer += dt;
+          if (this.wadeSplashTimer >= 0.24) {
+            this.wadeSplashTimer = 0;
+            this.world.spawnParticles(this.playerPos, 0xcffafe, 2);
+          }
+        }
+      }
 
       if (this.inVehicle) {
         const veh = VEHICLES.find((v) => v.id === (gameState.equippedVehicle || 'forklift')) || VEHICLES[0];
-        speed = veh.speed * (gameState.boostTimer > 0 ? 1.25 : 1.0);
+        targetSpeed = veh.speed * (gameState.boostTimer > 0 ? 1.25 : 1.0);
       }
+
+      // Smooth human acceleration inertia (visibly transitions Idle -> Walk -> Jog -> Run -> Sprint)
+      const accelRate = activeSprint ? 6.2 : 7.8;
+      this.currentMoveSpeed += (targetSpeed - this.currentMoveSpeed) * Math.min(1, dt * accelRate);
+      const speed = this.currentMoveSpeed;
+      speedMult = speed / (activeSprint ? 6.8 : 2.2);
 
       this.playerPos.addScaledVector(this._moveDir, speed * dt);
-      this.playerPos.x = THREE.MathUtils.clamp(this.playerPos.x, WORLD_BOUNDS.minX, WORLD_BOUNDS.maxX);
-      this.playerPos.z = THREE.MathUtils.clamp(this.playerPos.z, WORLD_BOUNDS.minZ, WORLD_BOUNDS.maxZ);
 
-      // Walkable across all 3 coastal wooden fishing piers (West -58, Center 5, East 52)
-      const onWestPier = this.playerPos.z > 23.5 && this.playerPos.z <= 36.2 && Math.abs(this.playerPos.x + 58) < 4.0;
-      const onCenterPier = this.playerPos.z > 23.5 && this.playerPos.z <= 36.2 && Math.abs(this.playerPos.x - 5) < 5.6;
-      const onEastPier = this.playerPos.z > 23.5 && this.playerPos.z <= 36.2 && Math.abs(this.playerPos.x - 52) < 4.0;
-      const onPier = onWestPier || onCenterPier || onEastPier;
-      if (!onPier && this.playerPos.z > LAND_EDGE_Z) {
-        this.playerPos.z = LAND_EDGE_Z;
+      if (this.world?.wildernessMode) {
+        const distFromCenter = Math.hypot(this.playerPos.x, this.playerPos.z);
+        if (distFromCenter > WILDERNESS_RADIUS) {
+          const clampScale = WILDERNESS_RADIUS / distFromCenter;
+          this.playerPos.x *= clampScale;
+          this.playerPos.z *= clampScale;
+        }
+        const onBridgeNow = Boolean(this.camp?.isOnBuiltBridge(this.playerPos.x, this.playerPos.z));
+        this.playerPos.y = this.camp
+          ? this.camp.getWalkableHeightAt(this.playerPos.x, this.playerPos.z)
+          : groundHeightAt(this.playerPos.x, this.playerPos.z);
+        inWater = !onBridgeNow && getStreamInfo(this.playerPos.x, this.playerPos.z).inStream;
+      } else {
+        this.playerPos.x = THREE.MathUtils.clamp(this.playerPos.x, WORLD_BOUNDS.minX, WORLD_BOUNDS.maxX);
+        this.playerPos.z = THREE.MathUtils.clamp(this.playerPos.z, WORLD_BOUNDS.minZ, WORLD_BOUNDS.maxZ);
+
+        // Walkable across all 3 coastal wooden fishing piers (West -58, Center 5, East 52)
+        const onWestPier = this.playerPos.z > 23.5 && this.playerPos.z <= 36.2 && Math.abs(this.playerPos.x + 58) < 4.0;
+        const onCenterPier = this.playerPos.z > 23.5 && this.playerPos.z <= 36.2 && Math.abs(this.playerPos.x - 5) < 5.6;
+        const onEastPier = this.playerPos.z > 23.5 && this.playerPos.z <= 36.2 && Math.abs(this.playerPos.x - 52) < 4.0;
+        const onPier = !this.infrastructureCleared && (onWestPier || onCenterPier || onEastPier);
+        if (!onPier && this.playerPos.z > LAND_EDGE_Z) {
+          this.playerPos.z = LAND_EDGE_Z;
+        }
+        this.playerPos.y = onPier ? 0.62 : 0;
       }
-      this.playerPos.y = onPier ? 0.62 : 0;
 
       const targetYaw = Math.atan2(this._moveDir.x, this._moveDir.z);
       let diff = targetYaw - this.playerYaw;
       while (diff > Math.PI) diff -= Math.PI * 2;
       while (diff < -Math.PI) diff += Math.PI * 2;
-      this.playerYaw += diff * Math.min(1, dt * 12);
+      const turnSpeed = (carryCount > 0 || pullingCart) ? 8.2 : activeSprint ? 10.5 : 12.2;
+      this.playerYaw += diff * Math.min(1, dt * turnSpeed);
 
-      this.walkPhase += dt * (this.inVehicle ? 6 : 11 * Math.max(0.85, Math.min(1.45, speedMult)));
-    } else if (!this.inVehicle && this.chopSwing > 0 && this.chopTargetYaw !== null) {
-      let diff = this.chopTargetYaw - this.playerYaw;
-      while (diff > Math.PI) diff -= Math.PI * 2;
-      while (diff < -Math.PI) diff += Math.PI * 2;
-      this.playerYaw += diff * Math.min(1, dt * 14);
+      // Grounded walk cadence vs athletic sprint cadence
+      const baseFreq = activeSprint ? 12.6 : 8.2;
+      const strideFreq = this.inVehicle
+        ? 6
+        : (baseFreq - loadWeight * 1.9) * Math.max(0.75, Math.min(1.32, speedMult));
+      this.walkPhase += dt * strideFreq;
+
+      // Sprinting close past trees shakes canopy & sheds a few drifting leaves
+      if (!this.inVehicle && this.world?.wildernessMode && speed > 5.6 && this._treeBrushCooldown <= 0 && this.world.trees) {
+        const trees = this.world.trees;
+        for (let i = 0; i < trees.length; i++) {
+          const t = trees[i];
+          if (!t.alive || (t.state && t.state !== 'standing')) continue;
+          const dx = t.pos.x - this.playerPos.x;
+          const dz = t.pos.z - this.playerPos.z;
+          if (dx * dx + dz * dz < 5.5) {
+            t.wobble = Math.max(t.wobble || 0, 0.34);
+            this.world.spawnCanopyLeafBurst?.(t.pos.x, t.pos.y + 4.8, t.pos.z, 4);
+            this._treeBrushCooldown = 0.55;
+            break;
+          }
+        }
+      }
+
+      // When walking while placing a structure/grading zone (keyboard / mobile), keep ghost preview smoothly ahead of player
+      if (this.world?.wildernessMode && this.isAnyWildernessPlacementActive() && !this._usingMousePlacement) {
+        const aheadDist = this.camp?.infra?.isPlacing() ? 8.0 : 5.6;
+        const aheadX = this.playerPos.x + Math.sin(this.playerYaw) * aheadDist;
+        const aheadZ = this.playerPos.z + Math.cos(this.playerYaw) * aheadDist;
+        if (this.camp?.infra?.isPlacing()) {
+          this.camp.infra.updatePlacementPreview(aheadX, aheadZ);
+        } else {
+          this.camp.updatePlacementPreview(aheadX, aheadZ);
+        }
+      }
+    } else {
+      // Natural 1-step braking momentum deceleration instead of freezing on a dime
+      this.sprintRampTimer = Math.max(0, this.sprintRampTimer - dt * 3.5);
+      const brakeDecay = this.inVehicle ? 9.5 : 10.8;
+      this.currentMoveSpeed += (0 - this.currentMoveSpeed) * Math.min(1, dt * brakeDecay);
+      if (this.currentMoveSpeed < 0.08) this.currentMoveSpeed = 0;
+
+      if (this.currentMoveSpeed > 0.22) {
+        this.playerPos.addScaledVector(this._lastMoveDir, this.currentMoveSpeed * dt);
+        if (this.world?.wildernessMode) {
+          const distFromCenter = Math.hypot(this.playerPos.x, this.playerPos.z);
+          if (distFromCenter > WILDERNESS_RADIUS) {
+            const clampScale = WILDERNESS_RADIUS / distFromCenter;
+            this.playerPos.x *= clampScale;
+            this.playerPos.z *= clampScale;
+          }
+        } else {
+          this.playerPos.x = THREE.MathUtils.clamp(this.playerPos.x, WORLD_BOUNDS.minX, WORLD_BOUNDS.maxX);
+          this.playerPos.z = THREE.MathUtils.clamp(this.playerPos.z, WORLD_BOUNDS.minZ, WORLD_BOUNDS.maxZ);
+          const onWestPier = this.playerPos.z > 23.5 && this.playerPos.z <= 36.2 && Math.abs(this.playerPos.x + 58) < 4.0;
+          const onCenterPier = this.playerPos.z > 23.5 && this.playerPos.z <= 36.2 && Math.abs(this.playerPos.x - 5) < 5.6;
+          const onEastPier = this.playerPos.z > 23.5 && this.playerPos.z <= 36.2 && Math.abs(this.playerPos.x - 52) < 4.0;
+          const onPier = !this.infrastructureCleared && (onWestPier || onCenterPier || onEastPier);
+          if (!onPier && this.playerPos.z > LAND_EDGE_Z) {
+            this.playerPos.z = LAND_EDGE_Z;
+          }
+          this.playerPos.y = onPier ? 0.62 : 0;
+        }
+      }
+
+      if (this.world?.wildernessMode) {
+        const onBridgeNow = Boolean(this.camp?.isOnBuiltBridge(this.playerPos.x, this.playerPos.z));
+        this.playerPos.y = this.camp
+          ? this.camp.getWalkableHeightAt(this.playerPos.x, this.playerPos.z)
+          : groundHeightAt(this.playerPos.x, this.playerPos.z);
+        inWater = !onBridgeNow && getStreamInfo(this.playerPos.x, this.playerPos.z).inStream;
+        if (!onBridgeNow && this.currentMoveSpeed > 0.22) {
+          slopePitch = groundSlopeAt(this.playerPos.x, this.playerPos.z, this._lastMoveDir.x, this._lastMoveDir.z);
+        }
+      }
+      if (!this.inVehicle && this.chopSwing > 0 && this.chopTargetYaw !== null) {
+        let diff = this.chopTargetYaw - this.playerYaw;
+        while (diff > Math.PI) diff -= Math.PI * 2;
+        while (diff < -Math.PI) diff += Math.PI * 2;
+        this.playerYaw += diff * Math.min(1, dt * 14);
+      }
     }
+
+    // Filtered yaw angular velocity, forward acceleration & braking factor for Locomotion 2.0
+    let deltaYaw = this.playerYaw - prevYaw;
+    while (deltaYaw > Math.PI) deltaYaw -= Math.PI * 2;
+    while (deltaYaw < -Math.PI) deltaYaw += Math.PI * 2;
+    const rawYawRate = deltaYaw / Math.max(0.008, dt);
+    this.playerYawRate += (rawYawRate - this.playerYawRate) * Math.min(1, dt * 11.0);
+
+    const rawAccel = (this.currentMoveSpeed - prevSpeed) / Math.max(0.008, dt);
+    this.playerAccelForward += (rawAccel - this.playerAccelForward) * Math.min(1, dt * 9.5);
+    this._prevMoveSpeed = this.currentMoveSpeed;
+
+    const targetBraking = (!moving && this.currentMoveSpeed > 0.35)
+      ? Math.min(1, this.currentMoveSpeed / 5.2)
+      : 0;
+    this.playerBraking += (targetBraking - this.playerBraking) * Math.min(1, dt * 12.0);
+
+    const distMoved = Math.hypot(this.playerPos.x - prevPlayerX, this.playerPos.z - prevPlayerZ);
+    this.isSprinting = activeSprint;
+    const targetRunBlend = (moving && activeSprint) ? 1 : 0;
+    this.runBlend += (targetRunBlend - this.runBlend) * Math.min(1, dt * 7.5);
 
     if (this.inVehicle && this.parkedVehicle) {
       this.vehiclePos.copy(this.playerPos);
@@ -3242,7 +5454,13 @@ class TimberPortEngine {
         if (this.playerJumpY <= 0) {
           this.playerJumpY = 0;
           this.playerJumpVel = 0;
-          this.world.spawnParticles(this.playerPos, 0xd6c7a9, 3);
+          this.world.spawnParticles(this.playerPos, inWater ? 0xcffafe : 0xd6c7a9, 3);
+          if (inWater) {
+            this.world.spawnWaterRipple?.(this.playerPos.x, this.playerPos.z, 1.15);
+            sound.playFootstep('water', 1.15);
+          } else {
+            sound.playFootstep(this.world?.wildernessMode ? 'grass' : 'earth', 1.0);
+          }
         }
       }
       if (this.playerActionTimer > 0) {
@@ -3252,19 +5470,42 @@ class TimberPortEngine {
 
       this.playerModel.position.set(this.playerPos.x, this.playerPos.y + this.playerJumpY, this.playerPos.z);
       this.playerModel.rotation.y = this.playerYaw;
-      if (this.chopSwing > 0) {
-        const chopDecay = gameState.boostTimer > 0 ? 4.4 : 3.0;
+      if (this._actionHitStopTimer > 0) {
+        this._actionHitStopTimer = Math.max(0, this._actionHitStopTimer - dt);
+      }
+      if (this.chopSwing > 0 && this._actionHitStopTimer <= 0) {
+        const chopDecay = gameState.boostTimer > 0 ? 3.2 : 1.75;
         this.chopSwing = Math.max(0, this.chopSwing - dt * chopDecay);
-        if (this.chopSwing <= 0) this.chopTargetYaw = null;
+        if (this.chopSwing <= 0) {
+          this.chopTargetYaw = null;
+          this.isBuckingChop = false;
+          this._isCritSwing = false;
+        }
       }
       const cap = Math.max(1, getBackpackCapacity());
-      this._playerAnimOpts.carryRatio = Math.min(1, (gameState.logs || 0) / cap);
+      this._playerAnimOpts.carryRatio = Math.min(1, carryCount / cap);
+      this._playerAnimOpts.carryCount = carryCount;
+      this._playerAnimOpts.loadWeight = loadWeight;
       this._playerAnimOpts.speedMult = speedMult;
+      this._playerAnimOpts.speed = this.currentMoveSpeed;
+      this._playerAnimOpts.yawRate = this.playerYawRate;
+      this._playerAnimOpts.accelForward = this.playerAccelForward;
+      this._playerAnimOpts.braking = this.playerBraking;
+      this._playerAnimOpts.distMoved = distMoved;
+      this._playerAnimOpts.runBlend = this.runBlend;
+      this._playerAnimOpts.isBucking = this.isBuckingChop;
+      this._playerAnimOpts.slopePitch = slopePitch;
+      this._playerAnimOpts.inWater = inWater;
+      this._playerAnimOpts.chopHitStop = this.chopHitStopTimer;
       this._playerAnimOpts.action = this.playerAction;
       this._playerAnimOpts.actionT = this.playerAction && this.playerActionDuration > 0
         ? 1 - (this.playerActionTimer / this.playerActionDuration)
         : 0;
       this._playerAnimOpts.jumpY = this.playerJumpY;
+      this._playerAnimOpts.pullingCart = pullingCart;
+      this._playerAnimOpts.rootYaw = this.playerYaw;
+      this._playerAnimOpts.getGroundHeight = this._getWalkableGroundY;
+      this._playerAnimOpts.onFootstep = this._onPlayerFootstep;
       updatePlayerModelAnimation(
         this.playerModel,
         dt,
@@ -3276,7 +5517,49 @@ class TimberPortEngine {
       );
     }
 
-    this.sendNetPose(dt, moving, this.chopSwing > 0);
+    this.sendNetPose(dt, moving || this.currentMoveSpeed > 0.25, this.chopSwing > 0);
+  }
+
+  handlePlayerFootstep(side, intensity = 0.65) {
+    if (this.inVehicle || this.playerJumpY > 0.08) return;
+    // Matches narrow straight human walking track (~10cm from centerline; +X is anatomical left)
+    const sideSign = side === 'left' ? 0.10 : -0.10;
+    const fx = this.playerPos.x + Math.cos(this.playerYaw) * sideSign;
+    const fz = this.playerPos.z - Math.sin(this.playerYaw) * sideSign;
+
+    let surface = 'earth';
+    if (this.world?.wildernessMode) {
+      const onBridge = Boolean(this.camp?.isOnBuiltBridge(fx, fz));
+      const inStream = !onBridge && getStreamInfo(fx, fz).inStream;
+      if (onBridge) surface = 'wood';
+      else if (inStream) surface = 'water';
+      else surface = getGradedFactorAt(fx, fz) > 0.35 ? 'earth' : 'grass';
+    } else {
+      surface = this.playerPos.y > 0.3 ? 'wood' : 'earth';
+    }
+
+    sound.playFootstep(surface, intensity);
+
+    if (surface === 'water') {
+      this.world.spawnWaterRipple?.(fx, fz, Math.min(1.25, 0.55 + intensity * 0.65));
+      this._footStepVec.set(fx, this.playerPos.y + 0.08, fz);
+      this.world.spawnParticles(this._footStepVec, 0xcffafe, intensity > 0.85 ? 3 : 2);
+    } else if (surface === 'earth' && intensity > 0.52) {
+      this._footStepVec.set(fx, this.playerPos.y + 0.06, fz);
+      this.world.spawnParticles(this._footStepVec, 0xb89668, intensity > 0.92 ? 2 : 1);
+    } else if (surface === 'grass' && intensity > 0.72) {
+      this._footStepVec.set(fx, this.playerPos.y + 0.06, fz);
+      this.world.spawnParticles(this._footStepVec, 0x94b86a, 1);
+    }
+
+    if (this.charVfx && (surface === 'earth' || surface === 'grass')) {
+      const fy = this._getWalkableGroundY ? this._getWalkableGroundY(fx, fz) : this.playerPos.y;
+      this.charVfx.spawnFootprint(fx, fy, fz, this.playerYaw, side, surface);
+    }
+
+    if (!this.prefersReducedMotion && this.controlMode === 'foot' && this.cameraMode === 'follow') {
+      this._camStepBob = Math.min(0.065, 0.02 + intensity * 0.032);
+    }
   }
 
   sendNetPose(dt, moving, isChopping) {
@@ -3767,77 +6050,185 @@ class TimberPortEngine {
 
     const cap = this.inVehicle
       ? (VEHICLES.find((v) => v.id === (gameState.equippedVehicle || 'forklift'))?.capacity || 14)
-      : getBackpackCapacity();
+      : this.world?.wildernessMode
+        ? this.getWildernessShoulderCap()
+        : getBackpackCapacity();
 
-    let chopRadius = 2.95;
+    let chopRadius = this.world?.wildernessMode ? 3.2 : 2.95;
     if (gameState.equippedPet === 'shiba') chopRadius *= 1.45;
     if (gameState.vipLevel >= 1) chopRadius *= 1.2;
     if (this.inVehicle && gameState.equippedVehicle === 'supercar') chopRadius = 4.6;
 
-    if (this.chopCooldown <= 0) {
-      let nearest = null;
-      let bestDist = chopRadius;
+    this.critStrikeCooldown = Math.max(0, (this.critStrikeCooldown || 0) - dt);
+    const blockedHands = Boolean(
+      this.world?.wildernessMode && (this.camp?.cartAttached || this.isAnyWildernessPlacementActive() || this.camp?.infra?.drivingExcavator)
+    );
+
+    let nearest = null;
+    let bestDist = chopRadius;
+    if (!blockedHands) {
       for (const tree of this.world.trees) {
-        if (!tree.alive) continue;
-        const d = this.playerPos.distanceTo(tree.pos);
+        if (!tree.alive || (tree.state && tree.state !== 'standing')) continue;
+        const d = Math.hypot(this.playerPos.x - tree.pos.x, this.playerPos.z - tree.pos.z);
         if (d < bestDist) {
           bestDist = d;
           nearest = tree;
         }
       }
+    }
+
+    const nearTrunk = (!nearest && !blockedHands && this.world?.wildernessMode && this.camp)
+      ? this.camp.findNearestFelledTrunk(this.playerPos, 3.15)
+      : null;
+
+    if (this.world?.wildernessMode) {
+      this.critTargetTree = nearest;
+      this.critTargetTrunk = nearTrunk;
+      if (nearest || nearTrunk) {
+        this.critActive = true;
+        this.critPhase = (this.critPhase + dt * 1.12) % 1;
+      } else {
+        this.critActive = false;
+        this.critPhase = 0;
+      }
+    }
+
+    if (this.chopCooldown <= 0) {
+      // Cannot swing axe while hands are pulling the log handcart or placing a structure
+      if (blockedHands) {
+        return;
+      }
 
       if (nearest) {
-        if (gameState.logs >= cap) {
+        if (!this.world?.wildernessMode && gameState.logs >= cap) {
           if (this.fullBagToastTimer <= 0) {
             this.fullBagToastTimer = 3.0;
             this.spawnWorldText(this.playerPos, 'Đầy Balo! Về Phễu Xưởng', 'log');
           }
         } else {
           const forestMgr = 1 + getManagerBonus('forestSpeed');
-          this.chopCooldown = (gameState.boostTimer > 0 ? 0.2 : 0.38) / forestMgr;
+          const axeStats = (this.world?.wildernessMode && this.camp) ? this.camp.getAxeStats() : null;
+          const comboBonuses = (this.world?.wildernessMode && this.timberCombo)
+            ? this.timberCombo.registerHit(false)
+            : { cooldownMult: 1, count: 0, extraLogChance: 0 };
+          if (this.world?.wildernessMode && comboBonuses.count >= 2) {
+            this.recordWildernessContract('combo_peak', comboBonuses.count);
+          }
+          const baseCooldown = axeStats ? axeStats.cooldown : (this.world?.wildernessMode ? 0.60 : 0.38);
+          this.chopCooldown = ((gameState.boostTimer > 0 ? baseCooldown * 0.55 : baseCooldown) * comboBonuses.cooldownMult) / forestMgr;
           this.chopSwing = 1.0;
+          this._isCritSwing = false;
+          this.isBuckingChop = false;
+          this.chopHitStopTimer = 0.085;
+          this._actionHitStopTimer = 0.028;
           this.chopTargetYaw = Math.atan2(nearest.pos.x - this.playerPos.x, nearest.pos.z - this.playerPos.z);
 
-          const dmg = gameState.boostTimer > 0 ? 2 : Math.max(1, Math.ceil((gameState.axeTier || 1) * 0.75));
+          const dmg = axeStats
+            ? axeStats.dmg
+            : (gameState.boostTimer > 0 ? 2 : Math.max(1, Math.ceil((gameState.axeTier || 1) * 0.75)));
           nearest.hp -= dmg;
           nearest.wobble = 1.0;
-          this.world.spawnParticles(nearest.pos, 0xd97706, 4);
+          this._tmpVec.set(nearest.pos.x, nearest.pos.y + 1.15, nearest.pos.z);
+          this.world.spawnParticles(this._tmpVec, nearest.isAncient ? 0xfbbf24 : 0xd97706, 4);
+          this.charVfx?.spawnChopImpact(
+            this._tmpVec,
+            Math.sin(this.chopTargetYaw),
+            Math.cos(this.chopTargetYaw),
+            false,
+            Boolean(nearest.isAncient)
+          );
+          this.triggerChopImpulse(0.09, Math.sin(this.chopTargetYaw), Math.cos(this.chopTargetYaw), false);
+          this.world.spawnCanopyLeafBurst?.(nearest.pos.x, nearest.pos.y + 5.0, nearest.pos.z, 6);
           sound.playChop(0.95 + Math.random() * 0.15);
 
           if (nearest.hp <= 0) {
             nearest.alive = false;
-            nearest.regrowTimer = 7.5;
-            nearest.mesh.scale.setScalar(0.08);
-            sound.playTreeFall();
-            this.triggerScreenShake(0.14);
+            if (this.world?.wildernessMode) {
+              nearest.state = 'falling';
+              const rawFallYaw = Math.atan2(nearest.pos.x - this.playerPos.x, nearest.pos.z - this.playerPos.z);
+              nearest.fallYaw = this.chooseSafeFallYaw(nearest.pos, rawFallYaw);
+              nearest.fallAngle = 0;
+              nearest.fallVel = 0.38;
+              nearest.landed = false;
+              nearest.fallenHoldTimer = 0.42;
+              sound.playTreeFall();
+              this.triggerChopImpulse(0.28, Math.sin(rawFallYaw), Math.cos(rawFallYaw), false);
+              const sb = this.camp.getSkillBonuses?.() || {};
+              const ancientMult = nearest.isAncient ? (sb.ancientRewardMult || 1) : 1;
+              this.awardWildernessXp(Math.round((nearest.isAncient ? 26 : 12) * ancientMult));
+              if (nearest.isAncient && ancientMult > 1) {
+                const bonusCash = Math.round(40 * (ancientMult - 1));
+                if (bonusCash > 0) {
+                  gameState.cash = (gameState.cash || 0) + bonusCash;
+                  this.spawnWorldText(nearest.pos, `🌲 Cổ Thụ +$${bonusCash}!`, 'cash');
+                }
+              }
+              this.recordWildernessContract('fell_trees', 1);
+              const totalExtraChance = Math.min(0.85, (comboBonuses.extraLogChance || 0) + (sb.extraLogChanceBonus || 0));
+              if (totalExtraChance > 0 && Math.random() < totalExtraChance) {
+                this.camp.spawnGroundLog?.(nearest.pos.x + 0.55, nearest.pos.z + 0.45);
+                this.spawnWorldText(nearest.pos, '🪵 +1 Khúc gỗ thưởng!', 'cash');
+              }
+            } else {
+              nearest.regrowTimer = 7.5;
+              nearest.mesh.scale.setScalar(0.08);
+              sound.playTreeFall();
+              this.triggerScreenShake(0.14);
 
-            const gained = Math.min(cap - gameState.logs, nearest.logYield);
-            gameState.logs += gained;
-            gameState.totalLogsCut += gained;
-            shiftSession.logsCut += gained;
-            advanceDailyQuest('logsCut', gained);
-            gameState.xp += gained * 4;
-            if (gameState.xp >= gameState.level * 120) gameState.level++;
-            syncPlayerBackLogs(this.playerModel, gameState.logs);
+              const gained = Math.min(cap - gameState.logs, nearest.logYield);
+              gameState.logs += gained;
+              gameState.totalLogsCut += gained;
+              shiftSession.logsCut += gained;
+              advanceDailyQuest('logsCut', gained);
+              gameState.xp += gained * 4;
+              if (gameState.xp >= gameState.level * 120) gameState.level++;
+              syncPlayerBackLogs(this.playerModel, gameState.logs);
 
-            this._arcStart.copy(nearest.pos).setY(1.4);
-            this._arcEnd.copy(this.playerPos).setY(this.playerPos.y + 1.2);
-            this.world.spawnFlyingArc(this._arcStart, this._arcEnd, nearest.kind);
-            this.spawnWorldText(nearest.pos, `+${gained} 🪵`, 'log');
+              this._arcStart.set(nearest.pos.x, nearest.pos.y + 1.4, nearest.pos.z);
+              this._arcEnd.set(this.playerPos.x, this.playerPos.y + 1.35, this.playerPos.z);
+              this.world.spawnFlyingArc(this._arcStart, this._arcEnd, nearest.kind);
+              this.spawnWorldText(nearest.pos, `+${gained} 🪵`, 'log');
 
-            const gemChance = gameState.equippedPet === 'cyber_cat' ? 0.42 : 0.14;
-            if (Math.random() < gemChance) {
-              const gAmt = nearest.kind === 'redwood' ? 2 : 1;
-              gameState.gems += gAmt;
-              this._tmpVec.copy(nearest.pos).setY(0.8);
-              this.spawnWorldText(this._tmpVec, `+${gAmt} 💎`, 'gem');
+              const gemChance = gameState.equippedPet === 'cyber_cat' ? 0.42 : 0.14;
+              if (Math.random() < gemChance) {
+                const gAmt = nearest.kind === 'redwood' ? 2 : 1;
+                gameState.gems += gAmt;
+                this._tmpVec.set(nearest.pos.x, nearest.pos.y + 0.9, nearest.pos.z);
+                this.spawnWorldText(this._tmpVec, `+${gAmt} 💎`, 'gem');
+              }
             }
           }
+        }
+      } else if (nearTrunk) {
+        // Buck felled trunks lying on the ground into pickable loose GroundLogs
+        const cutPos = this.camp.getTrunkActiveCutPos(nearTrunk, this._tmpVec);
+        const axeStats = this.camp.getAxeStats();
+        const comboBonuses = this.timberCombo ? this.timberCombo.registerHit(false) : { cooldownMult: 1, count: 0 };
+        if (comboBonuses.count >= 2) this.recordWildernessContract('combo_peak', comboBonuses.count);
+        this.chopCooldown = Math.max(0.34, axeStats.cooldown * 0.92 * comboBonuses.cooldownMult);
+        this.chopSwing = 1.0;
+        this._isCritSwing = false;
+        this.isBuckingChop = true;
+        this.chopHitStopTimer = 0.075;
+        this._actionHitStopTimer = 0.025;
+        this.chopTargetYaw = Math.atan2(cutPos.x - this.playerPos.x, cutPos.z - this.playerPos.z);
+        this.charVfx?.spawnChopImpact(cutPos, Math.sin(this.chopTargetYaw), Math.cos(this.chopTargetYaw), false, false);
+        this.triggerChopImpulse(0.085, Math.sin(this.chopTargetYaw), Math.cos(this.chopTargetYaw), false);
+        sound.playChop(1.06 + Math.random() * 0.12);
+
+        const buckPower = axeStats.dmg >= 3 ? 2 : 1;
+        const res = this.camp.buckTrunkHit(nearTrunk, buckPower);
+        if (res?.cutCompleted) {
+          gameState.totalLogsCut = (gameState.totalLogsCut || 0) + 1;
+          gameState.xp = (gameState.xp || 0) + 5;
+          if (gameState.xp >= gameState.level * 120) gameState.level++;
+          this.recordWildernessContract('buck_logs', 1);
+          this.spawnWorldText(res.cutPos, '+1 Khúc gỗ rời', 'log');
         }
       }
     }
 
-    if (gameState.logs > 0 && this.unloadTimer <= 0 && this.playerPos.distanceTo(ZONES.hopper) < 3.8) {
+    if (!this.infrastructureCleared && this.world?.sawmill && gameState.logs > 0 && this.unloadTimer <= 0 && this.playerPos.distanceTo(ZONES.hopper) < 3.8) {
       this.unloadTimer = 0.12;
       gameState.logs -= 1;
       gameState.sawmillBuffer += 1;
@@ -3850,6 +6241,7 @@ class TimberPortEngine {
   }
 
   updateSawmillAndCannery(dt) {
+    if (this.infrastructureCleared) return;
     if (gameState.sawmillBuffer > 0) {
       this.sawTimer += dt;
       const sawInterval = Math.max(0.28, 1.25 / (1 + ((gameState.sawSpeedTier || 1) - 1) * 0.35));
@@ -4999,114 +7391,177 @@ class TimberPortEngine {
 
     if (!(this.scene.background instanceof THREE.Color) || !this.scene.fog) return;
 
-    // Sun & Moon orbital trajectory across the sky
+    // Sun & Moon orbital trajectory across the sky, anchored around playerPos for crisp local shadows everywhere
     const sunAngle = ((hr - 6.0) / 24.0) * Math.PI * 2;
     const sunElev = Math.sin(sunAngle);
-    this.sunLight.position.set(
-      Math.cos(sunAngle) * 38,
-      Math.max(10, Math.abs(sunElev) * 44 + 8),
-      18 + Math.sin(sunAngle * 0.5) * 12
-    );
+    const anchorX = this.playerPos ? Math.round(this.playerPos.x * 2) * 0.5 : 0;
+    const anchorZ = this.playerPos ? Math.round(this.playerPos.z * 2) * 0.5 : 0;
+    const sunOffX = Math.cos(sunAngle) * 42;
+    const sunOffY = Math.max(14, Math.abs(sunElev) * 48 + 12);
+    const sunOffZ = 20 + Math.sin(sunAngle * 0.5) * 14;
+    this.sunLight.target.position.set(anchorX, 0, anchorZ);
+    this.sunLight.position.set(anchorX + sunOffX, sunOffY, anchorZ + sunOffZ);
+    if (this.world?.skyUniforms?.uTime) {
+      this.world.skyUniforms.uTime.value = this.elapsed;
+    }
 
     if (isStorm) {
-      this.scene.background.lerpColors(this._daySkyBase, this._stormSkyColor, 0.78);
-      this.scene.fog.color.lerpColors(this._dayFogBase, this._stormFogColor, 0.8);
-      this.sunLight.intensity = 1.3;
-      this.hemiLight.intensity = 0.65;
+      this.scene.background.lerpColors(this._daySkyBase, this._stormSkyColor, 0.72);
+      this.scene.fog.color.lerpColors(this._dayFogBase, this._stormFogColor, 0.75);
+      this.sunLight.color.setHex(0xdbeafe);
+      this.sunLight.intensity = 1.65;
+      this.hemiLight.intensity = 0.88;
+      this.scene.environmentIntensity = 0.65;
     } else if (hr >= 5.0 && hr < 7.8) {
       // Dawn / Binh Minh
       const t = 1 - Math.abs(hr - 6.4) / 1.4;
-      this.scene.background.lerpColors(this._daySkyBase, this._dawnSkyColor, THREE.MathUtils.clamp(t, 0, 1) * 0.7);
-      this.scene.fog.color.lerpColors(this._dayFogBase, this._dawnFogColor, THREE.MathUtils.clamp(t, 0, 1) * 0.65);
-      this.sunLight.intensity = 1.6 + (1 - nightFactor) * 0.55;
-      this.hemiLight.intensity = 0.75;
+      this.scene.background.lerpColors(this._daySkyBase, this._dawnSkyColor, THREE.MathUtils.clamp(t, 0, 1) * 0.62);
+      this.scene.fog.color.lerpColors(this._dayFogBase, this._dawnFogColor, THREE.MathUtils.clamp(t, 0, 1) * 0.58);
+      this.sunLight.color.setHex(0xffe0b2);
+      this.sunLight.intensity = 2.0 + (1 - nightFactor) * 0.62;
+      this.hemiLight.intensity = 0.96;
+      this.scene.environmentIntensity = 0.82;
     } else if (hr >= 16.5 && hr < 19.8) {
-      // Sunset / Hoang Hon
+      // Golden Sunset / Hoang Hon
       const t = 1 - Math.abs(hr - 18.15) / 1.65;
-      this.scene.background.lerpColors(this._daySkyBase, this._sunsetSkyColor, THREE.MathUtils.clamp(t, 0, 1) * 0.78);
-      this.scene.fog.color.lerpColors(this._dayFogBase, this._sunsetFogColor, THREE.MathUtils.clamp(t, 0, 1) * 0.72);
-      this.sunLight.intensity = 1.35 + (1 - nightFactor) * 0.7;
-      this.hemiLight.intensity = 0.7;
+      this.scene.background.lerpColors(this._daySkyBase, this._sunsetSkyColor, THREE.MathUtils.clamp(t, 0, 1) * 0.68);
+      this.scene.fog.color.lerpColors(this._dayFogBase, this._sunsetFogColor, THREE.MathUtils.clamp(t, 0, 1) * 0.62);
+      this.sunLight.color.setHex(0xffc985);
+      this.sunLight.intensity = 1.9 + (1 - nightFactor) * 0.72;
+      this.hemiLight.intensity = 0.92;
+      this.scene.environmentIntensity = 0.78;
     } else if (nightFactor > 0.15) {
-      // Starry Night / Dem Sao (keep crisp readability when PointLights are off in Max-FPS mode)
-      this.scene.background.lerpColors(this._daySkyBase, this._nightSkyColor, nightFactor * 0.92);
-      this.scene.fog.color.lerpColors(this._dayFogBase, this._nightFogColor, nightFactor * 0.9);
-      this.sunLight.intensity = THREE.MathUtils.lerp(2.1, 0.74, nightFactor);
-      this.hemiLight.intensity = THREE.MathUtils.lerp(0.95, 0.58, nightFactor);
+      // Moonlit Woodland Night (clear cool silver-blue moonlight for crisp readability)
+      this.scene.background.lerpColors(this._daySkyBase, this._nightSkyColor, nightFactor * 0.9);
+      this.scene.fog.color.lerpColors(this._dayFogBase, this._nightFogColor, nightFactor * 0.88);
+      this.sunLight.color.setHex(0xb8d4ff);
+      this.sunLight.intensity = THREE.MathUtils.lerp(2.45, 1.05, nightFactor);
+      this.hemiLight.intensity = THREE.MathUtils.lerp(1.12, 0.76, nightFactor);
+      this.scene.environmentIntensity = THREE.MathUtils.lerp(0.92, 0.52, nightFactor);
     } else {
-      // Bright Sunlit Coastal Day
+      // Luminous Crisp Sunlit Alpine Forest Day
       const goldenBlend = this.activeProfile === 'high'
-        ? (0.5 - 0.5 * Math.cos(this.elapsed * 0.045)) * 0.25
+        ? (0.5 - 0.5 * Math.cos(this.elapsed * 0.045)) * 0.18
         : 0;
       this.scene.background.lerpColors(this._daySkyBase, this._skyGoldenColor, goldenBlend);
       this.scene.fog.color.lerpColors(this._dayFogBase, this._fogGoldenColor, goldenBlend);
-      this.sunLight.intensity = this.activeProfile === 'low' ? 2.1 : 2.38 - goldenBlend * 0.2;
-      this.hemiLight.intensity = this.activeProfile === 'low' ? 1.08 : this.activeProfile === 'balanced' ? 0.94 : 0.84;
+      this.sunLight.color.setHex(0xfff6e2);
+      this.sunLight.intensity = this.activeProfile === 'low' ? 2.62 : 2.76 - goldenBlend * 0.16;
+      this.hemiLight.intensity = this.activeProfile === 'low' ? 1.18 : 1.14;
+      this.scene.environmentIntensity = 0.94;
     }
 
-    // Sync photorealistic ocean shader & atmospheric sky dome with live sun & weather
+    // Soft bright mist tint during gentle forest light rain (non-storm)
+    const lightRainBlend = (!isStorm && this.atmosphere) ? this.atmosphere.rainIntensity : 0;
+    if (lightRainBlend > 0.02) {
+      this.scene.background.lerp(this._lightRainSkyColor, lightRainBlend * 0.36);
+      this.scene.fog.color.lerp(this._lightRainFogColor, lightRainBlend * 0.42);
+      this.sunLight.intensity *= (1 - lightRainBlend * 0.16);
+      this.hemiLight.intensity = Math.max(this.hemiLight.intensity, 0.94);
+    }
+
+    // Sync stream/ocean shader & atmospheric sky dome with live sun direction & weather
+    this._tmpVec.set(sunOffX, sunOffY, sunOffZ);
     this.world?.updateOceanLighting(
-      this.sunLight.position,
+      this._tmpVec,
       this.sunLight.color,
       this.scene.background,
       this.scene.fog.color,
-      this.scene.fog.density || 0.0044,
+      this.scene.fog.density || 0.0029,
       nightFactor
     );
   }
 
   updateCamera(dt) {
     const isAir = this.controlMode === 'plane' || this.controlMode === 'heli';
+    const isExcavator = Boolean(this.world?.wildernessMode && this.camp?.infra?.drivingExcavator);
     const activeDist = isAir
       ? Math.max(this.camDist, 23.5)
       : this.controlMode === 'yacht'
         ? Math.max(this.camDist, 21.5)
-        : this.controlMode === 'yard_vehicle'
-          ? Math.max(this.camDist, 19.5)
+        : (this.controlMode === 'yard_vehicle' || isExcavator)
+          ? Math.max(this.camDist, 19.2)
           : this.camDist;
 
+    const placingNow = Boolean(this.world?.wildernessMode && this.isAnyWildernessPlacementActive());
+    const footFollow = this.controlMode === 'foot' && this.cameraMode === 'follow' && !isExcavator && !this.inVehicle && !placingNow;
+    const sprintFovBoost = (!this.prefersReducedMotion && footFollow)
+      ? Math.max(0, Math.min(1, (this.currentMoveSpeed - 4.0) / 3.8)) * 4.5
+      : 0;
+    if (this._camFovPunch > 0.005) {
+      this._camFovPunch *= Math.exp(-11.0 * dt);
+    } else {
+      this._camFovPunch = 0;
+    }
     const targetFov = isAir
       ? 48 + Math.min(8, (this.vehicleSpeed / 46) * 8)
       : this.controlMode === 'yacht'
         ? 51
         : this.cameraMode === 'tactical'
           ? 44
-          : 48;
+          : 48 + sprintFovBoost + (footFollow ? this._camFovPunch : 0);
 
-    if (Math.abs(this.camera.fov - targetFov) > 0.08) {
-      this.camera.fov = THREE.MathUtils.lerp(this.camera.fov, targetFov, Math.min(1, dt * 5));
+    if (Math.abs(this.camera.fov - targetFov) > 0.06) {
+      this.camera.fov = THREE.MathUtils.lerp(this.camera.fov, targetFov, Math.min(1, dt * 6.2));
       this.camera.updateProjectionMatrix();
     }
 
+    if (this._camStepBob > 0.0005) {
+      this._camStepBob *= Math.exp(-12.5 * dt);
+    } else {
+      this._camStepBob = 0;
+    }
+
     if (this.cameraMode === 'tactical' && this.controlMode === 'foot') {
-      // High-altitude RTS overview of Sawmill, Railway, Helipad & Harbor
-      this._camDesired.set(this.playerPos.x + 17, 50, this.playerPos.z + 31);
-      this._camLook.set(this.playerPos.x, 0.8, this.playerPos.z + 2);
+      // High-altitude RTS overview of the 360° forest valley or industrial city
+      this._camDesired.set(this.playerPos.x + 17, this.playerPos.y + 46, this.playerPos.z + 31);
+      this._camLook.set(this.playerPos.x, this.playerPos.y + 0.8, this.playerPos.z + 2);
     } else if (this.cameraMode === 'orbit' && this.controlMode === 'foot') {
-      // Smooth 360-degree cinematic showcase around the 3-zone city center
+      // Smooth 360-degree cinematic showcase
       this.orbitAngle += dt * 0.24;
-      const rad = 52;
+      const rad = this.world?.wildernessMode ? 36 : 52;
+      const cx = this.world?.wildernessMode ? this.playerPos.x : 5;
+      const cz = this.world?.wildernessMode ? this.playerPos.z : -38;
       this._camDesired.set(
-        5 + Math.sin(this.orbitAngle) * rad,
-        24.5,
-        -38 + Math.cos(this.orbitAngle) * rad
+        cx + Math.sin(this.orbitAngle) * rad,
+        (this.world?.wildernessMode ? this.playerPos.y + 18 : 24.5),
+        cz + Math.cos(this.orbitAngle) * rad
       );
-      this._camLook.set(5, 2.2, -38);
+      this._camLook.set(cx, this.playerPos.y + 2.2, cz);
     } else if (this.cameraMode === 'train' && (gameState.railwayTier || 0) >= 1 && this.world.railwaySystem?.userData?.trainGroup) {
       // Follow the animated 3D Industrial Freight Train along the East Infrastructure Railway Line
       const tz = this.world.railwaySystem.userData.trainGroup.position.z;
       this._camDesired.set(93.5, 10.5, tz + 12.5);
       this._camLook.set(106.0, 2.2, tz);
     } else {
-      // Standard smooth follow camera
+      // Standard smooth follow camera with subtle grounded footstep micro-bob
       const camHeight = Math.sin(this.camPitch) * activeDist;
       const camHoriz = Math.cos(this.camPitch) * activeDist;
-      this._camDesired.set(
-        this.playerPos.x + Math.sin(this.camYaw) * camHoriz,
-        this.playerPos.y + camHeight + 1.4,
-        this.playerPos.z + Math.cos(this.camYaw) * camHoriz
-      );
-      this._camLook.set(this.playerPos.x, this.playerPos.y + 1.4, this.playerPos.z);
+      const camX = this.playerPos.x + Math.sin(this.camYaw) * camHoriz;
+      const camZ = this.playerPos.z + Math.cos(this.camYaw) * camHoriz;
+      const stepOffset = (!this.prefersReducedMotion && footFollow) ? -this._camStepBob : 0;
+      let camY = this.playerPos.y + camHeight + 1.4 + stepOffset;
+      if (this.world?.wildernessMode) {
+        const minCamY = groundHeightAt(camX, camZ) + 1.45;
+        if (camY < minCamY) camY = minCamY;
+      }
+      this._camDesired.set(camX, camY, camZ);
+      this._camLook.set(this.playerPos.x, this.playerPos.y + 1.4 + stepOffset * 0.6, this.playerPos.z);
+    }
+
+    // 2nd-order damped spring chop-impact shake (crisp kick, settles cleanly in ~180ms)
+    if (!this.prefersReducedMotion) {
+      const spDt = Math.min(0.033, dt);
+      const stiffness = 260;
+      const damping = 22;
+      this._camShakeVel.x += (-stiffness * this._camShakePos.x - damping * this._camShakeVel.x) * spDt;
+      this._camShakeVel.y += (-stiffness * this._camShakePos.y - damping * this._camShakeVel.y) * spDt;
+      this._camShakeVel.z += (-stiffness * this._camShakePos.z - damping * this._camShakeVel.z) * spDt;
+      this._camShakePos.addScaledVector(this._camShakeVel, spDt);
+      if (this._camShakePos.lengthSq() > 0.00001) {
+        this._camDesired.add(this._camShakePos);
+        this._camLook.addScaledVector(this._camShakePos, 0.35);
+      }
     }
 
     if (this.screenShake > 0.001) {
@@ -5122,6 +7577,15 @@ class TimberPortEngine {
       this.world.skyDome.position.copy(this.camera.position);
     }
     this.camera.lookAt(this._camLook);
+
+    // Dynamic velocity-scaled turn banking roll up to ±2.2° (±0.038 rad; disabled under reduced motion / placement)
+    const targetRoll = (!this.prefersReducedMotion && footFollow)
+      ? THREE.MathUtils.clamp(-this.playerYawRate * Math.min(1, this.currentMoveSpeed / 6.8) * 0.013, -0.038, 0.038)
+      : 0;
+    this._camTurnRoll += (targetRoll - this._camTurnRoll) * Math.min(1, dt * 8.5);
+    if (Math.abs(this._camTurnRoll) > 0.0004) {
+      this.camera.rotation.z += this._camTurnRoll;
+    }
   }
 
   // Zero-allocation visibility toggle on pre-pooled Sawmill slots
@@ -5406,6 +7870,17 @@ class TimberPortEngine {
   }
 }
 
+export function clearInfrastructureForFreshStart(engine = window.timberPortEngine, options = {}) {
+  if (!engine || typeof engine.clearInfrastructureForFreshStart !== 'function') {
+    return { ok: false, removedCount: 0, remainingTrees: 0 };
+  }
+  return engine.clearInfrastructureForFreshStart(options);
+}
+
 window.addEventListener('DOMContentLoaded', () => {
-  new TimberPortEngine();
+  const engine = new TimberPortEngine();
+  window.timberPortEngine = engine;
+  window.WILDERNESS_MAP_360 = WILDERNESS_MAP_360;
+  window.getWildernessZoneAt = getWildernessZoneAt;
+  window.clearInfrastructureForFreshStart = (options) => engine.clearInfrastructureForFreshStart(options);
 });

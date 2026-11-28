@@ -252,28 +252,51 @@ export function getForestFloorTexture(repeatX = 4, repeatY = 4) {
   if (cache.has(key)) return cache.get(key);
 
   const cv = document.createElement('canvas');
-  cv.width = 256;
-  cv.height = 256;
+  cv.width = 512;
+  cv.height = 512;
   const ctx = cv.getContext('2d');
 
-  ctx.fillStyle = '#4a3d28';
-  ctx.fillRect(0, 0, 256, 256);
+  // High-value neutral sunlit base so multiplying with vertexColors keeps true, bright natural hues
+  ctx.fillStyle = '#e7ecdf';
+  ctx.fillRect(0, 0, 512, 512);
 
-  // Moss & humus patches
-  for (let i = 0; i < 160; i++) {
-    const x = Math.random() * 256;
-    const y = Math.random() * 256;
-    const r = 6 + Math.random() * 14;
-    ctx.fillStyle = i % 3 === 0 ? 'rgba(54, 83, 42, 0.36)' : i % 2 === 0 ? 'rgba(92, 64, 38, 0.35)' : 'rgba(28, 22, 14, 0.22)';
+  // Soft sunlit meadow & dappled organic ground variation (subtle high-value modulation)
+  for (let i = 0; i < 260; i++) {
+    const x = Math.random() * 512;
+    const y = Math.random() * 512;
+    const r = 10 + Math.random() * 24;
+    ctx.fillStyle = i % 3 === 0
+      ? 'rgba(255, 255, 245, 0.24)'
+      : i % 2 === 0
+        ? 'rgba(182, 198, 162, 0.22)'
+        : 'rgba(165, 152, 126, 0.16)';
     ctx.beginPath();
     ctx.arc(x, y, r, 0, Math.PI * 2);
     ctx.fill();
   }
 
-  // Scattered fallen pine needles & warm leaf flecks
-  for (let i = 0; i < 180; i++) {
-    ctx.fillStyle = i % 4 === 0 ? 'rgba(217, 155, 62, 0.42)' : 'rgba(132, 169, 76, 0.32)';
-    ctx.fillRect(Math.random() * 256, Math.random() * 256, 4, 2);
+  // Crisp grass blades, clover flecks & fine sunlit pine needles
+  for (let i = 0; i < 900; i++) {
+    const x = Math.random() * 512;
+    const y = Math.random() * 512;
+    const len = 4 + Math.random() * 7;
+    const ang = (Math.random() - 0.5) * 1.4;
+    ctx.strokeStyle = i % 5 === 0
+      ? 'rgba(255, 248, 214, 0.42)'
+      : i % 3 === 0
+        ? 'rgba(154, 182, 124, 0.34)'
+        : 'rgba(128, 146, 102, 0.26)';
+    ctx.lineWidth = 1.25;
+    ctx.beginPath();
+    ctx.moveTo(x, y);
+    ctx.lineTo(x + Math.cos(ang) * len, y + Math.sin(ang) * len);
+    ctx.stroke();
+  }
+
+  // Tiny sunlit wildflowers & warm dry-leaf micro-accents
+  for (let i = 0; i < 90; i++) {
+    ctx.fillStyle = i % 4 === 0 ? 'rgba(255, 245, 190, 0.45)' : 'rgba(232, 206, 156, 0.35)';
+    ctx.fillRect(Math.random() * 512, Math.random() * 512, 2.5, 2.5);
   }
 
   const tex = finalizeTexture(cv, repeatX, repeatY);

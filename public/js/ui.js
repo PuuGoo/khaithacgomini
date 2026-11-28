@@ -1,6 +1,18 @@
-import { HIGHLAND_LANDMARKS, HIGHLAND_TRAILS, MAP_ZONES, ZONES, DELIVERY_DROPOFFS } from './world.js';
+import {
+  HIGHLAND_LANDMARKS,
+  HIGHLAND_TRAILS,
+  MAP_ZONES,
+  ZONES,
+  DELIVERY_DROPOFFS,
+  WILDERNESS_RADIUS,
+  WILDERNESS_MAP_360,
+  getStreamCenterX,
+  getStreamHalfWidth,
+  getWildernessZoneAt
+} from './world.js';
 import { CONNECTOR_ROADS, DISTRICTS, districtIndex, districtRoads, LAND_EDGE_Z, MINIMAP_BOUNDS, nearbyDistricts } from './regions.js';
 import { FISHERY_LOCATION } from './island-route.js';
+import { SKILL_TREE_BRANCHES, canUpgradeSkill } from './wilderness-skills.js';
 /**
  * TimberPort 3D — Lightweight Cross-Platform HUD & Unified Commercial Empire Hub
  * 3-Zone Top Bar, Collapsible Bottom Dock, Virtual Joystick & 5-Tab Hub Modal
@@ -178,6 +190,10 @@ import { sound } from './audio.js';
 export class UIManager {
   constructor(callbacks) {
     this.cb = callbacks || {};
+    this.wildernessMode = Boolean(this.cb.wildernessMode);
+    if (typeof document !== 'undefined' && document.body) {
+      document.body.classList.toggle('wilderness-hud-active', this.wildernessMode);
+    }
     this.activeTab = 'upgrades';
     this.subTabs = { upgrades: 'ops', contracts: 'orders', finance: 'markets', boardroom: 'global' };
     this.roiSortBy = 'payback';
@@ -192,6 +208,7 @@ export class UIManager {
     this.celebrationTimer = null;
     this.currentControlMode = 'foot';
     this.hubSearchQuery = '';
+    this._campResetArmed = false;
 
     this.els = {
       hudBranch: document.getElementById('hud-branch'),
@@ -285,16 +302,130 @@ export class UIManager {
       lbBody: document.getElementById('leaderboard-body'),
       lbSummary: document.getElementById('lb-online-summary'),
       toastContainer: document.getElementById('toast-container'),
-      floatingContainer: document.getElementById('floating-container')
+      floatingContainer: document.getElementById('floating-container'),
+      wTopBar: document.getElementById('wilderness-top-bar'),
+      wZoneName: document.getElementById('w-zone-name'),
+      wLevelBtn: document.getElementById('w-level-btn'),
+      wLevel: document.getElementById('w-level'),
+      wCash: document.getElementById('w-cash'),
+      wShoulderLogs: document.getElementById('w-shoulder-logs'),
+      wCartSep: document.getElementById('w-cart-sep'),
+      wCartStat: document.getElementById('w-cart-stat'),
+      wCartLogs: document.getElementById('w-cart-logs'),
+      wYardStock: document.getElementById('w-yard-stock'),
+      wPlankStock: document.getElementById('w-plank-stock'),
+      wCraftSep: document.getElementById('w-craft-sep'),
+      wCraftStat: document.getElementById('w-craft-stat'),
+      wCraftStock: document.getElementById('w-craft-stock'),
+      wCampProgress: document.getElementById('w-camp-progress'),
+      wBtnWeather: document.getElementById('w-btn-weather'),
+      wWeatherIcon: document.getElementById('w-weather-icon'),
+      wClockTime: document.getElementById('w-clock-time'),
+      wBtnCamera: document.getElementById('w-btn-camera'),
+      wCameraLabel: document.getElementById('w-camera-label'),
+      wBtnZen: document.getElementById('w-btn-zen'),
+      wBtnAudio: document.getElementById('w-btn-audio'),
+      wDockWrap: document.getElementById('wilderness-dock-wrap'),
+      wDockToggle: document.getElementById('w-btn-toggle-dock'),
+      wDockCamp: document.getElementById('w-dock-camp'),
+      wCampBadge: document.getElementById('w-camp-badge'),
+      wDockSkills: document.getElementById('w-dock-skills'),
+      wSkillsPoints: document.getElementById('w-skills-points'),
+      wDockExcavator: document.getElementById('w-dock-excavator'),
+      wDockExcavatorLabel: document.getElementById('w-dock-excavator-label'),
+      wDockRun: document.getElementById('w-dock-run'),
+      wDockRunLabel: document.getElementById('w-dock-run-label'),
+      wDockCart: document.getElementById('w-dock-cart'),
+      wDockCartLabel: document.getElementById('w-dock-cart-label'),
+      wDockDrop: document.getElementById('w-dock-drop'),
+      wDockPlant: document.getElementById('w-dock-plant'),
+      wDockGesture: document.getElementById('w-dock-gesture'),
+      critRhythmHud: document.getElementById('crit-rhythm-hud'),
+      critZone: document.getElementById('crit-zone'),
+      critCursor: document.getElementById('crit-cursor'),
+      critRhythmLabel: document.getElementById('crit-rhythm-label'),
+      timberComboHud: document.getElementById('timber-combo-hud'),
+      timberComboMult: document.getElementById('timber-combo-mult'),
+      timberComboBonus: document.getElementById('timber-combo-bonus'),
+      timberComboFill: document.getElementById('timber-combo-fill'),
+      wildernessContractHud: document.getElementById('wilderness-contract-hud'),
+      wContractTitle: document.getElementById('w-contract-title'),
+      wContractProgress: document.getElementById('w-contract-progress'),
+      wContractAction: document.getElementById('w-contract-action'),
+      placementBar: document.getElementById('placement-bar'),
+      placementTitle: document.getElementById('placement-title'),
+      placementStatus: document.getElementById('placement-status'),
+      btnPlaceGrade: document.getElementById('btn-place-grade'),
+      btnPlaceRotate: document.getElementById('btn-place-rotate'),
+      btnPlaceConfirm: document.getElementById('btn-place-confirm'),
+      btnPlaceCancel: document.getElementById('btn-place-cancel'),
+      excavatorDriveHud: document.getElementById('excavator-drive-hud'),
+      excavatorDriveStatus: document.getElementById('excavator-drive-status'),
+      btnExcavatorGradeHold: document.getElementById('btn-excavator-grade-hold'),
+      btnExcavatorExit: document.getElementById('btn-excavator-exit'),
+      campDrawerBackdrop: document.getElementById('camp-drawer-backdrop'),
+      btnCloseCampDrawer: document.getElementById('btn-close-camp-drawer'),
+      campDrawerSummary: document.getElementById('camp-drawer-summary'),
+      campBlueprintList: document.getElementById('camp-blueprint-list'),
+      btnResetWildernessCamp: document.getElementById('btn-reset-wilderness-camp'),
+      btnMinimapOrient: document.getElementById('btn-minimap-orient'),
+      minimapAtmoBar: document.getElementById('minimap-atmo-bar'),
+      minimapAtmoReadout: document.getElementById('minimap-atmo-readout'),
+      btnMiniTime: document.getElementById('btn-mini-time'),
+      btnMiniRain: document.getElementById('btn-mini-rain'),
+      minimapLegend: document.getElementById('minimap-legend'),
+      skillTreeModal: document.getElementById('skill-tree-modal'),
+      btnCloseSkillTree: document.getElementById('btn-close-skill-tree'),
+      skillModalSummary: document.getElementById('skill-modal-summary'),
+      skillTreeGrid: document.getElementById('skill-tree-grid'),
+      btnResetSkills: document.getElementById('btn-reset-skills')
     };
+    this.campDrawerTab = 'build';
+
+    if (this.wildernessMode) {
+      if (this.els.wTopBar) this.els.wTopBar.hidden = false;
+      if (this.els.wDockWrap) this.els.wDockWrap.hidden = false;
+      if (this.els.btnMinimapOrient) this.els.btnMinimapOrient.hidden = false;
+      if (this.els.minimapAtmoBar) this.els.minimapAtmoBar.hidden = false;
+      if (this.els.minimapLegend) {
+        this.els.minimapLegend.innerHTML = '<span>🌲 Rừng</span><span class="meta-sep" aria-hidden="true">·</span><span>🏕️ Trại</span><span class="meta-sep" aria-hidden="true">·</span><span>🪵 Gỗ</span><span class="meta-sep" aria-hidden="true">·</span><span>👷 Thợ</span>';
+      }
+    }
 
     this.minimapOverview = false;
+    this.minimapZoomMode = 0; // 0: 1x (76m), 1: 1.5x (50m), 2: Toàn vùng
+    this.minimapHeadingUp = false;
+    this._wildernessMapCache = null;
+    this._wildernessMapCacheKey = '';
     const scaleButton = document.getElementById('btn-minimap-scale');
-    scaleButton.addEventListener('click', () => {
-      this.minimapOverview = !this.minimapOverview;
-      scaleButton.textContent = this.minimapOverview ? 'Khu vực' : 'Toàn vùng';
-      scaleButton.setAttribute('aria-pressed', String(this.minimapOverview));
+    if (scaleButton) {
+      if (this.wildernessMode) {
+        scaleButton.textContent = '1x';
+      } else {
+        scaleButton.textContent = 'Toàn vùng';
+      }
+      scaleButton.addEventListener('click', () => {
+        if (this.wildernessMode) {
+          this.minimapZoomMode = (this.minimapZoomMode + 1) % 3;
+          this.minimapOverview = this.minimapZoomMode === 2;
+          const labels = ['1x', '1.5x', 'Toàn vùng'];
+          scaleButton.textContent = labels[this.minimapZoomMode];
+          scaleButton.setAttribute('aria-pressed', String(this.minimapZoomMode !== 0));
+        } else {
+          this.minimapOverview = !this.minimapOverview;
+          scaleButton.textContent = this.minimapOverview ? 'Khu vực' : 'Toàn vùng';
+          scaleButton.setAttribute('aria-pressed', String(this.minimapOverview));
+        }
+      });
+    }
+    this.els.btnMinimapOrient?.addEventListener('click', () => {
+      this.minimapHeadingUp = !this.minimapHeadingUp;
+      this.els.btnMinimapOrient.textContent = this.minimapHeadingUp ? 'Hướng' : 'Bắc';
+      this.els.btnMinimapOrient.setAttribute('aria-pressed', String(this.minimapHeadingUp));
+      this.els.btnMinimapOrient.classList.toggle('is-active', this.minimapHeadingUp);
     });
+    this.els.btnMiniTime?.addEventListener('click', () => this.cb.onCycleWeather?.());
+    this.els.btnMiniRain?.addEventListener('click', () => this.cb.onToggleLightRain?.());
     this.regionalPopulation = document.getElementById('regional-population');
     this.minimapCollapsed = window.innerWidth <= 960;
     if (this.minimapCollapsed && this.els.minimapWrap) {
@@ -470,6 +601,101 @@ export class UIManager {
     bindHoldBtn(this.els.btnPlaneUp, (active) => this.cb.onPlaneClimb?.(active));
     bindHoldBtn(this.els.btnPlaneDown, (active) => this.cb.onPlaneDescend?.(active));
 
+    // Wilderness Camp HUD Bindings
+    this.els.wBtnWeather?.addEventListener('click', () => this.cb.onCycleWeather?.());
+    this.els.wBtnCamera?.addEventListener('click', () => this.cb.onCycleCamera?.());
+    this.els.wBtnZen?.addEventListener('click', () => this.toggleZenHud());
+    this.els.wBtnAudio?.addEventListener('click', () => {
+      const muted = sound.toggleMute();
+      const icon = muted ? '🔇' : '🔊';
+      if (this.els.wBtnAudio) this.els.wBtnAudio.textContent = icon;
+      const legacyAudio = document.getElementById('btn-audio');
+      if (legacyAudio) legacyAudio.textContent = icon;
+      this.toast(muted ? 'Đã tắt âm thanh' : 'Đã bật âm thanh');
+    });
+    this.els.wLevelBtn?.addEventListener('click', () => this.openCampDrawerTab('infra'));
+    this.els.wDockToggle?.addEventListener('click', () => this.toggleDock());
+    this.els.wDockCamp?.addEventListener('click', () => this.toggleCampDrawer());
+    this.els.wDockSkills?.addEventListener('click', () => this.toggleSkillTree());
+    this.els.btnCloseSkillTree?.addEventListener('click', () => this.closeSkillTree());
+    this.els.skillTreeModal?.addEventListener('click', (e) => {
+      if (e.target === this.els.skillTreeModal) this.closeSkillTree();
+    });
+    this.els.btnResetSkills?.addEventListener('click', () => this.cb.onResetSkills?.());
+    this.els.wDockExcavator?.addEventListener('click', () => {
+      const ws = this.cb.getWildernessState?.();
+      if (ws?.infra?.excavatorOwned) {
+        this.cb.onToggleDriveExcavator?.(true);
+      } else {
+        this.openCampDrawerTab('infra');
+      }
+    });
+    this.els.wDockRun?.addEventListener('click', () => this.cb.onToggleSprint?.());
+    this.els.wDockCart?.addEventListener('click', () => this.cb.onToggleHandcart?.());
+    this.els.wDockDrop?.addEventListener('click', () => this.cb.onDropLogs?.());
+    this.els.wDockPlant?.addEventListener('click', () => this.cb.onPlantSapling?.());
+    this.els.wDockGesture?.addEventListener('click', () => this.cb.onGreetCitizen?.());
+    this.els.critRhythmHud?.addEventListener('click', () => this.cb.onCritStrike?.());
+    this.els.wContractAction?.addEventListener('click', (e) => {
+      e.stopPropagation();
+      const readyId = this.els.wContractAction?.dataset?.readyId;
+      if (readyId) {
+        this.cb.onClaimForestryContract?.(readyId);
+      } else {
+        this.openCampDrawerTab('contracts');
+      }
+    });
+    this.els.wildernessContractHud?.addEventListener('click', () => {
+      this.openCampDrawerTab('contracts');
+    });
+    this.els.btnPlaceGrade?.addEventListener('click', () => this.cb.onDispatchGradeAtGhost?.());
+    this.els.btnPlaceRotate?.addEventListener('click', () => this.cb.onRotatePlacement?.());
+    this.els.btnPlaceConfirm?.addEventListener('click', () => this.cb.onConfirmPlacement?.());
+    this.els.btnPlaceCancel?.addEventListener('click', () => this.cb.onCancelPlacement?.());
+    if (this.els.btnExcavatorGradeHold) {
+      const setHold = (active) => {
+        this.els.btnExcavatorGradeHold?.classList.toggle('is-holding', active);
+        this.cb.onSetExcavatorGradingHeld?.(active);
+      };
+      this.els.btnExcavatorGradeHold.addEventListener('pointerdown', (e) => { e.preventDefault(); setHold(true); });
+      this.els.btnExcavatorGradeHold.addEventListener('pointerup', () => setHold(false));
+      this.els.btnExcavatorGradeHold.addEventListener('pointerleave', () => setHold(false));
+      this.els.btnExcavatorGradeHold.addEventListener('pointercancel', () => setHold(false));
+    }
+    this.els.btnExcavatorExit?.addEventListener('click', () => this.cb.onToggleDriveExcavator?.(false));
+    this.els.btnCloseCampDrawer?.addEventListener('click', () => this.toggleCampDrawer(false));
+    this.els.campDrawerBackdrop?.addEventListener('click', (e) => {
+      if (e.target === this.els.campDrawerBackdrop) this.toggleCampDrawer(false);
+    });
+    document.querySelectorAll('.camp-tab-btn').forEach((btn) => {
+      btn.addEventListener('click', () => {
+        this.campDrawerTab = btn.dataset.campTab || 'build';
+        this.syncCampTabButtons();
+        this.renderCampDrawer(true);
+      });
+    });
+    this.els.btnResetWildernessCamp?.addEventListener('click', () => {
+      if (!this._campResetArmed) {
+        this._campResetArmed = true;
+        if (this.els.btnResetWildernessCamp) {
+          this.els.btnResetWildernessCamp.textContent = 'Bấm lại để xác nhận';
+        }
+        setTimeout(() => {
+          this._campResetArmed = false;
+          if (this.els.btnResetWildernessCamp) {
+            this.els.btnResetWildernessCamp.textContent = 'Đặt lại từ 0';
+          }
+        }, 3500);
+        return;
+      }
+      this._campResetArmed = false;
+      if (this.els.btnResetWildernessCamp) {
+        this.els.btnResetWildernessCamp.textContent = 'Đặt lại từ 0';
+      }
+      this.toggleCampDrawer(false);
+      this.cb.onResetWildernessCamp?.();
+    });
+
     // Close modals on backdrop click
     [this.els.hubModal, this.els.accountModal, this.els.lbModal, this.els.shiftModal, this.els.notifDrawer].forEach((modal) => {
       modal?.addEventListener('click', (e) => {
@@ -478,10 +704,551 @@ export class UIManager {
     });
   }
 
+  syncCampTabButtons() {
+    document.querySelectorAll('.camp-tab-btn').forEach((btn) => {
+      btn.classList.toggle('is-active', btn.dataset.campTab === this.campDrawerTab);
+    });
+  }
+
+  openCampDrawer(tab = 'build') {
+    this.openCampDrawerTab(tab);
+  }
+
+  openCampDrawerTab(tab = 'build') {
+    this.campDrawerTab = tab;
+    this.syncCampTabButtons();
+    this.toggleCampDrawer(true);
+  }
+
+  toggleCampDrawer(forceState = null) {
+    const el = this.els.campDrawerBackdrop;
+    if (!el) return;
+    const open = forceState === null ? el.hidden : Boolean(forceState);
+    el.hidden = !open;
+    if (open) {
+      this.syncCampTabButtons();
+      this.renderCampDrawer(true);
+    }
+  }
+
+  updateCritRing(active, phase = 0, sweetMin = 0.66, sweetMax = 0.90) {
+    const hud = this.els.critRhythmHud;
+    if (!hud) return;
+    if (!active) {
+      if (!hud.hidden) hud.hidden = true;
+      return;
+    }
+    if (hud.hidden) hud.hidden = false;
+    const sMin = Math.max(0.05, Math.min(0.92, sweetMin));
+    const sMax = Math.max(sMin + 0.05, Math.min(0.98, sweetMax));
+    const inSweet = phase >= sMin && phase <= sMax;
+    hud.classList.toggle('is-sweet', inSweet);
+    if (this.els.critZone) {
+      const zoneKey = `${sMin.toFixed(3)}:${sMax.toFixed(3)}`;
+      if (this._lastCritZoneKey !== zoneKey) {
+        this._lastCritZoneKey = zoneKey;
+        this.els.critZone.style.left = `${(sMin * 100).toFixed(1)}%`;
+        this.els.critZone.style.width = `${((sMax - sMin) * 100).toFixed(1)}%`;
+      }
+    }
+    if (this.els.critCursor) {
+      this.els.critCursor.style.left = `${(Math.max(0, Math.min(1, phase)) * 100).toFixed(1)}%`;
+    }
+    if (this.els.critRhythmLabel) {
+      this.els.critRhythmLabel.textContent = inSweet ? '⚡ NHẤN SPACE · CHÍ MẠNG!' : 'SPACE · Canh vùng vàng';
+    }
+  }
+
+  updateComboHud(combo) {
+    const hud = this.els.timberComboHud;
+    if (!hud) return;
+    const count = combo?.count || 0;
+    if (count < 2) {
+      if (!hud.hidden) hud.hidden = true;
+      return;
+    }
+    if (hud.hidden) hud.hidden = false;
+    const isHot = count >= 5;
+    hud.classList.toggle('is-hot', isHot);
+    if (this._lastComboCount !== count) {
+      this._lastComboCount = count;
+      if (this.els.timberComboMult) {
+        this.els.timberComboMult.textContent = `x${count} COMBO`;
+      }
+      if (this.els.timberComboBonus) {
+        const cdPct = Math.round((1 - (combo.cooldownMult ?? 1)) * 100);
+        const logPct = Math.round((combo.extraLogChance ?? 0) * 100);
+        this.els.timberComboBonus.textContent = `-${cdPct}% hồi · +${logPct}% gỗ phụ`;
+      }
+    }
+    if (this.els.timberComboFill) {
+      const ratio = Math.max(0, Math.min(1, combo.ratio ?? 0));
+      this.els.timberComboFill.style.transform = `scaleX(${ratio.toFixed(3)})`;
+    }
+  }
+
+  renderCampDrawer(force = false) {
+    if (!this.els.campBlueprintList || !this.cb.getWildernessState) return;
+    const ws = this.cb.getWildernessState();
+    if (!ws) return;
+
+    if (this.els.campDrawerSummary) {
+      this.els.campDrawerSummary.textContent =
+        `Cấp ${ws.level || 1} (${ws.xp || 0}/${ws.nextXp || 60} XP) · $${(ws.cash || 0).toLocaleString()} · Trại ${ws.builtCount}/${ws.totalBlueprints} · Bãi gỗ ${ws.campLogStock} · Ván ${ws.campPlankStock}`;
+    }
+
+    const tab = this.campDrawerTab || 'build';
+    const merchantKey = ws.merchant
+      ? `${ws.merchant.status}:${Math.ceil(ws.merchant.timer || 0)}:${(ws.merchant.orders || []).map((o) => `${o.id}-${o.completed ? 1 : 0}-${o.available}`).join('.')}`
+      : 'none';
+    const infraKey = ws.infra
+      ? `${ws.level}:${ws.xp}:${ws.infra.excavatorOwned ? 1 : 0}:${ws.infra.drivingExcavator ? 1 : 0}:${ws.infra.aiGradingActive ? ws.infra.aiGradingPct : -1}:${ws.infra.gradedPadCount}:${ws.infra.builtCount}`
+      : 'noinfra';
+    const progKey = ws.progression
+      ? `${ws.progression.reputation}:${ws.progression.contractsCompleted}:${ws.progression.bestCombo}:${(ws.progression.contracts || []).map((c) => `${c.id}-${c.progress}-${c.target}`).join('.')}`
+      : 'noprog';
+    const key = `${tab}|${ws.cash}|${ws.builtCount}|${ws.campLogStock}|${ws.campPlankStock}|${ws.campCraftStock}|${ws.availLogs}|${ws.trackedSiteId}|${ws.logYardBuilt}|${ws.upgrades?.axe}:${ws.upgrades?.cart}:${ws.upgrades?.sawmill}:${ws.upgrades?.forge}:${ws.upgrades?.quarters}|${ws.workers?.porters}:${ws.workers?.choppers}|${merchantKey}|${infraKey}|${progKey}|`
+      + ws.blueprints.map((b) => `${b.id}:${b.placed ? 1 : 0}:${b.deliveredLogs}:${b.built ? 1 : 0}:${b.dist == null ? -1 : Math.round(b.dist / 3)}`).join(',');
+    if (!force && this._lastCampDrawerKey === key) return;
+    this._lastCampDrawerKey = key;
+
+    if (tab === 'infra') {
+      const inf = ws.infra;
+      const lv = ws.level || 1;
+      const xp = ws.xp || 0;
+      const nextXp = ws.nextXp || 60;
+      const xpPct = Math.min(100, Math.round((xp / Math.max(1, nextXp)) * 100));
+      const exU = inf?.excavatorUnlock || { minLevel: 2, cost: 180, desc: '' };
+      const exOwned = Boolean(inf?.excavatorOwned);
+      const exUnlocked = lv >= exU.minLevel;
+      const exAffordable = (ws.cash || 0) >= exU.cost;
+
+      const catalogHtml = (inf?.catalog || []).map((item) => {
+        const locked = !item.levelUnlocked;
+        const canBuild = item.levelUnlocked && item.canAfford;
+        const statusLabel = item.builtCount > 0
+          ? `Đã xây ${item.builtCount}`
+          : locked
+            ? `Mở ở Cấp ${item.minLevel}`
+            : `$${item.cost.toLocaleString()}`;
+        return `
+          <article class="camp-card${item.builtCount > 0 ? ' is-built' : ''}${locked ? ' is-locked' : ''}">
+            <div class="camp-card-top">
+              <span class="camp-card-name">${item.order}. ${item.name}</span>
+              <span class="camp-card-status tabular-nums">${statusLabel}</span>
+            </div>
+            <div class="camp-card-meta">Yêu cầu Cấp ${item.minLevel} · Cần đất đồi đã san phẳng · +${item.xpReward} XP</div>
+            <p class="camp-card-benefit">${item.benefit}</p>
+            <div class="camp-card-actions">
+              <button type="button" class="camp-action-btn${canBuild ? ' is-accent' : ''} tabular-nums" data-infra-build="${item.id}" ${canBuild ? '' : 'disabled'}>
+                ${locked ? `🔒 Đạt Cấp ${item.minLevel} để mở` : `📍 Chọn đất xây · $${item.cost.toLocaleString()}`}
+              </button>
+            </div>
+          </article>
+        `;
+      }).join('');
+
+      this.els.campBlueprintList.innerHTML = `
+        <article class="camp-card is-tracked">
+          <div class="camp-card-top">
+            <span class="camp-card-name">⭐ Cấp Độ Cơ Sở Hạ Tầng: Cấp ${lv}</span>
+            <span class="camp-card-status tabular-nums">${xp}/${nextXp} XP</span>
+          </div>
+          <div class="camp-card-meta">Thu nhập thụ động: +$${inf?.passiveCashPerCycle || 0}/15s · Mặt bằng đã san: ${inf?.gradedPadCount || 0} bãi · Thưởng công nhân: +${inf?.workerCapBonus || 0}/loại</div>
+          <div class="camp-progress-track">
+            <div class="camp-progress-fill" style="width:${xpPct}%"></div>
+          </div>
+          <p class="camp-card-benefit">Chặt cây, dựng trại, thả bè, giao đơn Thương Lái và san phẳng đồi để nhận XP lên cấp mở khóa Máy Xúc, Máy Cưa Tự Động &amp; Biệt Thự.</p>
+        </article>
+
+        <article class="camp-card${exOwned ? ' is-built' : (!exUnlocked ? ' is-locked' : '')}">
+          <div class="camp-card-top">
+            <span class="camp-card-name">🚜 ${exU.name || 'Máy Xúc San Lấp Thủy Lực'}</span>
+            <span class="camp-card-status tabular-nums">${exOwned ? (inf?.aiGradingActive ? `AI san ${inf.aiGradingPct}%` : 'Đã sở hữu') : `Cấp ${exU.minLevel} · $${exU.cost}`}</span>
+          </div>
+          <p class="camp-card-benefit">${exU.desc}</p>
+          ${exOwned ? `
+            <div class="camp-card-actions">
+              <button type="button" class="camp-action-btn is-accent" data-infra-drive="1">
+                ${inf?.drivingExcavator ? '🚶 Xuống Máy Xúc (F)' : '🚜 Tự lái Máy Xúc (F)'}
+              </button>
+              <button type="button" class="camp-action-btn" data-infra-aigrade="1">
+                🤖 Gọi Máy Xúc AI san đồi
+              </button>
+            </div>
+          ` : `
+            <div class="camp-card-actions">
+              <button type="button" class="camp-action-btn is-accent tabular-nums" data-infra-buy-excavator="1" ${(exUnlocked && exAffordable) ? '' : 'disabled'}>
+                ${!exUnlocked ? `🔒 Mở khóa ở Cấp ${exU.minLevel}` : `🚜 Mua Máy Xúc · $${exU.cost.toLocaleString()}`}
+              </button>
+            </div>
+          `}
+        </article>
+        ${catalogHtml}
+      `;
+
+      this.els.campBlueprintList.querySelector('[data-infra-buy-excavator]')?.addEventListener('click', () => {
+        this.cb.onBuyExcavator?.();
+      });
+      this.els.campBlueprintList.querySelector('[data-infra-drive]')?.addEventListener('click', () => {
+        this.cb.onToggleDriveExcavator?.(true);
+      });
+      this.els.campBlueprintList.querySelector('[data-infra-aigrade]')?.addEventListener('click', () => {
+        this.cb.onStartAiGrading?.();
+      });
+      this.els.campBlueprintList.querySelectorAll('[data-infra-build]').forEach((btn) => {
+        btn.addEventListener('click', () => this.cb.onStartInfraPlacement?.(btn.dataset.infraBuild));
+      });
+      return;
+    }
+
+    if (tab === 'build') {
+      this.els.campBlueprintList.innerHTML = ws.blueprints.map((bp) => {
+        const pct = Math.min(100, Math.round((bp.deliveredLogs / Math.max(1, bp.costLogs)) * 100));
+        const statusText = bp.built
+          ? 'Đã hoàn thành'
+          : bp.placed
+            ? `${bp.deliveredLogs}/${bp.costLogs} gỗ`
+            : `Cần ${bp.costLogs} gỗ`;
+        const metaText = bp.built || bp.placed
+          ? `${bp.category} · Cách ${bp.dist ?? 0}m`
+          : `${bp.category} · Chưa chọn vị trí`;
+        const cls = `camp-card${bp.built ? ' is-built' : ''}${bp.tracked ? ' is-tracked' : ''}`;
+        const canFeed = bp.placed && !bp.built && ws.logYardBuilt && ws.campLogStock > 0;
+        const ruleHint = bp.placementRule === 'river_bridge'
+          ? 'Bắc ngang Sông Rừng'
+          : bp.placementRule === 'river_bank'
+            ? 'Đặt sát bờ Sông Rừng'
+            : 'Đặt tự do trên bãi/đồi';
+        const cabinBuiltActions = bp.built && bp.id === 'craft_cabin' ? `
+          <div class="camp-card-actions">
+            <button type="button" class="camp-action-btn is-accent" data-camp-craft="1" ${ws.campPlankStock < 2 ? 'disabled' : ''}>
+              🪑 Đóng Đồ Gỗ (2 Ván → $56)
+            </button>
+            <button type="button" class="camp-action-btn" data-camp-rest="1">
+              🌅 Nghỉ đón bình minh
+            </button>
+          </div>
+        ` : '';
+        return `
+          <article class="${cls}">
+            <div class="camp-card-top">
+              <span class="camp-card-name">${bp.order}. ${bp.name}</span>
+              <span class="camp-card-status tabular-nums">${statusText}</span>
+            </div>
+            <div class="camp-card-meta">${metaText} · ${ruleHint}</div>
+            <p class="camp-card-benefit">${bp.benefit}</p>
+            <div class="camp-progress-track">
+              <div class="camp-progress-fill" style="width:${pct}%"></div>
+            </div>
+            ${bp.built ? cabinBuiltActions : !bp.placed ? `
+              <div class="camp-card-actions">
+                <button type="button" class="camp-action-btn is-accent" data-camp-place="${bp.id}">
+                  📍 Chọn vị trí xây
+                </button>
+              </div>
+            ` : `
+              <div class="camp-card-actions">
+                <button type="button" class="camp-action-btn" data-camp-track="${bp.id}">
+                  ${bp.tracked ? '🧭 Đang dẫn đường' : '🧭 Dẫn đường'}
+                </button>
+                <button type="button" class="camp-action-btn" data-camp-place="${bp.id}">
+                  📍 Di dời
+                </button>
+                ${canFeed ? `
+                  <button type="button" class="camp-action-btn is-accent" data-camp-feed="${bp.id}">
+                    🪵 Nạp từ Bãi gỗ (${ws.campLogStock})
+                  </button>
+                ` : ''}
+              </div>
+            `}
+          </article>
+        `;
+      }).join('');
+
+      this.els.campBlueprintList.querySelectorAll('[data-camp-place]').forEach((btn) => {
+        btn.addEventListener('click', () => this.cb.onStartPlacement?.(btn.dataset.campPlace));
+      });
+      this.els.campBlueprintList.querySelectorAll('[data-camp-track]').forEach((btn) => {
+        btn.addEventListener('click', () => {
+          this.cb.onTrackCampSite?.(btn.dataset.campTrack);
+          this.renderCampDrawer(true);
+        });
+      });
+      this.els.campBlueprintList.querySelectorAll('[data-camp-feed]').forEach((btn) => {
+        btn.addEventListener('click', () => {
+          this.cb.onQuickFeedSite?.(btn.dataset.campFeed);
+          this.renderCampDrawer(true);
+        });
+      });
+      this.els.campBlueprintList.querySelectorAll('[data-camp-craft]').forEach((btn) => {
+        btn.addEventListener('click', () => this.cb.onCraftAtCabin?.());
+      });
+      this.els.campBlueprintList.querySelectorAll('[data-camp-rest]').forEach((btn) => {
+        btn.addEventListener('click', () => this.cb.onRestUntilDawn?.());
+      });
+      return;
+    }
+
+    if (tab === 'upgrades') {
+      const cat = ws.upgradeCatalog || {};
+      const items = [
+        { kind: 'axe', title: 'Rìu Chặt Gỗ (Đổi ngoại hình 3D)', icon: '🪓' },
+        { kind: 'forge', title: 'Lò Rèn & Đá Mài Trại (Dựng 3D)', icon: '🔥' },
+        { kind: 'quarters', title: 'Cổng Đèn & Khu Nghỉ Công Nhân (Dựng 3D)', icon: '🏮' },
+        { kind: 'cart', title: 'Xe Kéo Gỗ Tay', icon: '🛒' },
+        { kind: 'sawmill', title: 'Xưởng Cưa Guồng Nước', icon: '⚙️' }
+      ];
+      this.els.campBlueprintList.innerHTML = items.map((it) => {
+        const list = cat[it.kind] || [];
+        const curLv = ws.upgrades?.[it.kind] || 1;
+        const curTier = list[curLv - 1] || list[0] || { name: 'Cấp 1', desc: '' };
+        const nextTier = list[curLv] || null;
+        const canAfford = nextTier ? (ws.cash || 0) >= nextTier.cost : false;
+        const pct = Math.round((curLv / Math.max(1, list.length)) * 100);
+        return `
+          <article class="camp-card${!nextTier ? ' is-built' : ''}">
+            <div class="camp-card-top">
+              <span class="camp-card-name">${it.icon} ${it.title}</span>
+              <span class="camp-card-status tabular-nums">Bậc ${curLv}/${list.length}</span>
+            </div>
+            <div class="camp-card-meta">Hiện tại: <strong>${curTier.name}</strong> — ${curTier.desc}</div>
+            <div class="camp-progress-track">
+              <div class="camp-progress-fill" style="width:${pct}%"></div>
+            </div>
+            ${nextTier ? `
+              <p class="camp-card-benefit">Kế tiếp: <strong>${nextTier.name}</strong> · ${nextTier.desc}</p>
+              <div class="camp-card-actions">
+                <button type="button" class="camp-action-btn is-accent tabular-nums" data-camp-upgrade="${it.kind}" ${canAfford ? '' : 'disabled'}>
+                  ⚒️ Nâng cấp · $${nextTier.cost.toLocaleString()}
+                </button>
+              </div>
+            ` : `
+              <p class="camp-card-benefit">Đã đạt cấp tối đa!</p>
+            `}
+          </article>
+        `;
+      }).join('') + `
+        <article class="camp-card">
+          <div class="camp-card-top">
+            <span class="camp-card-name">⚡ Mẹo Chặt Nhịp Chí Mạng</span>
+            <span class="camp-card-status">x2 Sát thương</span>
+          </div>
+          <p class="camp-card-benefit">Khi đứng sát cây hoặc thân cây đổ, canh thanh nhịp vào vùng vàng rồi nhấn <strong>Space</strong> (hoặc bấm trực tiếp thanh nhịp) để tung nhát rìu Chí Mạng x2 kèm tia lửa vàng.</p>
+        </article>
+      `;
+
+      this.els.campBlueprintList.querySelectorAll('[data-camp-upgrade]').forEach((btn) => {
+        btn.addEventListener('click', () => this.cb.onBuyWildernessUpgrade?.(btn.dataset.campUpgrade));
+      });
+      return;
+    }
+
+    if (tab === 'workers') {
+      const defs = ws.workerDefs || {};
+      const roles = ['porter', 'chopper'];
+      this.els.campBlueprintList.innerHTML = roles.map((role) => {
+        const def = defs[role];
+        if (!def) return '';
+        const count = role === 'porter' ? (ws.workers?.porters || 0) : (ws.workers?.choppers || 0);
+        const maxed = count >= def.max;
+        const cost = maxed ? 0 : (def.costs[count] || 250);
+        const canAfford = !maxed && (ws.cash || 0) >= cost;
+        const pct = Math.round((count / Math.max(1, def.max)) * 100);
+        return `
+          <article class="camp-card${maxed ? ' is-built' : ''}">
+            <div class="camp-card-top">
+              <span class="camp-card-name">${role === 'porter' ? '🪵' : '🪓'} ${def.name}</span>
+              <span class="camp-card-status tabular-nums">${count}/${def.max} người</span>
+            </div>
+            <p class="camp-card-benefit">${def.desc}</p>
+            <div class="camp-progress-track">
+              <div class="camp-progress-fill" style="width:${pct}%"></div>
+            </div>
+            ${!maxed ? `
+              <div class="camp-card-actions">
+                <button type="button" class="camp-action-btn is-accent tabular-nums" data-camp-hire="${role}" ${canAfford ? '' : 'disabled'}>
+                  👷 Thuê ${def.name} #${count + 1} · $${cost.toLocaleString()}
+                </button>
+              </div>
+            ` : `
+              <div class="camp-card-meta">Đội ngũ đã đủ nhân sự và đang tự động vận hành quanh trại.</div>
+            `}
+          </article>
+        `;
+      }).join('') + `
+        <article class="camp-card">
+          <div class="camp-card-top">
+            <span class="camp-card-name">🌱 Tái Sinh Rừng Bền Vững</span>
+            <span class="camp-card-status tabular-nums">${ws.saplingCount || 0} cây non</span>
+          </div>
+          <p class="camp-card-benefit">Nhấn phím <strong>P</strong> hoặc nút <strong>Trồng cây</strong> để trồng cây rừng non. Cây sẽ lớn thành gỗ thu hoạch sau 90 giây (trời mưa giúp lớn nhanh hơn +35%).</p>
+          <div class="camp-card-actions">
+            <button type="button" class="camp-action-btn" data-camp-plant="1">🌱 Trồng cây non ngay (P)</button>
+          </div>
+        </article>
+      `;
+
+      this.els.campBlueprintList.querySelectorAll('[data-camp-hire]').forEach((btn) => {
+        btn.addEventListener('click', () => this.cb.onHireWildernessWorker?.(btn.dataset.campHire));
+      });
+      this.els.campBlueprintList.querySelectorAll('[data-camp-plant]').forEach((btn) => {
+        btn.addEventListener('click', () => {
+          this.toggleCampDrawer(false);
+          this.cb.onPlantSapling?.();
+        });
+      });
+      return;
+    }
+
+    if (tab === 'contracts') {
+      const prog = ws.progression || { reputation: 0, contractsCompleted: 0, bestCombo: 0, contracts: [] };
+      const contractsHtml = (prog.contracts || []).map((c) => {
+        const pct = Math.min(100, Math.round(((c.progress || 0) / Math.max(1, c.target || 1)) * 100));
+        const ready = Boolean(c.ready || c.progress >= c.target);
+        return `
+          <article class="camp-card${ready ? ' is-tracked' : ''}">
+            <div class="camp-card-top">
+              <span class="camp-card-name">📋 ${c.title}</span>
+              <span class="camp-card-status tabular-nums">${c.progress}/${c.target} · Bậc ${c.tier || 1}</span>
+            </div>
+            <p class="camp-card-benefit">${c.desc}</p>
+            <div class="camp-progress-track">
+              <div class="camp-progress-fill" style="width:${pct}%"></div>
+            </div>
+            <div class="camp-card-actions">
+              <button type="button" class="camp-action-btn${ready ? ' is-accent' : ''} tabular-nums" data-claim-contract="${c.id}" ${ready ? '' : 'disabled'}>
+                ${ready ? `🎁 Nhận +$${c.rewardCash} & +${c.rewardRep} Uy tín` : `Thưởng +$${c.rewardCash} · +${c.rewardRep} Uy tín`}
+              </button>
+            </div>
+          </article>
+        `;
+      }).join('');
+
+      this.els.campBlueprintList.innerHTML = `
+        <article class="camp-card is-built">
+          <div class="camp-card-top">
+            <span class="camp-card-name">🏅 Hồ Sơ Lâm Trường &amp; Combo</span>
+            <span class="camp-card-status tabular-nums">${prog.reputation || 0} Uy tín</span>
+          </div>
+          <div class="camp-card-meta tabular-nums">Hợp đồng đã hoàn thành: ${prog.contractsCompleted || 0} · Kỷ lục Combo chặt gỗ: x${prog.bestCombo || 0}</div>
+          <p class="camp-card-benefit">Chặt liên tiếp để tích Combo giảm hồi rìu, mở rộng vùng Chí Mạng và tăng cơ hội rơi thêm khúc gỗ phụ. Hoàn thành hợp đồng để nhận tiền nâng cấp Lò Rèn &amp; Cổng Đèn 3D cho trại.</p>
+        </article>
+        ${contractsHtml}
+      `;
+
+      this.els.campBlueprintList.querySelectorAll('[data-claim-contract]').forEach((btn) => {
+        btn.addEventListener('click', () => {
+          this.cb.onClaimForestryContract?.(btn.dataset.claimContract);
+          this.renderCampDrawer(true);
+        });
+      });
+      return;
+    }
+
+    // Tab 5: 'merchant' (River Raft Dock + Scheduled Merchant Riverboat)
+    if (!ws.dockBuilt) {
+      this.els.campBlueprintList.innerHTML = `
+        <article class="camp-card is-tracked">
+          <div class="camp-card-top">
+            <span class="camp-card-name">⛵ Chưa có Bến Thả Bè &amp; Cầu Tàu</span>
+            <span class="camp-card-status">Công trình #7</span>
+          </div>
+          <p class="camp-card-benefit">Hãy đặt và dựng <strong>Bến Thả Bè &amp; Cầu Tàu Thương Lái</strong> sát bờ Sông Rừng để thả bè gỗ/ván/đồ gỗ trôi xuôi sông kiếm tiền và đón Thuyền Thương Lái nhận đơn thưởng lớn!</p>
+          <div class="camp-card-actions">
+            <button type="button" class="camp-action-btn is-accent" data-go-build-dock="1">
+              📍 Đặt Bến Thả Bè ven sông
+            </button>
+          </div>
+        </article>
+      `;
+      this.els.campBlueprintList.querySelector('[data-go-build-dock]')?.addEventListener('click', () => {
+        this.cb.onStartPlacement?.('river_dock');
+      });
+      return;
+    }
+
+    const m = ws.merchant || { status: 'away', timer: 30, orders: [] };
+    const statusMap = {
+      docked: `Đang cập bến · Rời sau ${Math.ceil(m.timer || 0)}s`,
+      arriving: 'Đang xuôi dòng tiến vào bến...',
+      departing: 'Đang rời bến xuôi hạ lưu...',
+      away: `Chuyến tới sau ${Math.ceil(m.timer || 0)}s`
+    };
+    const prices = ws.raftPrices || { log: 12, plank: 22, craft: 56 };
+    const ordersHtml = m.status === 'docked'
+      ? (m.orders || []).map((ord) => {
+          const canDeliver = !ord.completed && (ord.available || 0) >= ord.qty;
+          return `
+            <div class="camp-order-row${ord.completed ? ' is-done' : ''}">
+              <div class="camp-order-info">
+                <strong>${ord.qty} ${ord.resourceLabel}</strong>
+                <span class="camp-order-sub tabular-nums">${ord.completed ? 'Đã giao xong' : `Hiện có ${ord.available || 0}/${ord.qty}`}</span>
+              </div>
+              <button type="button" class="camp-action-btn${canDeliver ? ' is-accent' : ''} tabular-nums" data-deliver-order="${ord.id}" ${canDeliver ? '' : 'disabled'}>
+                ${ord.completed ? '✓ Xong' : `Giao +$${ord.reward}`}
+              </button>
+            </div>
+          `;
+        }).join('')
+      : `<p class="camp-card-benefit">Thuyền Thương Lái sẽ cập cầu tàu định kỳ mang theo 3 đơn hàng giá thưởng cao hơn thả bè thường (+35%).</p>`;
+
+    this.els.campBlueprintList.innerHTML = `
+      <article class="camp-card${m.status === 'docked' ? ' is-tracked' : ''}">
+        <div class="camp-card-top">
+          <span class="camp-card-name">⛵ Thuyền Thương Lái Sông Rừng</span>
+          <span class="camp-card-status tabular-nums">${statusMap[m.status] || statusMap.away}</span>
+        </div>
+        ${ordersHtml}
+        ${m.status === 'away' ? `
+          <div class="camp-card-actions">
+            <button type="button" class="camp-action-btn is-accent" data-summon-merchant="1">
+              🔔 Kéo chuông gọi thuyền ngay
+            </button>
+          </div>
+        ` : ''}
+      </article>
+      <article class="camp-card">
+        <div class="camp-card-top">
+          <span class="camp-card-name">🚣 Bến Thả Bè Xuôi Dòng</span>
+          <span class="camp-card-status">Bán tức thì</span>
+        </div>
+        <p class="camp-card-benefit">Buộc gỗ tròn, ván xẻ hoặc đồ gỗ thành bè thả trôi theo dòng Sông Rừng để thu tiền ngay lập tức.</p>
+        <div class="camp-raft-grid">
+          <button type="button" class="camp-action-btn tabular-nums" data-launch-raft="log" ${(ws.availLogs || 0) <= 0 ? 'disabled' : ''}>
+            🪵 Bè Gỗ tròn (${ws.availLogs || 0}) · $${prices.log}/khúc
+          </button>
+          <button type="button" class="camp-action-btn tabular-nums" data-launch-raft="plank" ${(ws.campPlankStock || 0) <= 0 ? 'disabled' : ''}>
+            📦 Bè Ván xẻ (${ws.campPlankStock || 0}) · $${prices.plank}/ván
+          </button>
+          <button type="button" class="camp-action-btn is-accent tabular-nums" data-launch-raft="craft" ${(ws.campCraftStock || 0) <= 0 ? 'disabled' : ''}>
+            🪑 Bè Đồ gỗ (${ws.campCraftStock || 0}) · $${prices.craft}/bộ
+          </button>
+        </div>
+      </article>
+    `;
+
+    this.els.campBlueprintList.querySelectorAll('[data-deliver-order]').forEach((btn) => {
+      btn.addEventListener('click', () => this.cb.onDeliverMerchantOrder?.(btn.dataset.deliverOrder));
+    });
+    this.els.campBlueprintList.querySelector('[data-summon-merchant]')?.addEventListener('click', () => {
+      this.cb.onSummonMerchant?.();
+    });
+    this.els.campBlueprintList.querySelectorAll('[data-launch-raft]').forEach((btn) => {
+      btn.addEventListener('click', () => this.cb.onLaunchRaft?.(btn.dataset.launchRaft));
+    });
+  }
+
   toggleDock() {
     this.dockCollapsed = !this.dockCollapsed;
-    this.els.dockWrap.classList.toggle('is-collapsed', this.dockCollapsed);
-    this.els.dockToggle.textContent = this.dockCollapsed ? '▴ Hiện bảng' : '▾ Ẩn bảng';
+    this.els.dockWrap?.classList.toggle('is-collapsed', this.dockCollapsed);
+    if (this.els.dockToggle) {
+      this.els.dockToggle.textContent = this.dockCollapsed ? '▴ Hiện bảng' : '▾ Ẩn bảng';
+    }
+    this.els.wDockWrap?.classList.toggle('is-collapsed', this.dockCollapsed);
+    if (this.els.wDockToggle) {
+      this.els.wDockToggle.textContent = this.dockCollapsed ? '▴ Hiện thanh' : '▾ Ẩn thanh';
+    }
     this.els.minimapWrap?.classList.toggle('is-hidden-hud', this.dockCollapsed);
   }
 
@@ -503,7 +1270,13 @@ export class UIManager {
         ? '<span>👁️</span><span>Mở HUD</span>'
         : '<span>👁️</span><span class="hide-sm">Gọn</span>';
     }
-    this.toast(this.zenHud ? '👁️ Chế độ HUD siêu gọn (Nhấn Z để mở lại)' : 'Đã khôi phục đầy đủ HUD điều hành');
+    if (this.els.wBtnZen) {
+      this.els.wBtnZen.classList.toggle('is-zen-active', this.zenHud);
+      this.els.wBtnZen.innerHTML = this.zenHud
+        ? '<span>👁️</span><span>Mở HUD</span>'
+        : '<span>👁️</span><span class="hide-sm">Gọn</span>';
+    }
+    this.toast(this.zenHud ? '👁️ Chế độ HUD siêu gọn (Nhấn Z để mở lại)' : 'Đã khôi phục đầy đủ HUD');
   }
 
   showWelcomeOverlay(offlineData, gfxInfo, onClaimOffline) {
@@ -544,11 +1317,532 @@ export class UIManager {
     this.els.welcomeOverlay.hidden = false;
   }
 
+  _ensureWildernessMinimapCache(mapData) {
+    const cacheKey = `${mapData?.zones?.hills?.length || 0}_${mapData?.zones?.clearings?.length || 0}`;
+    if (this._wildernessMapCache && this._wildernessMapCacheKey === cacheKey) {
+      return this._wildernessMapCache;
+    }
+    const size = 512;
+    const worldSpan = (WILDERNESS_RADIUS + 18) * 2;
+    const worldMin = -(WILDERNESS_RADIUS + 18);
+    const canvas = document.createElement('canvas');
+    canvas.width = size;
+    canvas.height = size;
+    const c = canvas.getContext('2d');
+    const toX = (wx) => ((wx - worldMin) / worldSpan) * size;
+    const toY = (wz) => ((wz - worldMin) / worldSpan) * size;
+    const scaleR = (wr) => (wr / worldSpan) * size;
+
+    c.fillStyle = '#142c1e';
+    c.fillRect(0, 0, size, size);
+
+    // Subtle elevation boundary ring
+    c.strokeStyle = 'rgba(134, 239, 172, 0.22)';
+    c.lineWidth = 2;
+    c.beginPath();
+    c.arc(toX(0), toY(0), scaleR(WILDERNESS_RADIUS), 0, Math.PI * 2);
+    c.stroke();
+
+    // 1. Hills
+    for (const hill of mapData.zones.hills) {
+      const hx = toX(hill.center.x);
+      const hy = toY(hill.center.z);
+      const hr = scaleR(hill.radius);
+      c.fillStyle = 'rgba(22, 62, 36, 0.62)';
+      c.beginPath();
+      c.arc(hx, hy, hr, 0, Math.PI * 2);
+      c.fill();
+      c.strokeStyle = 'rgba(110, 178, 120, 0.28)';
+      c.lineWidth = 1.5;
+      c.beginPath();
+      c.arc(hx, hy, hr * 0.62, 0, Math.PI * 2);
+      c.stroke();
+    }
+
+    // 2. Clearings
+    for (const cl of mapData.zones.clearings) {
+      const clx = toX(cl.center.x);
+      const cly = toY(cl.center.z);
+      const clr = scaleR(cl.radius);
+      c.fillStyle = cl.isSpawn ? 'rgba(132, 189, 88, 0.56)' : 'rgba(118, 174, 82, 0.42)';
+      c.beginPath();
+      c.arc(clx, cly, clr, 0, Math.PI * 2);
+      c.fill();
+      c.strokeStyle = 'rgba(190, 242, 100, 0.40)';
+      c.lineWidth = 1.5;
+      c.stroke();
+    }
+
+    // 3. Woodland Footpaths
+    c.setLineDash([5, 5]);
+    c.strokeStyle = 'rgba(194, 166, 124, 0.56)';
+    c.lineWidth = 2.4;
+    for (const trail of mapData.trails) {
+      c.beginPath();
+      trail.points.forEach((pt, idx) => {
+        const tx = toX(pt.x);
+        const ty = toY(pt.z);
+        if (idx === 0) c.moveTo(tx, ty);
+        else c.lineTo(tx, ty);
+      });
+      c.stroke();
+    }
+    c.setLineDash([]);
+
+    // 4. Forest River Ribbon
+    c.strokeStyle = 'rgba(14, 148, 224, 0.90)';
+    c.lineCap = 'round';
+    c.lineWidth = Math.max(10, scaleR(getStreamHalfWidth(0) * 1.95));
+    c.beginPath();
+    for (let wz = -140; wz <= 140; wz += 4) {
+      const sx = toX(getStreamCenterX(wz));
+      const sy = toY(wz);
+      if (wz === -140) c.moveTo(sx, sy);
+      else c.lineTo(sx, sy);
+    }
+    c.stroke();
+
+    c.strokeStyle = 'rgba(125, 211, 252, 0.62)';
+    c.lineWidth = Math.max(4, scaleR(getStreamHalfWidth(0) * 0.62));
+    c.beginPath();
+    for (let wz = -140; wz <= 140; wz += 4) {
+      const sx = toX(getStreamCenterX(wz));
+      const sy = toY(wz);
+      if (wz === -140) c.moveTo(sx, sy);
+      else c.lineTo(sx, sy);
+    }
+    c.stroke();
+
+    // Fords
+    c.fillStyle = 'rgba(226, 232, 240, 0.72)';
+    for (const ford of mapData.zones.stream.fords) {
+      c.beginPath();
+      c.arc(toX(getStreamCenterX(ford.z)), toY(ford.z), 4.5, 0, Math.PI * 2);
+      c.fill();
+    }
+
+    // Forest Cluster footprints
+    for (const cl of mapData.clusters) {
+      c.fillStyle = 'rgba(20, 83, 45, 0.45)';
+      c.beginPath();
+      c.arc(toX(cl.center.x), toY(cl.center.z), scaleR(cl.radius), 0, Math.PI * 2);
+      c.fill();
+    }
+
+    this._wildernessMapCache = { canvas, size, worldMin, worldSpan };
+    this._wildernessMapCacheKey = cacheKey;
+    return this._wildernessMapCache;
+  }
+
+  openSkillTree() {
+    if (!this.els.skillTreeModal) return;
+    if (this.els.campDrawerBackdrop) this.els.campDrawerBackdrop.hidden = true;
+    this.els.skillTreeModal.hidden = false;
+    this.renderSkillTree();
+  }
+
+  closeSkillTree() {
+    if (this.els.skillTreeModal) this.els.skillTreeModal.hidden = true;
+  }
+
+  toggleSkillTree(force) {
+    if (!this.els.skillTreeModal) return;
+    const shouldOpen = typeof force === 'boolean' ? force : this.els.skillTreeModal.hidden;
+    if (shouldOpen) this.openSkillTree();
+    else this.closeSkillTree();
+  }
+
+  renderSkillTree() {
+    if (!this.els.skillTreeGrid || !this.wildernessMode) return;
+    const ws = this.cb.getWildernessState?.();
+    if (!ws || !ws.skills?.summary) return;
+    const sum = ws.skills.summary;
+
+    if (this.els.skillModalSummary) {
+      const availText = sum.available > 0
+        ? `<strong class="skill-pts-ready">${sum.available} điểm khả dụng</strong>`
+        : `<span>0 điểm khả dụng</span>`;
+      this.els.skillModalSummary.innerHTML = `${availText} <span class="meta-sep">·</span> Đã dùng ${sum.spent}/${sum.maxPossible} <span class="meta-sep">·</span> Cấp ${sum.level} <span class="meta-sep">·</span> Hợp đồng ${sum.contractsCompleted}`;
+    }
+    if (this.els.btnResetSkills) {
+      this.els.btnResetSkills.disabled = sum.spent <= 0;
+    }
+
+    this.els.skillTreeGrid.innerHTML = SKILL_TREE_BRANCHES.map((branch) => {
+      const nodesHtml = branch.nodes.map((node, idx) => {
+        const rank = sum.levels[node.id] || 0;
+        const check = canUpgradeSkill(node.id, sum.level, sum.contractsCompleted, sum.levels);
+        const isMax = rank >= node.maxRank;
+        const isLocked = check.status === 'locked';
+        const isReady = check.ok;
+        const stateCls = isMax ? 'is-maxed' : isReady ? 'is-ready' : isLocked ? 'is-locked' : 'is-pending';
+
+        const prevUnlocked = idx === 0 || (sum.levels[branch.nodes[idx - 1].id] || 0) >= 1;
+        const connector = idx > 0
+          ? `<div class="skill-connector${prevUnlocked ? ' is-lit' : ''}" style="--branch-accent:${branch.accent}" aria-hidden="true"></div>`
+          : '';
+
+        const pips = Array.from({ length: node.maxRank }, (_, i) => (
+          `<span class="skill-pip${i < rank ? ' is-filled' : ''}" style="--branch-accent:${branch.accent}"></span>`
+        )).join('');
+
+        const currentEffect = rank > 0 ? node.rankLabels[rank - 1] : 'Chưa mở khóa';
+        const nextEffect = !isMax ? node.rankLabels[rank] : 'Đã đạt hiệu lực tối đa';
+
+        let statusText = 'Chưa đủ điểm';
+        if (isMax) statusText = 'Đã tối đa';
+        else if (isReady) statusText = 'Có thể nâng';
+        else if (isLocked) statusText = 'Cần mở bậc trước';
+
+        return `
+          ${connector}
+          <article class="skill-node-card ${stateCls}" style="--branch-accent:${branch.accent}">
+            <div class="skill-node-head">
+              <span class="skill-node-title">${node.icon} ${node.name}</span>
+              <span class="skill-node-rank tabular-nums">${rank}/${node.maxRank}</span>
+            </div>
+            <div class="skill-pips" aria-hidden="true">${pips}</div>
+            <p class="skill-node-desc">${node.desc}</p>
+            <div class="skill-node-effects tabular-nums">
+              <span class="skill-effect-cur">Hiện tại: <strong>${currentEffect}</strong></span>
+              ${!isMax ? `<span class="skill-effect-next">Bậc kế: ${nextEffect}</span>` : ''}
+            </div>
+            <div class="skill-node-foot">
+              <span class="skill-status-label">${statusText}</span>
+              ${isMax ? '' : `
+                <button type="button" class="skill-upgrade-btn" data-skill-upgrade="${node.id}" ${isReady ? '' : 'disabled'}>
+                  Nâng bậc (1đ)
+                </button>
+              `}
+            </div>
+          </article>
+        `;
+      }).join('');
+
+      return `
+        <section class="skill-branch-col" style="--branch-accent:${branch.accent}">
+          <header class="skill-branch-head">
+            <span class="skill-branch-name">${branch.icon} ${branch.name}</span>
+            <span class="skill-branch-sub">${branch.subtitle}</span>
+          </header>
+          <div class="skill-branch-nodes">
+            ${nodesHtml}
+          </div>
+        </section>
+      `;
+    }).join('');
+
+    this.els.skillTreeGrid.querySelectorAll('[data-skill-upgrade]').forEach((btn) => {
+      btn.addEventListener('click', () => {
+        this.cb.onUpgradeSkill?.(btn.dataset.skillUpgrade);
+      });
+    });
+  }
+
   renderMinimap(playerPos, playerYaw, trees, questTarget, extras = {}) {
     const ctx = this.els.minimapCtx;
     if (!ctx || this.minimapCollapsed || this.dockCollapsed) return;
 
     const { width: w, height: h } = ctx.canvas;
+
+    // 360° Pristine Woodland Topographic Minimap (Cached Static Terrain + Heading-Up/North-Up + Zoom)
+    if (extras.wildernessMode) {
+      const mapData = extras.wildernessMap || WILDERNESS_MAP_360;
+      const zoneInfo = getWildernessZoneAt(playerPos.x, playerPos.z);
+      if (this.regionalPopulation) {
+        this.regionalPopulation.textContent = zoneInfo.name;
+      }
+
+      const isOverview = this.minimapZoomMode === 2 || this.minimapOverview;
+      const viewSpan = isOverview ? (WILDERNESS_RADIUS + 14) : (this.minimapZoomMode === 1 ? 50 : 76);
+      const headingUp = this.minimapHeadingUp && !isOverview;
+      const cx = isOverview ? 0 : (headingUp ? playerPos.x : Math.max(-55, Math.min(55, playerPos.x)));
+      const cz = isOverview ? 0 : (headingUp ? playerPos.z : Math.max(-55, Math.min(55, playerPos.z)));
+      const pxPerMeter = w / (viewSpan * 2);
+      const halfW = w * 0.5;
+      const halfH = h * 0.5;
+      const toMapX = (wx) => (wx - cx) * pxPerMeter;
+      const toMapY = (wz) => (wz - cz) * pxPerMeter;
+      const scaleR = (wr) => wr * pxPerMeter;
+
+      // Deep primal forest base
+      ctx.fillStyle = '#142c1e';
+      ctx.fillRect(0, 0, w, h);
+
+      ctx.save();
+      ctx.translate(halfW, halfH);
+      if (headingUp) {
+        ctx.rotate(playerYaw - Math.PI);
+      }
+
+      // Draw cached static topographic base (hills, clearings, trails, river, fords, forest clusters)
+      const cache = this._ensureWildernessMinimapCache(mapData);
+      const drawLeft = (cache.worldMin - cx) * pxPerMeter;
+      const drawTop = (cache.worldMin - cz) * pxPerMeter;
+      const drawSize = cache.worldSpan * pxPerMeter;
+      ctx.drawImage(cache.canvas, drawLeft, drawTop, drawSize, drawSize);
+
+      const cullBound = Math.max(halfW, halfH) * 1.5;
+
+      // Trees
+      if (trees && trees.length) {
+        for (const t of trees) {
+          const tx = toMapX(t.pos.x);
+          const ty = toMapY(t.pos.z);
+          if (Math.abs(tx) > cullBound || Math.abs(ty) > cullBound) continue;
+          if (!t.alive) {
+            ctx.fillStyle = 'rgba(180, 130, 82, 0.7)';
+            ctx.fillRect(tx - 1, ty - 1, 2, 2);
+          } else if (t.isAncient) {
+            ctx.fillStyle = '#fbbf24';
+            ctx.strokeStyle = '#fef3c7';
+            ctx.lineWidth = 1;
+            ctx.beginPath();
+            ctx.arc(tx, ty, 3.0, 0, Math.PI * 2);
+            ctx.fill();
+            ctx.stroke();
+          } else {
+            ctx.fillStyle = t.role === 'hero' ? '#86efac' : t.kind === 'oak' ? '#4ade80' : '#22c55e';
+            const rDot = t.role === 'hero' ? 2.1 : 1.35;
+            ctx.beginPath();
+            ctx.arc(tx, ty, rDot, 0, Math.PI * 2);
+            ctx.fill();
+          }
+        }
+      }
+
+      // Dropped Timber Log Piles, Felled Trunks, Loose Ground Logs, Handcart & Camp Sites
+      if (extras.droppedLogPiles && extras.droppedLogPiles.length) {
+        ctx.fillStyle = '#f59e0b';
+        for (const pile of extras.droppedLogPiles) {
+          ctx.fillRect(toMapX(pile.pos.x) - 2, toMapY(pile.pos.z) - 2, 4, 4);
+        }
+      }
+
+      if (extras.felledTrunks && extras.felledTrunks.length) {
+        ctx.strokeStyle = '#c27820';
+        ctx.lineWidth = 2.2;
+        for (const tr of extras.felledTrunks) {
+          const x0 = toMapX(tr.startX);
+          const y0 = toMapY(tr.startZ);
+          const len = tr.segmentsRemaining * tr.segLen;
+          const x1 = toMapX(tr.startX + tr.dirX * len);
+          const y1 = toMapY(tr.startZ + tr.dirZ * len);
+          ctx.beginPath();
+          ctx.moveTo(x0, y0);
+          ctx.lineTo(x1, y1);
+          ctx.stroke();
+        }
+      }
+
+      if (extras.groundLogs && extras.groundLogs.length) {
+        ctx.fillStyle = '#eab308';
+        for (const lg of extras.groundLogs) {
+          ctx.fillRect(toMapX(lg.pos.x) - 1.5, toMapY(lg.pos.z) - 1.5, 3, 3);
+        }
+      }
+
+      if (extras.campSites && extras.campSites.length) {
+        for (const site of extras.campSites) {
+          const sx = toMapX(site.x);
+          const sy = toMapY(site.z);
+          if (Math.abs(sx) > cullBound || Math.abs(sy) > cullBound) continue;
+          if (site.built) {
+            ctx.fillStyle = site.id === 'campfire' ? '#f97316' : '#4f8f5b';
+            ctx.strokeStyle = '#ecfdf5';
+            ctx.lineWidth = 1;
+            ctx.fillRect(sx - 3, sy - 3, 6, 6);
+            ctx.strokeRect(sx - 3, sy - 3, 6, 6);
+          } else {
+            ctx.fillStyle = site.tracked ? '#fbbf24' : '#d98a2b';
+            ctx.fillRect(sx - 2.5, sy - 2.5, 5, 5);
+            if (site.tracked) {
+              ctx.strokeStyle = '#fef08a';
+              ctx.lineWidth = 1.3;
+              ctx.beginPath();
+              ctx.arc(sx, sy, 6.2, 0, Math.PI * 2);
+              ctx.stroke();
+            }
+          }
+        }
+      }
+
+      if (extras.infraMap) {
+        const { pads, infra, excavator } = extras.infraMap;
+        if (pads && pads.length) {
+          for (const pd of pads) {
+            const px = toMapX(pd.x);
+            const py = toMapY(pd.z);
+            const pr = Math.max(3, scaleR(pd.r));
+            ctx.fillStyle = pd.done ? 'rgba(186, 158, 114, 0.56)' : 'rgba(245, 158, 11, 0.35)';
+            ctx.strokeStyle = pd.done ? 'rgba(245, 222, 179, 0.72)' : '#fbbf24';
+            ctx.lineWidth = 1;
+            ctx.beginPath();
+            ctx.arc(px, py, pr, 0, Math.PI * 2);
+            ctx.fill();
+            ctx.stroke();
+          }
+        }
+        if (infra && infra.length) {
+          for (const b of infra) {
+            const bx = toMapX(b.x);
+            const by = toMapY(b.z);
+            ctx.fillStyle = b.id === 'house_bietthu' ? '#facc15' : b.id === 'auto_sawmill' ? '#38bdf8' : '#34d399';
+            ctx.strokeStyle = '#ffffff';
+            ctx.lineWidth = 1;
+            ctx.fillRect(bx - 3.5, by - 3.5, 7, 7);
+            ctx.strokeRect(bx - 3.5, by - 3.5, 7, 7);
+          }
+        }
+        if (excavator) {
+          const ex = toMapX(excavator.x);
+          const ey = toMapY(excavator.z);
+          ctx.fillStyle = '#f59e0b';
+          ctx.strokeStyle = '#fef3c7';
+          ctx.lineWidth = 1.2;
+          ctx.fillRect(ex - 3.2, ey - 3.2, 6.4, 6.4);
+          ctx.strokeRect(ex - 3.2, ey - 3.2, 6.4, 6.4);
+        }
+      }
+
+      if (extras.placementPreview) {
+        const pmx = toMapX(extras.placementPreview.x);
+        const pmy = toMapY(extras.placementPreview.z);
+        const ok = Boolean(extras.placementPreview.valid);
+        ctx.fillStyle = ok ? '#4ade80' : '#f87171';
+        ctx.strokeStyle = ok ? '#dcfce7' : '#fee2e2';
+        ctx.lineWidth = 1.4;
+        ctx.fillRect(pmx - 3, pmy - 3, 6, 6);
+        ctx.beginPath();
+        ctx.arc(pmx, pmy, 6.8, 0, Math.PI * 2);
+        ctx.stroke();
+      }
+
+      if (extras.handcart) {
+        const hx = toMapX(extras.handcart.pos.x);
+        const hy = toMapY(extras.handcart.pos.z);
+        ctx.fillStyle = '#f8fafc';
+        ctx.strokeStyle = '#d98a2b';
+        ctx.lineWidth = 1.4;
+        ctx.beginPath();
+        ctx.arc(hx, hy, 3.2, 0, Math.PI * 2);
+        ctx.fill();
+        ctx.stroke();
+      }
+
+      // Saplings
+      if (extras.saplings && extras.saplings.length) {
+        ctx.fillStyle = '#a3e635';
+        for (const sap of extras.saplings) {
+          ctx.beginPath();
+          ctx.arc(toMapX(sap.x), toMapY(sap.z), 2.1, 0, Math.PI * 2);
+          ctx.fill();
+        }
+      }
+
+      // AI Camp Workers
+      if (extras.workers && extras.workers.length) {
+        for (const wk of extras.workers) {
+          const wkx = wk.x ?? wk.pos?.x;
+          const wkz = wk.z ?? wk.pos?.z;
+          if (!Number.isFinite(wkx) || !Number.isFinite(wkz)) continue;
+          const wx = toMapX(wkx);
+          const wy = toMapY(wkz);
+          ctx.fillStyle = wk.role === 'porter' ? '#34d399' : '#fb923c';
+          ctx.strokeStyle = '#0f172a';
+          ctx.lineWidth = 1.1;
+          ctx.beginPath();
+          ctx.arc(wx, wy, 2.8, 0, Math.PI * 2);
+          ctx.fill();
+          ctx.stroke();
+        }
+      }
+
+      // Floating River Rafts
+      if (extras.rafts && extras.rafts.length) {
+        ctx.fillStyle = '#f59e0b';
+        for (const rf of extras.rafts) {
+          ctx.fillRect(toMapX(rf.group.position.x) - 2, toMapY(rf.group.position.z) - 2.5, 4, 5);
+        }
+      }
+
+      // Merchant Riverboat
+      if (extras.merchantBoatPos) {
+        const bx = toMapX(extras.merchantBoatPos.x);
+        const by = toMapY(extras.merchantBoatPos.z);
+        ctx.fillStyle = '#38bdf8';
+        ctx.strokeStyle = '#f8fafc';
+        ctx.lineWidth = 1.2;
+        ctx.beginPath();
+        ctx.moveTo(bx, by - 4.5);
+        ctx.lineTo(bx + 3.8, by);
+        ctx.lineTo(bx, by + 4.5);
+        ctx.lineTo(bx - 3.8, by);
+        ctx.closePath();
+        ctx.fill();
+        ctx.stroke();
+      }
+
+      // Key landmarks (upright text even in Heading-Up mode)
+      if (!headingUp) {
+        ctx.font = 'bold 8px sans-serif';
+        ctx.textAlign = 'center';
+        ctx.fillStyle = 'rgba(236, 253, 245, 0.86)';
+        ctx.fillText('Bãi Trống', toMapX(0), toMapY(0) + 12);
+        ctx.fillStyle = 'rgba(186, 230, 253, 0.96)';
+        ctx.fillText('Sông Rừng', toMapX(getStreamCenterX(4)) + 20, toMapY(4));
+      }
+
+      // Player Marker & Facing Direction Cone
+      const px = toMapX(playerPos.x);
+      const py = toMapY(playerPos.z);
+      ctx.save();
+      ctx.translate(px, py);
+      ctx.rotate(-playerYaw + Math.PI);
+      ctx.fillStyle = 'rgba(250, 204, 21, 0.25)';
+      ctx.beginPath();
+      ctx.moveTo(0, 0);
+      ctx.arc(0, 0, 12, -Math.PI / 2 - 0.45, -Math.PI / 2 + 0.45);
+      ctx.closePath();
+      ctx.fill();
+
+      ctx.fillStyle = '#fef08a';
+      ctx.strokeStyle = '#0f172a';
+      ctx.lineWidth = 1.4;
+      ctx.beginPath();
+      ctx.moveTo(0, -5.8);
+      ctx.lineTo(4.3, 4.5);
+      ctx.lineTo(0, 2.2);
+      ctx.lineTo(-4.3, 4.5);
+      ctx.closePath();
+      ctx.fill();
+      ctx.stroke();
+      ctx.restore();
+
+      ctx.restore();
+
+      // Compass North indicator overlay (tracks true North in Heading-Up mode)
+      const compassAngle = headingUp ? (playerYaw - Math.PI) : 0;
+      const nr = halfW - 11;
+      const nx = halfW + Math.sin(compassAngle) * nr;
+      const ny = halfH - Math.cos(compassAngle) * nr;
+      ctx.save();
+      ctx.fillStyle = 'rgba(15, 22, 18, 0.86)';
+      ctx.strokeStyle = 'rgba(245, 158, 11, 0.72)';
+      ctx.lineWidth = 1;
+      ctx.beginPath();
+      ctx.arc(nx, ny, 7.5, 0, Math.PI * 2);
+      ctx.fill();
+      ctx.stroke();
+      ctx.font = '700 8.5px "JetBrains Mono", monospace';
+      ctx.textAlign = 'center';
+      ctx.textBaseline = 'middle';
+      ctx.fillStyle = '#fbbf24';
+      ctx.fillText('B', nx, ny + 0.5);
+      ctx.restore();
+      return;
+    }
+
     const regionalPopulation = extras.regionalCitizens?.length || 0;
     this.regionalPopulation.textContent = 'Cư dân AI quanh đây: ' + regionalPopulation;
     const range = 115;
@@ -930,6 +2224,8 @@ export class UIManager {
       || !this.els.lbModal.hidden
       || (this.els.shiftModal && !this.els.shiftModal.hidden)
       || (this.els.notifDrawer && !this.els.notifDrawer.hidden)
+      || (this.els.campDrawerBackdrop && !this.els.campDrawerBackdrop.hidden)
+      || (this.els.skillTreeModal && !this.els.skillTreeModal.hidden)
       || (this.els.welcomeOverlay && !this.els.welcomeOverlay.hidden);
   }
 
@@ -1066,7 +2362,137 @@ export class UIManager {
     if (this.els.hudCameraLabel && this.cb.getCameraMode) {
       const cm = this.cb.getCameraMode();
       const camNames = { follow: 'Theo chân', tactical: 'Chiến thuật', orbit: 'Điện ảnh', train: 'Tàu hỏa' };
-      this.els.hudCameraLabel.textContent = camNames[cm] || 'Theo chân';
+      const camLabel = camNames[cm] || 'Theo chân';
+      this.els.hudCameraLabel.textContent = camLabel;
+      if (this.els.wCameraLabel) this.els.wCameraLabel.textContent = camLabel;
+    }
+
+    if (this.wildernessMode && this.cb.getWildernessState) {
+      const ws = this.cb.getWildernessState();
+      if (ws) {
+        if (this.els.wZoneName) this.els.wZoneName.textContent = ws.zoneName;
+        if (this.els.wLevel) this.els.wLevel.textContent = String(ws.level || 1);
+        if (this.els.wCash) this.els.wCash.textContent = `$${(ws.cash || 0).toLocaleString()}`;
+        if (this.els.wShoulderLogs) this.els.wShoulderLogs.textContent = `${ws.shoulderLogs}/${ws.shoulderCap}`;
+        if (this.els.wCartStat) this.els.wCartStat.hidden = !ws.cartBuilt;
+        if (this.els.wCartSep) this.els.wCartSep.hidden = !ws.cartBuilt;
+        if (this.els.wCartLogs) this.els.wCartLogs.textContent = `${ws.cartLogs}/${ws.cartCap}`;
+        if (this.els.wYardStock) this.els.wYardStock.textContent = String(ws.campLogStock);
+        if (this.els.wPlankStock) this.els.wPlankStock.textContent = String(ws.campPlankStock);
+        const showCraft = Boolean(ws.cabinBuilt || (ws.campCraftStock || 0) > 0);
+        if (this.els.wCraftStat) this.els.wCraftStat.hidden = !showCraft;
+        if (this.els.wCraftSep) this.els.wCraftSep.hidden = !showCraft;
+        if (this.els.wCraftStock) this.els.wCraftStock.textContent = String(ws.campCraftStock || 0);
+        if (this.els.wCampProgress) this.els.wCampProgress.textContent = `${ws.builtCount}/${ws.totalBlueprints}`;
+        if (this.els.wCampBadge) this.els.wCampBadge.textContent = `${ws.builtCount}/${ws.totalBlueprints}`;
+        if (this.els.wildernessContractHud) {
+          const contracts = ws.progression?.contracts || [];
+          if (contracts.length > 0) {
+            const ready = contracts.find((c) => c.ready || c.progress >= c.target);
+            const activeC = ready || contracts[0];
+            this.els.wildernessContractHud.hidden = false;
+            this.els.wildernessContractHud.classList.toggle('is-ready', Boolean(ready));
+            if (this.els.wContractTitle) this.els.wContractTitle.textContent = activeC.title;
+            if (this.els.wContractProgress) {
+              this.els.wContractProgress.textContent = `${activeC.progress}/${activeC.target}`;
+            }
+            if (this.els.wContractAction) {
+              if (ready) {
+                this.els.wContractAction.dataset.readyId = ready.id;
+                this.els.wContractAction.textContent = `Nhận +$${ready.rewardCash}`;
+              } else {
+                delete this.els.wContractAction.dataset.readyId;
+                this.els.wContractAction.textContent = 'Hợp đồng';
+              }
+            }
+          } else {
+            this.els.wildernessContractHud.hidden = true;
+          }
+        }
+        if (this.els.wDockExcavator) {
+          this.els.wDockExcavator.classList.toggle('is-active', Boolean(ws.infra?.drivingExcavator));
+        }
+        if (this.els.wDockExcavatorLabel) {
+          this.els.wDockExcavatorLabel.textContent = ws.infra?.drivingExcavator
+            ? 'Xuống xe'
+            : ws.infra?.excavatorOwned
+              ? 'Máy xúc'
+              : 'Hạ tầng';
+        }
+        if (this.els.excavatorDriveHud) {
+          this.els.excavatorDriveHud.hidden = !ws.infra?.drivingExcavator;
+        }
+        if (this.els.wWeatherIcon && this.els.hudWeatherIcon) {
+          this.els.wWeatherIcon.textContent = ws.isLightRain ? '🌦️' : ws.isRain ? '⛈️' : this.els.hudWeatherIcon.textContent;
+        }
+        if (this.els.wClockTime && this.els.hudClockTime) {
+          this.els.wClockTime.textContent = ws.isRain ? `${this.els.hudClockTime.textContent} · Mưa` : this.els.hudClockTime.textContent;
+        }
+        if (this.els.minimapAtmoReadout && this.els.hudClockTime) {
+          this.els.minimapAtmoReadout.textContent = `${this.els.hudClockTime.textContent} · ${ws.weatherLabel || 'Nắng trong'}`;
+        }
+        if (this.els.btnMiniRain) {
+          const rainOn = Boolean(ws.isLightRain);
+          this.els.btnMiniRain.classList.toggle('is-active', rainOn);
+          this.els.btnMiniRain.setAttribute('aria-pressed', String(rainOn));
+        }
+        if (this.els.wSkillsPoints && ws.skills?.summary) {
+          const avail = ws.skills.summary.available || 0;
+          this.els.wSkillsPoints.hidden = avail <= 0;
+          this.els.wSkillsPoints.textContent = `+${avail}`;
+        }
+        if (this.els.skillTreeModal && !this.els.skillTreeModal.hidden) {
+          this.renderSkillTree();
+        }
+        if (this.els.wDockRun) {
+          const running = Boolean(ws.sprintToggle || ws.isSprinting);
+          this.els.wDockRun.classList.toggle('is-active', running);
+        }
+        if (this.els.wDockRunLabel) {
+          this.els.wDockRunLabel.textContent = ws.sprintToggle
+            ? 'Đang chạy'
+            : ws.isSprinting
+              ? 'Chạy nhanh'
+              : 'Chạy';
+        }
+        if (this.els.wDockCart) {
+          this.els.wDockCart.disabled = !ws.cartBuilt;
+          this.els.wDockCart.classList.toggle('is-active', ws.cartAttached);
+        }
+        if (this.els.wDockCartLabel) {
+          this.els.wDockCartLabel.textContent = !ws.cartBuilt
+            ? 'Xe kéo'
+            : ws.cartAttached
+              ? `Dừng xe (${ws.cartLogs}/${ws.cartCap})`
+              : `Kéo xe (${ws.cartLogs}/${ws.cartCap})`;
+        }
+        if (this.els.wDockDrop) {
+          this.els.wDockDrop.disabled = ws.shoulderLogs <= 0;
+        }
+        if (this.els.placementBar) {
+          const pl = ws.placement;
+          this.els.placementBar.hidden = !pl;
+          if (pl) {
+            if (this.els.placementTitle) {
+              this.els.placementTitle.textContent = `📍 Chọn vị trí: ${pl.name}`;
+            }
+            if (this.els.placementStatus) {
+              this.els.placementStatus.textContent = pl.reason || 'Click hoặc E để đặt công trình';
+              this.els.placementStatus.classList.toggle('is-valid', Boolean(pl.valid));
+              this.els.placementStatus.classList.toggle('is-invalid', !pl.valid);
+            }
+            if (this.els.btnPlaceGrade) {
+              this.els.btnPlaceGrade.hidden = !(pl.needsGrading && ws.infra?.excavatorOwned);
+            }
+            if (this.els.btnPlaceConfirm) {
+              this.els.btnPlaceConfirm.disabled = !pl.valid;
+            }
+          }
+        }
+        if (this.els.campDrawerBackdrop && !this.els.campDrawerBackdrop.hidden) {
+          this.renderCampDrawer();
+        }
+      }
     }
 
     this.els.valCash.textContent = `$${Math.floor(gameState.cash).toLocaleString()}`;

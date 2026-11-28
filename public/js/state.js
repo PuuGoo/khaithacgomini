@@ -797,6 +797,7 @@ export const WEATHER_PRESETS = {
   auto: { id: 'auto', label: 'Tự động 24h', icon: '🕒', hour: null, fixedHour: null },
   dawn: { id: 'dawn', label: 'Bình Minh', icon: '🌅', hour: 6.25, fixedHour: 6.25 },
   sunny: { id: 'sunny', label: 'Nắng Vàng', icon: '☀️', hour: 11.5, fixedHour: 11.5 },
+  rain: { id: 'rain', label: 'Mưa Rừng Nhẹ', icon: '🌦️', hour: 14.5, fixedHour: 14.5, lightRain: true },
   sunset: { id: 'sunset', label: 'Hoàng Hôn', icon: '🌇', hour: 17.85, fixedHour: 17.85 },
   night: { id: 'night', label: 'Đêm Sao', icon: '🌙', hour: 22.5, fixedHour: 22.5 },
   storm: { id: 'storm', label: 'Mưa Bão', icon: '⛈️', hour: 15.2, fixedHour: 15.2 }
@@ -1163,6 +1164,7 @@ export function createDefaultState() {
     totalPlanksSawn: 0,
     totalExported: 0,
     padProgress: {},
+    wildernessCamp: null,
     starterPackClaimed: false,
     graphicsQuality: 'auto',
     updatedAt: new Date().toISOString()

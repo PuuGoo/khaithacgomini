@@ -750,20 +750,27 @@ app.post('/api/city-state/deposit-food', (req, res) => {
 // API QUẢN LÝ MÔ HÌNH 3D NHÂN VẬT CHÍNH (public/models/lumberjack.glb)
 // -----------------------------------------------------------------------------
 const MODELS_DIR = path.join(__dirname, 'public', 'models');
+const FOREST_LUMBERJACK_GLB_PATH = path.join(MODELS_DIR, 'forest', 'lumberjack_player.glb');
 const LUMBERJACK_GLB_PATH = path.join(MODELS_DIR, 'lumberjack.glb');
 
 app.get('/api/models/lumberjack/status', (req, res) => {
   try {
-    if (fs.existsSync(LUMBERJACK_GLB_PATH)) {
-      const stat = fs.statSync(LUMBERJACK_GLB_PATH);
-      if (stat.isFile() && stat.size >= 12) {
-        return res.json({
-          status: 'success',
-          exists: true,
-          sizeBytes: stat.size,
-          updatedAt: stat.mtime.toISOString(),
-          url: `/models/lumberjack.glb?v=${Math.floor(stat.mtimeMs)}`
-        });
+    const candidates = [
+      { filePath: FOREST_LUMBERJACK_GLB_PATH, publicUrl: '/models/forest/lumberjack_player.glb' },
+      { filePath: LUMBERJACK_GLB_PATH, publicUrl: '/models/lumberjack.glb' }
+    ];
+    for (const candidate of candidates) {
+      if (fs.existsSync(candidate.filePath)) {
+        const stat = fs.statSync(candidate.filePath);
+        if (stat.isFile() && stat.size >= 12) {
+          return res.json({
+            status: 'success',
+            exists: true,
+            sizeBytes: stat.size,
+            updatedAt: stat.mtime.toISOString(),
+            url: `${candidate.publicUrl}?v=${Math.floor(stat.mtimeMs)}`
+          });
+        }
       }
     }
     return res.json({
@@ -771,7 +778,7 @@ app.get('/api/models/lumberjack/status', (req, res) => {
       exists: false,
       sizeBytes: 0,
       updatedAt: null,
-      url: '/models/lumberjack.glb'
+      url: '/models/forest/lumberjack_player.glb'
     });
   } catch (err) {
     return res.status(500).json({ status: 'error', exists: false, message: err.message });

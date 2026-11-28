@@ -45,14 +45,57 @@ import {
   createLoggingTruckModel,
   createWorkerModel,
   mountNormalizedGlb,
-  disposeObject3D
+  disposeObject3D,
+  FOREST_ASSETS
 } from './models.js';
+import { WildernessNatureSystem } from './wilderness-nature.js';
 import { gameState, fleetMissionState, stormState, getUpgradeCost, UPGRADE_CATALOG } from './state.js';
 import { FISHERY_LOCATION } from './island-route.js';
 import { LAND_EDGE_Z, WORLD_BOUNDS } from './regions.js';
 import { RegionalLife } from './regional-life.js';
+import {
+  STREAM_WATER_Y,
+  WILDERNESS_RADIUS,
+  WILDERNESS_MAP_360,
+  getStreamCenterX,
+  getStreamHalfWidth,
+  getStreamTangentAngle,
+  getStreamInfo,
+  getClearingFactorAt,
+  getTrailFactorAt,
+  groundHeightAt,
+  groundSlopeAt,
+  getGradedFactorAt,
+  measureTerrainRoughness,
+  setGradedPads,
+  getGradedPads,
+  upsertGradedPad,
+  getWildernessZoneAt,
+  generateClusteredForestLayout
+} from './wilderness-map.js';
 
-export { LAND_EDGE_Z, WORLD_BOUNDS };
+export {
+  LAND_EDGE_Z,
+  WORLD_BOUNDS,
+  STREAM_WATER_Y,
+  WILDERNESS_RADIUS,
+  WILDERNESS_MAP_360,
+  getStreamCenterX,
+  getStreamHalfWidth,
+  getStreamTangentAngle,
+  getStreamInfo,
+  getClearingFactorAt,
+  getTrailFactorAt,
+  groundHeightAt,
+  groundSlopeAt,
+  getGradedFactorAt,
+  measureTerrainRoughness,
+  setGradedPads,
+  getGradedPads,
+  upsertGradedPad,
+  getWildernessZoneAt,
+  generateClusteredForestLayout
+};
 
 // Master Zoned City Blueprint — spacious, separated bands with perimeter fences
 export const MAP_ZONES = {
@@ -221,13 +264,29 @@ export class WorldManager {
     this.houseSmokePuffs = [];
     this.floatingLogRafts = [];
     this.oceanUniforms = null;
+    this.streamUniforms = null;
     this.skyUniforms = null;
     this.skyDome = null;
+    this.wildernessMode = Boolean(options.wildernessMode);
+    this.wildernessMap = this.wildernessMode ? WILDERNESS_MAP_360 : null;
+    this.forestClusters = [];
+    this.clusterGroups = new Map();
+    this.droppedLogPiles = [];
     this._lifeDummy = new THREE.Object3D();
     this.nightFactor = 0;
+    this.natureSystem = null;
 
     this.initParticlePool();
     this.initFlyingPool();
+
+    if (this.wildernessMode) {
+      this.buildWildernessTerrainAndStream();
+      this.natureSystem = new WildernessNatureSystem(this.worldGroup, { lowSpec: this.lowSpec });
+      this.buildWildernessForestEcosystem();
+      this.buildWildernessAmbientLife();
+      this.setLowSpec(this.lowSpec);
+      return;
+    }
 
     this.buildTerrainAndOcean();
     this.buildHighlandTrails();
@@ -245,6 +304,799 @@ export class WorldManager {
     this.buildArcadePads();
     this.buildQuestIndicator();
     this.setLowSpec(this.lowSpec);
+  }
+
+  // ---------------------------------------------------------------------------
+  // 0. 360° Pristine Woodland Terrain, Rolling Hills, Clearing & Flowing Stream
+  // ---------------------------------------------------------------------------
+  buildWildernessTerrainAndStream() {
+    const size = WILDERNESS_MAP_360.meta.terrainSize;
+    const segs = this.lowSpec ? 96 : 144;
+    const terrainGeo = new THREE.PlaneGeometry(size, size, segs, segs);
+    terrainGeo.rotateX(-Math.PI / 2);
+
+    const pos = terrainGeo.attributes.position;
+    const colors = new Float32Array(pos.count * 3);
+    const cMeadow = new THREE.Color('#86bb56');
+    const cMoss = new THREE.Color('#5a8f40');
+    const cLoam = new THREE.Color('#b48d5e');
+    const cClusterFloor = new THREE.Color('#4a7636');
+    const cBank = new THREE.Color('#d8c8a3');
+    const cBed = new THREE.Color('#878577');
+    const cHill = new THREE.Color('#54833e');
+    const cRockSlope = new THREE.Color('#959184');
+    const tmpCol = new THREE.Color();
+
+    for (let i = 0; i < pos.count; i++) {
+      const vx = pos.getX(i);
+      const vz = pos.getZ(i);
+      const vy = groundHeightAt(vx, vz);
+      pos.setY(i, vy);
+
+      const r = Math.hypot(vx, vz);
+      const { dist, halfWidth } = getStreamInfo(vx, vz);
+      const { factor: clearFactor } = getClearingFactorAt(vx, vz);
+      const trailFactor = getTrailFactorAt(vx, vz);
+      const noise = Math.sin(vx * 0.13 + vz * 0.09) * 0.5 + 0.5;
+      const patch = Math.sin(vx * 0.055 - vz * 0.068 + 1.4) * 0.5 + 0.5;
+
+      // Blend sunlit clearing meadow -> lush mossy woodland -> warm conifer loam -> alpine hills
+      tmpCol.copy(cMoss).lerp(cMeadow, Math.max(clearFactor * 0.94, (1 - THREE.MathUtils.smoothstep(r, 14, 48)) * 0.78));
+      tmpCol.lerp(cLoam, patch * 0.24 * THREE.MathUtils.smoothstep(r, 6, 28));
+      tmpCol.lerp(cHill, THREE.MathUtils.smoothstep(vy, 3.8, 15.5) * 0.52);
+
+      // Natural rocky mineral tint on steeper hillside slopes
+      const slopeMag = Math.abs(groundHeightAt(vx + 1.2, vz) - vy) + Math.abs(groundHeightAt(vx, vz + 1.2) - vy);
+      if (slopeMag > 0.45) {
+        tmpCol.lerp(cRockSlope, THREE.MathUtils.smoothstep(slopeMag, 0.45, 1.35) * 0.45);
+      }
+
+      // Rich shaded pine-needle floor beneath organic primal forest clusters
+      for (let c = 0; c < WILDERNESS_MAP_360.clusters.length; c++) {
+        const cl = WILDERNESS_MAP_360.clusters[c];
+        const cd = Math.hypot(vx - cl.center.x, vz - cl.center.z);
+        if (cd < cl.radius * 1.15) {
+          const cf = 1 - THREE.MathUtils.smoothstep(cd, cl.radius * 0.25, cl.radius * 1.15);
+          tmpCol.lerp(cClusterFloor, cf * 0.38);
+        }
+      }
+
+      // Warm sunlit dirt footpaths linking the central clearing to the stream ford & pocket meadows
+      if (trailFactor > 0.01) {
+        tmpCol.lerp(cLoam, trailFactor * 0.62);
+      }
+
+      // Sunlit golden-sand & pebble stream banks transitioning smoothly into carved riverbed
+      if (dist < halfWidth * 2.35) {
+        const bankT = 1 - THREE.MathUtils.smoothstep(dist, halfWidth * 0.78, halfWidth * 2.35);
+        const bedT = 1 - THREE.MathUtils.smoothstep(dist, 0, halfWidth * 0.92);
+        tmpCol.lerp(cBank, bankT * 0.94);
+        tmpCol.lerp(cBed, bedT * 0.65);
+      }
+
+      // Organic micro tint jitter
+      const jitter = (noise - 0.5) * 0.05;
+      colors[i * 3] = THREE.MathUtils.clamp(tmpCol.r + jitter, 0, 1);
+      colors[i * 3 + 1] = THREE.MathUtils.clamp(tmpCol.g + jitter, 0, 1);
+      colors[i * 3 + 2] = THREE.MathUtils.clamp(tmpCol.b + jitter * 0.7, 0, 1);
+    }
+
+    terrainGeo.setAttribute('color', new THREE.BufferAttribute(colors, 3));
+    terrainGeo.computeVertexNormals();
+    this._terrainBaseColors = new Float32Array(colors);
+    this._terrainSegs = segs;
+    this._terrainSize = size;
+
+    const detailTex = getForestFloorTexture(40, 40);
+    detailTex.colorSpace = THREE.SRGBColorSpace;
+    this.groundMat = new THREE.MeshStandardMaterial({
+      map: detailTex,
+      vertexColors: true,
+      roughness: 0.86,
+      metalness: 0.01,
+      envMapIntensity: 0.72
+    });
+
+    const terrainMesh = new THREE.Mesh(terrainGeo, this.groundMat);
+    terrainMesh.receiveShadow = true;
+    terrainMesh.userData.wildernessKeep = true;
+    this.terrainMesh = terrainMesh;
+    this.worldGroup.add(terrainMesh);
+
+    // Apply any persisted excavator-graded soil tint immediately on load
+    if (getGradedPads().length > 0) {
+      this.rebuildAllGradedTerrain();
+    }
+
+    // Submerged Wet Riverbed Cobblestone Ribbon (sampled directly from e8a18d...glb pebbles, blended seamlessly into sandbanks)
+    const texLoader = new THREE.TextureLoader();
+    const riverPebbleTex = texLoader.load('/assets/river_pebbles_glb.jpg');
+    riverPebbleTex.wrapS = THREE.RepeatWrapping;
+    riverPebbleTex.wrapT = THREE.RepeatWrapping;
+    riverPebbleTex.colorSpace = THREE.SRGBColorSpace;
+    riverPebbleTex.anisotropy = this.lowSpec ? 2 : 4;
+
+    const riverWaterTex = texLoader.load('/assets/river_water_glb.jpg');
+    riverWaterTex.wrapS = THREE.RepeatWrapping;
+    riverWaterTex.wrapT = THREE.RepeatWrapping;
+    riverWaterTex.colorSpace = THREE.SRGBColorSpace;
+    riverWaterTex.anisotropy = this.lowSpec ? 2 : 4;
+
+    const riverWaterNormalTex = texLoader.load('/assets/river_water_normal_glb.jpg');
+    riverWaterNormalTex.wrapS = THREE.RepeatWrapping;
+    riverWaterNormalTex.wrapT = THREE.RepeatWrapping;
+
+    const streamLenZ = 340;
+    const zSegs = 168;
+    const xSegs = 16;
+
+    // Terrain-hugging cobblestone riverbed mesh (rotateX(-PI/2) first so triangle winding faces +Y upward!)
+    const bedGeo = new THREE.PlaneGeometry(1, streamLenZ, xSegs, zSegs);
+    bedGeo.rotateX(-Math.PI / 2);
+    const bPos = bedGeo.attributes.position;
+    for (let i = 0; i < bPos.count; i++) {
+      const u = bPos.getX(i); // -0.5 .. +0.5
+      const vz = bPos.getZ(i); // -streamLenZ/2 .. +streamLenZ/2
+      const cx = getStreamCenterX(vz);
+      const hw = getStreamHalfWidth(vz) * 1.48;
+      const wx = cx + u * hw * 2;
+      const wy = groundHeightAt(wx, vz) + 0.055;
+      bPos.setXYZ(i, wx, wy, vz);
+    }
+    bPos.needsUpdate = true;
+    bedGeo.computeVertexNormals();
+    bedGeo.computeBoundingBox();
+    bedGeo.computeBoundingSphere();
+
+    this.streamBedUniforms = {
+      uPebbleMap: { value: riverPebbleTex },
+      uFogColor: { value: new THREE.Color('#cbe7f5') },
+      uFogDensity: { value: 0.0029 }
+    };
+
+    const bedMat = new THREE.ShaderMaterial({
+      uniforms: this.streamBedUniforms,
+      transparent: true,
+      depthWrite: false,
+      side: THREE.DoubleSide,
+      polygonOffset: true,
+      polygonOffsetFactor: -1,
+      vertexShader: `
+        varying vec3 vWorldPos;
+        varying vec2 vUv;
+        void main() {
+          vUv = uv;
+          vec4 wp = modelMatrix * vec4(position, 1.0);
+          vWorldPos = wp.xyz;
+          gl_Position = projectionMatrix * viewMatrix * wp;
+        }
+      `,
+      fragmentShader: `
+        varying vec3 vWorldPos;
+        varying vec2 vUv;
+        uniform sampler2D uPebbleMap;
+        uniform vec3 uFogColor;
+        uniform float uFogDensity;
+        void main() {
+          float edge = abs(vUv.x - 0.5) * 2.0;
+          float alpha = (1.0 - smoothstep(0.54, 0.98, edge)) * 0.94;
+          if (alpha < 0.01) discard;
+          vec2 pUv = vWorldPos.xz * 0.24;
+          vec3 peb = texture2D(uPebbleMap, pUv).rgb;
+          // Wet stone darkening in deep center, warm sunlit sand-cobble blend on shallow banks
+          float wet = 1.0 - smoothstep(0.42, 0.92, edge);
+          vec3 col = peb * mix(vec3(1.18, 1.12, 1.02), vec3(0.74, 0.86, 0.90), wet * 0.54);
+          float dist = length(cameraPosition - vWorldPos);
+          float fogF = 1.0 - exp(-pow(dist * uFogDensity, 2.0));
+          col = mix(col, uFogColor, clamp(fogF, 0.0, 1.0));
+          gl_FragColor = vec4(col, alpha);
+          #include <tonemapping_fragment>
+          #include <colorspace_fragment>
+        }
+      `
+    });
+    const streamBedMesh = new THREE.Mesh(bedGeo, bedMat);
+    streamBedMesh.renderOrder = 1;
+    streamBedMesh.frustumCulled = false;
+    streamBedMesh.userData.wildernessKeep = true;
+    this.streamBedMesh = streamBedMesh;
+    this.worldGroup.add(streamBedMesh);
+
+    // Wide Winding Forest River Ribbon powered by GLB water caustics + normal map flowing smoothly downstream
+    // RotateX(-PI/2) FIRST so front faces point straight +Y upward (prevents backface culling!)
+    const streamGeo = new THREE.PlaneGeometry(1, streamLenZ, xSegs, zSegs);
+    streamGeo.rotateX(-Math.PI / 2);
+    const sPos = streamGeo.attributes.position;
+    for (let i = 0; i < sPos.count; i++) {
+      const u = sPos.getX(i); // -0.5 .. +0.5
+      const vz = sPos.getZ(i); // -streamLenZ/2 .. +streamLenZ/2
+      const cx = getStreamCenterX(vz);
+      const hw = getStreamHalfWidth(vz) * 1.24;
+      sPos.setXYZ(i, cx + u * hw * 2, STREAM_WATER_Y, vz);
+    }
+    sPos.needsUpdate = true;
+    streamGeo.computeVertexNormals();
+    streamGeo.computeBoundingBox();
+    streamGeo.computeBoundingSphere();
+
+    this.streamUniforms = {
+      uTime: { value: 0 },
+      uWaterMap: { value: riverWaterTex },
+      uWaterNormal: { value: riverWaterNormalTex },
+      uSunDir: { value: new THREE.Vector3(0.45, 0.72, 0.52).normalize() },
+      uSunColor: { value: new THREE.Color('#fff5db') },
+      uSkyColor: { value: new THREE.Color('#8ecae6') },
+      uFogColor: { value: new THREE.Color('#cbe7f5') },
+      uFogDensity: { value: 0.0029 }
+    };
+
+    const streamMat = new THREE.ShaderMaterial({
+      uniforms: this.streamUniforms,
+      transparent: true,
+      depthWrite: false,
+      side: THREE.DoubleSide,
+      vertexShader: `
+        varying vec3 vWorldPos;
+        varying vec2 vUv;
+        uniform float uTime;
+        void main() {
+          vUv = uv;
+          vec3 p = position;
+          p.y += sin(p.z * 0.45 - uTime * 2.2 + p.x * 0.34) * 0.024;
+          vec4 wp = modelMatrix * vec4(p, 1.0);
+          vWorldPos = wp.xyz;
+          gl_Position = projectionMatrix * viewMatrix * wp;
+        }
+      `,
+      fragmentShader: `
+        varying vec3 vWorldPos;
+        varying vec2 vUv;
+        uniform float uTime;
+        uniform sampler2D uWaterMap;
+        uniform sampler2D uWaterNormal;
+        uniform vec3 uSunDir;
+        uniform vec3 uSunColor;
+        uniform vec3 uSkyColor;
+        uniform vec3 uFogColor;
+        uniform float uFogDensity;
+
+        void main() {
+          float edge = abs(vUv.x - 0.5) * 2.0;
+
+          // Dual scrolling downstream UV layers sampling the real GLB water ripple & caustics textures
+          vec2 flowUv1 = vec2(vWorldPos.x * 0.13 + sin(vWorldPos.z * 0.08) * 0.12, vWorldPos.z * 0.11 - uTime * 0.24);
+          vec2 flowUv2 = vec2(vWorldPos.x * 0.19 - uTime * 0.03, vWorldPos.z * 0.16 - uTime * 0.36 + 0.37);
+
+          vec3 tex1 = texture2D(uWaterMap, flowUv1).rgb;
+          vec3 tex2 = texture2D(uWaterMap, flowUv2).rgb;
+          vec3 waterSample = mix(tex1, tex2, 0.46);
+
+          vec3 n1 = texture2D(uWaterNormal, flowUv1).xyz * 2.0 - 1.0;
+          vec3 n2 = texture2D(uWaterNormal, flowUv2).xyz * 2.0 - 1.0;
+          vec3 N = normalize(vec3((n1.x + n2.x) * 0.30, 1.0, (n1.y + n2.y) * 0.34));
+
+          vec3 V = normalize(cameraPosition - vWorldPos);
+          vec3 L = normalize(uSunDir);
+          vec3 H = normalize(L + V);
+
+          float fresnel = 0.08 + 0.92 * pow(1.0 - max(dot(N, V), 0.0), 3.0);
+          float spec = pow(max(dot(N, H), 0.0), 110.0) * 1.85 + pow(max(dot(N, H), 0.0), 22.0) * 0.36;
+
+          // Blend GLB turquoise caustics with natural alpine depth gradient so riverbed cobblestones shine through shallows
+          float causticLum = clamp((waterSample.g + waterSample.b) * 0.54, 0.0, 1.0);
+          vec3 deepTint = vec3(0.07, 0.48, 0.64);
+          vec3 shallowTint = vec3(0.32, 0.82, 0.80);
+          vec3 depthTint = mix(deepTint, shallowTint, smoothstep(0.15, 0.92, edge));
+          vec3 baseCol = mix(depthTint, waterSample * vec3(0.88, 1.12, 1.12), 0.72);
+          baseCol += vec3(0.38, 0.72, 0.72) * pow(causticLum, 2.0) * 0.32;
+
+          vec3 col = mix(baseCol, uSkyColor * 1.14, clamp(fresnel * 0.56, 0.0, 0.72));
+          col += uSunColor * spec;
+
+          // Soft sunlit shoreline foam & gentle ripple crests
+          float crest = smoothstep(0.66, 0.95, causticLum);
+          float foam = smoothstep(0.74, 0.96, edge) * (0.46 + 0.54 * crest) + crest * 0.16 * (1.0 - edge * 0.35);
+          col = mix(col, vec3(0.96, 0.99, 1.0), clamp(foam, 0.0, 0.78));
+
+          float dist = length(cameraPosition - vWorldPos);
+          float fogF = 1.0 - exp(-pow(dist * uFogDensity, 2.0));
+          col = mix(col, uFogColor, clamp(fogF, 0.0, 1.0));
+
+          // Translucent crystal water: rich center (~0.86) with shimmering riverbed pebbles visible beneath, zero hard seam at shore
+          float alpha = mix(0.86, 0.0, smoothstep(0.74, 1.0, edge));
+          gl_FragColor = vec4(col, alpha);
+          #include <tonemapping_fragment>
+          #include <colorspace_fragment>
+        }
+      `
+    });
+    const streamMesh = new THREE.Mesh(streamGeo, streamMat);
+    streamMesh.renderOrder = 2;
+    streamMesh.frustumCulled = false;
+    streamMesh.userData.wildernessKeep = true;
+    this.streamMesh = streamMesh;
+    this.worldGroup.add(streamMesh);
+
+    // Atmospheric Sunlit Alpine Forest Sky Dome with Soft Drifting Cumulus Wisps
+    this.skyUniforms = {
+      uTime: { value: 0 },
+      uTopColor: { value: new THREE.Color('#347fd4') },
+      uHorizonColor: { value: new THREE.Color('#d8eef8') },
+      uSunDir: { value: new THREE.Vector3(0.45, 0.72, 0.52).normalize() },
+      uSunColor: { value: new THREE.Color('#fff7df') }
+    };
+    const skyMat = new THREE.ShaderMaterial({
+      uniforms: this.skyUniforms,
+      side: THREE.BackSide,
+      depthWrite: false,
+      fog: false,
+      vertexShader: `
+        varying vec3 vDir;
+        void main() {
+          vDir = normalize(position);
+          gl_Position = projectionMatrix * modelViewMatrix * vec4(position, 1.0);
+        }
+      `,
+      fragmentShader: `
+        varying vec3 vDir;
+        uniform float uTime;
+        uniform vec3 uTopColor;
+        uniform vec3 uHorizonColor;
+        uniform vec3 uSunDir;
+        uniform vec3 uSunColor;
+
+        float hash21(vec2 p) {
+          p = fract(p * vec2(123.34, 456.21));
+          p += dot(p, p + 45.32);
+          return fract(p.x * p.y);
+        }
+        float vnoise(vec2 p) {
+          vec2 i = floor(p);
+          vec2 f = fract(p);
+          f = f * f * (3.0 - 2.0 * f);
+          float a = hash21(i);
+          float b = hash21(i + vec2(1.0, 0.0));
+          float c = hash21(i + vec2(0.0, 1.0));
+          float d = hash21(i + vec2(1.0, 1.0));
+          return mix(mix(a, b, f.x), mix(c, d, f.x), f.y);
+        }
+
+        void main() {
+          vec3 dir = normalize(vDir);
+          float h = clamp(dir.y, 0.0, 1.0);
+          vec3 col = mix(uHorizonColor, uTopColor, pow(h, 0.52));
+
+          // Soft sunlit cumulus cloud layer high above the forest valley
+          if (dir.y > 0.06) {
+            vec2 uv = dir.xz / (dir.y + 0.24) * 1.45 + vec2(uTime * 0.008, -uTime * 0.004);
+            float n = vnoise(uv) * 0.58 + vnoise(uv * 2.3 + 4.1) * 0.30 + vnoise(uv * 4.8 - 2.3) * 0.12;
+            float cloudMask = smoothstep(0.54, 0.80, n) * smoothstep(0.06, 0.28, dir.y) * smoothstep(0.96, 0.45, dir.y);
+            vec3 cloudCol = mix(uHorizonColor * 1.06, vec3(1.0, 0.99, 0.96), 0.72);
+            col = mix(col, cloudCol, cloudMask * 0.58);
+          }
+
+          float sunAmt = max(dot(dir, normalize(uSunDir)), 0.0);
+          col += uSunColor * pow(sunAmt, 10.0) * 0.34;
+          col += uSunColor * smoothstep(0.995, 0.999, sunAmt) * 0.95;
+          gl_FragColor = vec4(col, 1.0);
+        }
+      `
+    });
+    this.skyDome = new THREE.Mesh(new THREE.SphereGeometry(290, 24, 16), skyMat);
+    this.skyDome.renderOrder = -10;
+    this.skyDome.userData.wildernessKeep = true;
+    this.worldGroup.add(this.skyDome);
+  }
+
+  /**
+   * Real-time 60 FPS local terrain mesh deformation when an excavator (manual or AI)
+   * flattens hills/rough ground into buildable construction pads.
+   * Updates only vertices inside (cx, cz, radius + 7.5) with analytical normals & compacted-earth vertex color.
+   */
+  updateWildernessTerrainRegion(cx, cz, radius = 9.5) {
+    if (!this.terrainMesh || !this._terrainSegs || !this._terrainSize) return;
+    const geo = this.terrainMesh.geometry;
+    const pos = geo.attributes.position;
+    const norm = geo.attributes.normal;
+    const col = geo.attributes.color;
+    const baseCols = this._terrainBaseColors;
+    if (!pos || !norm || !col || !baseCols) return;
+
+    const segs = this._terrainSegs;
+    const colsPerRow = segs + 1;
+    const size = this._terrainSize;
+    const half = size * 0.5;
+    const cellSize = size / segs;
+    const padSpan = radius + 7.5;
+
+    const ixMin = Math.max(0, Math.floor(((cx - padSpan) + half) / cellSize) - 1);
+    const ixMax = Math.min(segs, Math.ceil(((cx + padSpan) + half) / cellSize) + 1);
+    const izMin = Math.max(0, Math.floor(((cz - padSpan) + half) / cellSize) - 1);
+    const izMax = Math.min(segs, Math.ceil(((cz + padSpan) + half) / cellSize) + 1);
+
+    // Compacted construction pad earth/gravel palette (warm sRGB-balanced loam & crushed stone)
+    const padR = 0.72, padG = 0.61, padB = 0.45;
+    const bermR = 0.56, bermG = 0.44, bermB = 0.30;
+    const eps = Math.max(0.85, cellSize * 0.55);
+
+    for (let iz = izMin; iz <= izMax; iz++) {
+      const rowOff = iz * colsPerRow;
+      for (let ix = ixMin; ix <= ixMax; ix++) {
+        const idx = rowOff + ix;
+        const vx = pos.getX(idx);
+        const vz = pos.getZ(idx);
+        const vy = groundHeightAt(vx, vz);
+        pos.setY(idx, vy);
+
+        // Fast analytical finite-difference normal (zero full-mesh recompute!)
+        const hL = groundHeightAt(vx - eps, vz);
+        const hR = groundHeightAt(vx + eps, vz);
+        const hD = groundHeightAt(vx, vz - eps);
+        const hU = groundHeightAt(vx, vz + eps);
+        let nx = hL - hR;
+        let ny = 2 * eps;
+        let nz = hD - hU;
+        const inv = 1 / Math.hypot(nx, ny, nz);
+        norm.setXYZ(idx, nx * inv, ny * inv, nz * inv);
+
+        // Blend pristine meadow color -> freshly graded compacted-earth construction pad
+        const gf = getGradedFactorAt(vx, vz);
+        const c3 = idx * 3;
+        if (gf > 0.01) {
+          const centerT = THREE.MathUtils.smoothstep(gf, 0.35, 0.92);
+          const tr = bermR + (padR - bermR) * centerT;
+          const tg = bermG + (padG - bermG) * centerT;
+          const tb = bermB + (padB - bermB) * centerT;
+          const blend = Math.min(0.92, gf * 0.95);
+          col.setXYZ(
+            idx,
+            baseCols[c3] * (1 - blend) + tr * blend,
+            baseCols[c3 + 1] * (1 - blend) + tg * blend,
+            baseCols[c3 + 2] * (1 - blend) + tb * blend
+          );
+        } else {
+          col.setXYZ(idx, baseCols[c3], baseCols[c3 + 1], baseCols[c3 + 2]);
+        }
+      }
+    }
+
+    pos.needsUpdate = true;
+    norm.needsUpdate = true;
+    col.needsUpdate = true;
+
+    // Keep nearby trees & stumps grounded neatly onto the newly graded elevation
+    if (Array.isArray(this.trees)) {
+      const treeR = padSpan + 2;
+      for (let i = 0; i < this.trees.length; i++) {
+        const t = this.trees[i];
+        if (!t || !t.pos || !t.mesh) continue;
+        if (Math.abs(t.pos.x - cx) > treeR || Math.abs(t.pos.z - cz) > treeR) continue;
+        const ny = groundHeightAt(t.pos.x, t.pos.z);
+        t.pos.y = ny;
+        t.mesh.position.y = ny - 0.08;
+      }
+    }
+    this.natureSystem?.syncGrassWithTerrainRegion(cx, cz, padSpan);
+  }
+
+  rebuildAllGradedTerrain() {
+    const pads = getGradedPads();
+    if (!this.terrainMesh || !pads || pads.length === 0) return;
+    for (let i = 0; i < pads.length; i++) {
+      const p = pads[i];
+      if (p.progress > 0.01) {
+        this.updateWildernessTerrainRegion(p.x, p.z, p.radius + (p.blendWidth || 4.8));
+      }
+    }
+  }
+
+  buildWildernessForestEcosystem() {
+    const layout = generateClusteredForestLayout(this.lowSpec);
+    this.wildernessMap = layout.map;
+    this.forestClusters = layout.clusters;
+    this.clusterGroups.clear();
+
+    // 1. Structured Organic Primal Forest Clusters (Real 3D GLB Pine Hero, Pine 1/2 & Oak 1/2 Trees)
+    for (let cIdx = 0; cIdx < layout.clusters.length; cIdx++) {
+      const cluster = layout.clusters[cIdx];
+      const clusterGroup = new THREE.Group();
+      clusterGroup.name = `forest_cluster_${cluster.id}`;
+      clusterGroup.userData = {
+        wildernessKeep: true,
+        clusterId: cluster.id,
+        clusterName: cluster.name,
+        biome: cluster.biome
+      };
+      this.worldGroup.add(clusterGroup);
+      this.clusterGroups.set(cluster.id, clusterGroup);
+
+      for (let tIdx = 0; tIdx < cluster.trees.length; tIdx++) {
+        const td = cluster.trees[tIdx];
+        const mesh = createTreeModel(td.kind, td.variant, {
+          modelUrl: td.modelUrl,
+          targetHeight: td.targetHeight
+        });
+        mesh.position.set(td.x, td.y - 0.08, td.z);
+        mesh.rotation.y = td.rotY;
+        mesh.scale.setScalar(td.scale);
+        mesh.userData.wildernessKeep = true;
+        mesh.userData.clusterId = cluster.id;
+        mesh.userData.role = td.role;
+        clusterGroup.add(mesh);
+
+        const treeObj = {
+          id: td.id,
+          clusterId: cluster.id,
+          clusterName: cluster.name,
+          role: td.role,
+          kind: td.kind,
+          mesh,
+          pos: new THREE.Vector3(td.x, td.y, td.z),
+          baseScale: td.scale,
+          hp: td.maxHp,
+          maxHp: td.maxHp,
+          alive: true,
+          state: 'standing', // 'standing' | 'falling' | 'stump'
+          fallAngle: 0,
+          fallVel: 0,
+          fallYaw: 0,
+          fallenHoldTimer: 0,
+          landed: false,
+          regrowTimer: 0,
+          wobble: 0,
+          wobbleAxis: 0,
+          logYield: td.logYield
+        };
+        this.trees.push(treeObj);
+      }
+    }
+
+    // 2. Prominent 3D GLB Ridge Conifers on Outer Hills (pine_tree_silhouette.glb & pine_tree_hero.glb)
+    if (layout.ridgeHeroTrees.length > 0) {
+      const ridgeGroup = new THREE.Group();
+      ridgeGroup.name = 'forest_ridge_silhouettes';
+      ridgeGroup.userData.wildernessKeep = true;
+      this.worldGroup.add(ridgeGroup);
+
+      for (let i = 0; i < layout.ridgeHeroTrees.length; i++) {
+        const rt = layout.ridgeHeroTrees[i];
+        const slot = new THREE.Group();
+        slot.position.set(rt.x, rt.y, rt.z);
+        slot.userData.wildernessKeep = true;
+        ridgeGroup.add(slot);
+        mountNormalizedGlb(slot, rt.modelUrl, {
+          targetHeight: rt.targetHeight,
+          yaw: rt.yaw
+        });
+      }
+    }
+
+    // 3. Dense 360° Background Woodland Canopy (Instanced Conifers arranged in organic outer hill groves)
+    if (layout.bgCanopy.length > 0) {
+      const bgTrunkGeo = new THREE.CylinderGeometry(0.24, 0.42, 4.2, 6);
+      bgTrunkGeo.translate(0, 2.1, 0);
+      const bgCrownGeo = new THREE.ConeGeometry(2.65, 8.8, 7);
+      bgCrownGeo.translate(0, 7.6, 0);
+      const bgCrown2Geo = new THREE.ConeGeometry(1.95, 6.2, 7);
+      bgCrown2Geo.translate(0, 10.6, 0);
+
+      const bgTrunkMat = new THREE.MeshStandardMaterial({ color: 0x704d30, roughness: 0.88 });
+      const bgCrownMat = new THREE.MeshStandardMaterial({ color: 0xffffff, roughness: 0.84, flatShading: true });
+      this.natureSystem?.attachWindToMaterial(bgCrownMat, { swayAmp: 0.34, heightScale: 11.5, allowParting: false });
+
+      const trunks = new THREE.InstancedMesh(bgTrunkGeo, bgTrunkMat, layout.bgCanopy.length);
+      const crowns1 = new THREE.InstancedMesh(bgCrownGeo, bgCrownMat, layout.bgCanopy.length);
+      const crowns2 = new THREE.InstancedMesh(bgCrown2Geo, bgCrownMat, layout.bgCanopy.length);
+      const dummy = new THREE.Object3D();
+      const tintA = new THREE.Color('#347439');
+      const tintB = new THREE.Color('#529848');
+      const tintC = new THREE.Color('#2a5f32');
+      const cTmp = new THREE.Color();
+
+      for (let i = 0; i < layout.bgCanopy.length; i++) {
+        const p = layout.bgCanopy[i];
+        dummy.position.set(p.x, p.y, p.z);
+        dummy.rotation.set(0, p.ry, 0);
+        dummy.scale.set(p.s, p.s * (0.9 + (i % 5) * 0.06), p.s);
+        dummy.updateMatrix();
+        trunks.setMatrixAt(i, dummy.matrix);
+        crowns1.setMatrixAt(i, dummy.matrix);
+        crowns2.setMatrixAt(i, dummy.matrix);
+        cTmp.copy(tintA).lerp(p.tint > 0.5 ? tintB : tintC, Math.abs(p.tint - 0.5) * 1.9);
+        crowns1.setColorAt(i, cTmp);
+        crowns2.setColorAt(i, cTmp.clone().multiplyScalar(1.12));
+      }
+      trunks.instanceMatrix.needsUpdate = true;
+      crowns1.instanceMatrix.needsUpdate = true;
+      crowns2.instanceMatrix.needsUpdate = true;
+      if (crowns1.instanceColor) crowns1.instanceColor.needsUpdate = true;
+      if (crowns2.instanceColor) crowns2.instanceColor.needsUpdate = true;
+      trunks.computeBoundingSphere();
+      crowns1.computeBoundingSphere();
+      crowns2.computeBoundingSphere();
+      trunks.userData.wildernessKeep = true;
+      crowns1.userData.wildernessKeep = true;
+      crowns2.userData.wildernessKeep = true;
+      this.worldGroup.add(trunks, crowns1, crowns2);
+    }
+
+    // 4. Mossy River & Forest Boulders (river_boulders_github.glb + river_boulder.glb) along stream banks & cluster outcrops
+    if (layout.boulders.length > 0) {
+      const boulderGroup = new THREE.Group();
+      boulderGroup.name = 'forest_boulders';
+      boulderGroup.userData.wildernessKeep = true;
+      this.worldGroup.add(boulderGroup);
+
+      for (let i = 0; i < layout.boulders.length; i++) {
+        const b = layout.boulders[i];
+        const slot = new THREE.Group();
+        slot.position.set(b.x, b.y, b.z);
+        slot.userData.wildernessKeep = true;
+        boulderGroup.add(slot);
+        const useGithubCluster = b.isRiverbank && i % 2 === 0;
+        mountNormalizedGlb(slot, useGithubCluster ? FOREST_ASSETS.riverBouldersGithub : FOREST_ASSETS.riverBoulder, {
+          targetFootprint: b.footprint,
+          yaw: b.yaw
+        });
+      }
+    }
+
+    // 5. Clustered Forest Undergrowth Ferns (InstancedMesh concentrated inside primal clusters)
+    if (layout.ferns.length > 0) {
+      const fernBladeGeo = new THREE.ConeGeometry(0.46, 0.68, 5);
+      fernBladeGeo.scale(1.35, 0.55, 0.45);
+      fernBladeGeo.translate(0, 0.22, 0);
+      const fernMat = new THREE.MeshStandardMaterial({
+        color: 0xffffff,
+        roughness: 0.86,
+        metalness: 0.0,
+        flatShading: true
+      });
+      this.natureSystem?.attachWindToMaterial(fernMat, { swayAmp: 0.14, partAmp: 0.56, heightScale: 0.52, allowParting: true });
+      const fernInst = new THREE.InstancedMesh(fernBladeGeo, fernMat, layout.ferns.length);
+      const fDummy = new THREE.Object3D();
+      const fColA = new THREE.Color('#4f9539');
+      const fColB = new THREE.Color('#82c44e');
+      const fTmp = new THREE.Color();
+
+      for (let i = 0; i < layout.ferns.length; i++) {
+        const f = layout.ferns[i];
+        fDummy.position.set(f.x, f.y, f.z);
+        fDummy.rotation.set(f.rotX, f.rotY, f.rotZ);
+        fDummy.scale.set(f.scale, f.scale * f.scaleY, f.scale);
+        fDummy.updateMatrix();
+        fernInst.setMatrixAt(i, fDummy.matrix);
+        fTmp.copy(fColA).lerp(fColB, f.tint);
+        fernInst.setColorAt(i, fTmp);
+      }
+      fernInst.instanceMatrix.needsUpdate = true;
+      if (fernInst.instanceColor) fernInst.instanceColor.needsUpdate = true;
+      fernInst.computeBoundingSphere();
+      fernInst.userData.wildernessKeep = true;
+      this.worldGroup.add(fernInst);
+    }
+
+    // 6. Natural Fallen Mossy Timber Logs resting along cluster edges
+    if (layout.fallenLogs.length > 0) {
+      const fallenGroup = new THREE.Group();
+      fallenGroup.name = 'forest_fallen_logs';
+      fallenGroup.userData.wildernessKeep = true;
+      this.worldGroup.add(fallenGroup);
+
+      for (let i = 0; i < layout.fallenLogs.length; i++) {
+        const fl = layout.fallenLogs[i];
+        const logSlot = new THREE.Group();
+        logSlot.position.set(fl.x, fl.y, fl.z);
+        logSlot.userData.wildernessKeep = true;
+        fallenGroup.add(logSlot);
+        mountNormalizedGlb(logSlot, FOREST_ASSETS.timberLogSingle, {
+          targetFootprint: fl.footprint,
+          yaw: fl.yaw
+        });
+      }
+    }
+  }
+
+  buildWildernessAmbientLife() {
+    this.ambientLifeGroup = new THREE.Group();
+    this.ambientLifeGroup.userData.wildernessKeep = true;
+    this.worldGroup.add(this.ambientLifeGroup);
+
+    // High-soaring woodland birds above the valley canopy
+    const birdMat = new THREE.MeshStandardMaterial({ color: 0xf8fafc, roughness: 0.72 });
+    const wingGeo = new THREE.BoxGeometry(0.46, 0.04, 0.16);
+    const bodyGeo = new THREE.ConeGeometry(0.08, 0.34, 5);
+    bodyGeo.rotateX(Math.PI / 2);
+    for (let i = 0; i < 6; i++) {
+      const g = new THREE.Group();
+      const body = new THREE.Mesh(bodyGeo, birdMat);
+      const wingL = new THREE.Mesh(wingGeo, birdMat);
+      wingL.position.x = -0.22;
+      const wingR = new THREE.Mesh(wingGeo, birdMat);
+      wingR.position.x = 0.22;
+      g.add(body, wingL, wingR);
+      this.ambientLifeGroup.add(g);
+      this.seagulls.push({
+        group: g,
+        wingL,
+        wingR,
+        cx: (i % 3 - 1) * 32,
+        cz: (i < 3 ? -18 : 22),
+        rx: 26 + i * 5,
+        rz: 22 + i * 4,
+        alt: 20 + (i % 3) * 4.5,
+        speed: 0.18 + (i % 3) * 0.04,
+        phase: i * 1.15
+      });
+    }
+
+    // Gently drifting sunlit woodland leaves across the clearing & grove
+    const leafCount = this.lowSpec ? 20 : 48;
+    const leafGeo = new THREE.PlaneGeometry(0.24, 0.15);
+    const leafMat = new THREE.MeshStandardMaterial({
+      color: 0x8bc34a,
+      roughness: 0.85,
+      side: THREE.DoubleSide
+    });
+    this.forestLeaves = new THREE.InstancedMesh(leafGeo, leafMat, leafCount);
+    this.forestLeaves.frustumCulled = false;
+    this.ambientLifeGroup.add(this.forestLeaves);
+    this.leafData = [];
+    for (let i = 0; i < leafCount; i++) {
+      const ang = (i / leafCount) * Math.PI * 2;
+      const rad = 4 + (i % 9) * 5.2;
+      const lx = Math.cos(ang) * rad;
+      const lz = Math.sin(ang) * rad;
+      const baseY = groundHeightAt(lx, lz);
+      this.leafData.push({
+        x: lx,
+        z: lz,
+        baseY,
+        y: baseY + 1.2 + Math.random() * 6.5,
+        fallSpeed: 0.35 + Math.random() * 0.45,
+        phase: Math.random() * Math.PI * 2
+      });
+    }
+
+    this.weatherGroup = createCloudsAndStormGroup(this.lowSpec);
+    this.weatherGroup.userData.wildernessKeep = true;
+    this.worldGroup.add(this.weatherGroup);
+  }
+
+  /**
+   * Stacks shoulder-carried timber logs neatly on the forest ground where the player sets them down.
+   */
+  addDroppedLogPile(worldPos, count = 1, yaw = 0) {
+    const qty = Math.max(1, Math.min(6, Math.floor(count)));
+    const px = worldPos.x;
+    const pz = worldPos.z;
+    const py = groundHeightAt(px, pz);
+
+    const pile = new THREE.Group();
+    pile.position.set(px, py - 0.02, pz);
+    pile.rotation.y = yaw + Math.PI / 2;
+    pile.userData.wildernessKeep = true;
+
+    if (qty >= 3) {
+      mountNormalizedGlb(pile, FOREST_ASSETS.logPile, {
+        targetFootprint: 2.35,
+        yaw: 0
+      });
+    } else {
+      for (let i = 0; i < qty; i++) {
+        const slot = new THREE.Group();
+        slot.position.set((i - (qty - 1) * 0.5) * 0.42, 0, (i % 2) * 0.08);
+        pile.add(slot);
+        mountNormalizedGlb(slot, FOREST_ASSETS.timberLogSingle, {
+          targetFootprint: 2.1,
+          yaw: (i - 0.5) * 0.08
+        });
+      }
+    }
+
+    this.worldGroup.add(pile);
+    this.droppedLogPiles.push({ mesh: pile, pos: new THREE.Vector3(px, py, pz), count: qty });
+    return pile;
   }
 
   // ---------------------------------------------------------------------------
@@ -266,6 +1118,7 @@ export class WorldManager {
     const land = new THREE.Mesh(new THREE.BoxGeometry(width, 2, LAND_EDGE_Z - northEdge), this.groundMat);
     land.position.set(centerX, -1, (LAND_EDGE_Z + northEdge) / 2);
     land.receiveShadow = !this.lowSpec;
+    land.userData.wildernessKeep = true;
     this.worldGroup.add(land);
 
     // Warm golden coastal beach sloping gently beneath the crystal-clear turquoise shallows
@@ -273,6 +1126,7 @@ export class WorldManager {
     const beach = new THREE.Mesh(new THREE.BoxGeometry(width, 0.42, 7.6), sandMat);
     beach.position.set(centerX, -0.22, 24.4);
     beach.receiveShadow = !this.lowSpec;
+    beach.userData.wildernessKeep = true;
     this.worldGroup.add(beach);
 
     // Submerged sandy seabed sloping into deeper water so shallows glow turquoise
@@ -280,6 +1134,7 @@ export class WorldManager {
     const seabed = new THREE.Mesh(new THREE.PlaneGeometry(width + 120, 44), seabedMat);
     seabed.rotation.x = -Math.PI / 2 + 0.065;
     seabed.position.set(centerX, -1.65, 44);
+    seabed.userData.wildernessKeep = true;
     this.worldGroup.add(seabed);
 
     // Wide 2-lane straight asphalt avenues cleanly dividing the 3 Zones
@@ -526,6 +1381,7 @@ export class WorldManager {
     ocean.rotation.x = -Math.PI / 2;
     ocean.position.set(centerX, -0.34, 151);
     ocean.receiveShadow = false;
+    ocean.userData.wildernessKeep = true;
     this.worldGroup.add(ocean);
 
     // Sunlit Coastal Atmospheric Sky Dome (soft misty horizon -> crisp azure zenith + warm sun glow)
@@ -565,6 +1421,7 @@ export class WorldManager {
       `
     });
     this.skyDome = new THREE.Mesh(new THREE.SphereGeometry(460, 24, 16), skyMat);
+    this.skyDome.userData.wildernessKeep = true;
     this.worldGroup.add(this.skyDome);
 
     this.fisheryIsland = createFisheryIslandModel();
@@ -1695,6 +2552,7 @@ export class WorldManager {
     });
     rockInst.instanceMatrix.needsUpdate = true;
     if (rockInst.instanceColor) rockInst.instanceColor.needsUpdate = true;
+    rockInst.userData.wildernessKeep = true;
     this.worldGroup.add(rockInst);
 
     // Floating Timber Log Rafts & Loose Drifting Cedar Logs bobbing beside the wooden piers (just like the reference photo!)
@@ -1772,6 +2630,7 @@ export class WorldManager {
   // 8. Living World Effects (Seagulls, Flags, Kiln Smoke, Drifting Forest Leaves)
   // ---------------------------------------------------------------------------
   buildLivingWorldEffects() {
+    this.ambientLifeGroup.userData.wildernessKeep = true;
     this.worldGroup.add(this.ambientLifeGroup);
 
     // 1. Coastal Soaring Seagulls
@@ -1814,8 +2673,10 @@ export class WorldManager {
     flagCoords.forEach(([fx, fy, fz, h], idx) => {
       const pole = new THREE.Mesh(new THREE.CylinderGeometry(0.05, 0.08, h, 6), poleMat);
       pole.position.set(fx, fy + h * 0.5, fz);
+      pole.userData.wildernessRemove = true;
       const flagGroup = new THREE.Group();
       flagGroup.position.set(fx, fy + h - 0.35, fz);
+      flagGroup.userData.wildernessRemove = true;
       const cloth = new THREE.Mesh(
         new THREE.BoxGeometry(1.15, 0.56, 0.04),
         new THREE.MeshStandardMaterial({ color: flagColors[idx % flagColors.length], roughness: 0.6 })
@@ -1831,6 +2692,7 @@ export class WorldManager {
     const smokeMat = new THREE.MeshBasicMaterial({ color: 0xf1f5f9, transparent: true, opacity: 0.42 });
     const smokeCount = 14;
     this.smokePuffs = new THREE.InstancedMesh(smokeGeo, smokeMat, smokeCount);
+    this.smokePuffs.userData.wildernessRemove = true;
     for (let i = 0; i < smokeCount; i++) {
       const atKiln2 = i >= 7;
       this.smokeData.push({
@@ -1879,6 +2741,7 @@ export class WorldManager {
     for (const [px, pz, size] of glbPineSpots) {
       const slot = new THREE.Group();
       slot.position.set(px, 0, pz);
+      slot.userData.wildernessKeep = true;
       this.worldGroup.add(slot);
       mountNormalizedGlb(slot, '/models/pine_grove_opt.glb', { targetFootprint: size, yaw: (px * 0.13) % (Math.PI * 2) });
     }
@@ -1926,6 +2789,8 @@ export class WorldManager {
     if (crowns.instanceColor) crowns.instanceColor.needsUpdate = true;
     trunks.computeBoundingSphere();
     crowns.computeBoundingSphere();
+    trunks.userData.wildernessKeep = true;
+    crowns.userData.wildernessKeep = true;
     this.worldGroup.add(trunks, crowns);
 
     // Distant scenic bay islands
@@ -1933,6 +2798,7 @@ export class WorldManager {
     [[-95, 105, 16], [108, 115, 18]].forEach(([ix, iz, r]) => {
       const island = new THREE.Mesh(new THREE.ConeGeometry(r, 7, 7), islandMat);
       island.position.set(ix, 2.2, iz);
+      island.userData.wildernessKeep = true;
       this.worldGroup.add(island);
     });
   }
@@ -2031,6 +2897,7 @@ export class WorldManager {
 
     // Clouds & Storm Effects
     this.weatherGroup = createCloudsAndStormGroup(this.lowSpec);
+    this.weatherGroup.userData.wildernessKeep = true;
     this.worldGroup.add(this.weatherGroup);
 
     this.stormBeacon = createStormBeaconModel();
@@ -2204,6 +3071,7 @@ export class WorldManager {
   }
 
   syncEvolution(sawTier, harborTier) {
+    if (!this.sawmill && !this.harbor) return;
     syncBuildingEvolution(this.sawmill, this.harbor, sawTier, harborTier);
   }
 
@@ -2219,6 +3087,7 @@ export class WorldManager {
     const forestPad = new THREE.Mesh(new THREE.BoxGeometry(64, 0.05, 26), forestPadMat);
     forestPad.position.set(-80, 0.025, -125);
     forestPad.receiveShadow = !this.lowSpec;
+    forestPad.userData.wildernessKeep = true;
     this.worldGroup.add(forestPad);
 
     const spots = [];
@@ -2247,6 +3116,7 @@ export class WorldManager {
       const mesh = createTreeModel(kind);
       mesh.position.set(spot.x, 0, spot.z);
       mesh.rotation.y = Math.random() * Math.PI * 2;
+      mesh.userData.wildernessKeep = true;
       this.worldGroup.add(mesh);
 
       const maxHp = kind === 'redwood' ? 6 : kind === 'oak' ? 4 : 3;
@@ -2368,7 +3238,7 @@ export class WorldManager {
   }
 
   applyBranchTheme(branch) {
-    if (this.groundMat) {
+    if (this.groundMat && !this.wildernessMode) {
       this.groundMat.map = getGrassTexture(branch.groundTint);
       this.groundMat.needsUpdate = true;
     }
@@ -2395,11 +3265,23 @@ export class WorldManager {
       if (fogColor) this.oceanUniforms.uFogColor.value.copy(fogColor);
       this.oceanUniforms.uFogDensity.value = fogDensity;
     }
+    if (this.streamUniforms) {
+      if (sunPos) this.streamUniforms.uSunDir.value.copy(sunPos).normalize();
+      if (sunColor) this.streamUniforms.uSunColor.value.copy(sunColor);
+      if (skyColor) this.streamUniforms.uSkyColor.value.copy(skyColor);
+      if (fogColor) this.streamUniforms.uFogColor.value.copy(fogColor);
+      this.streamUniforms.uFogDensity.value = fogDensity;
+    }
+    if (this.streamBedUniforms) {
+      if (fogColor) this.streamBedUniforms.uFogColor.value.copy(fogColor);
+      this.streamBedUniforms.uFogDensity.value = fogDensity;
+    }
     if (this.skyUniforms) {
       if (sunPos) this.skyUniforms.uSunDir.value.copy(sunPos).normalize();
       if (sunColor) this.skyUniforms.uSunColor.value.copy(sunColor);
       if (skyColor) {
-        this.skyUniforms.uTopColor.value.copy(skyColor).lerp(new THREE.Color(0x3b82d6), nightFactor < 0.3 ? 0.35 : 0.0);
+        if (!this._skyZenithTint) this._skyZenithTint = new THREE.Color(0x2f7dd6);
+        this.skyUniforms.uTopColor.value.copy(skyColor).lerp(this._skyZenithTint, nightFactor < 0.3 ? 0.42 : 0.0);
       }
       if (fogColor) this.skyUniforms.uHorizonColor.value.copy(fogColor);
     }
@@ -2411,6 +3293,7 @@ export class WorldManager {
     for (let i = 0; i < poolSize; i++) {
       const m = new THREE.Mesh(geo, this.getParticleMat(0xf59e0b));
       m.visible = false;
+      m.userData.wildernessKeep = true;
       this.worldGroup.add(m);
       this.particlePool.push(m);
     }
@@ -2431,18 +3314,21 @@ export class WorldManager {
       const logMesh = createLogMesh(false);
       logMesh.scale.setScalar(0.75);
       logMesh.visible = false;
+      logMesh.userData.wildernessKeep = true;
       this.worldGroup.add(logMesh);
       this.flyingPools.log.push(logMesh);
 
       const redMesh = createLogMesh(true);
       redMesh.scale.setScalar(0.75);
       redMesh.visible = false;
+      redMesh.userData.wildernessKeep = true;
       this.worldGroup.add(redMesh);
       this.flyingPools.redwood.push(redMesh);
 
       const plankMesh = createPlankMesh();
       plankMesh.scale.setScalar(0.75);
       plankMesh.visible = false;
+      plankMesh.userData.wildernessKeep = true;
       this.worldGroup.add(plankMesh);
       this.flyingPools.plank.push(plankMesh);
     }
@@ -2491,13 +3377,38 @@ export class WorldManager {
     });
   }
 
+  spawnWaterRipple(x, z, strength = 0.8) {
+    this.natureSystem?.spawnWaterRipple(x, z, strength);
+  }
+
+  spawnCanopyLeafBurst(x, y, z, count = 6) {
+    this.natureSystem?.spawnCanopyLeafBurst(x, y, z, count);
+  }
+
+  updateInteractiveActors(actors) {
+    this.natureSystem?.updateInteractiveActors(actors);
+  }
+
+  setNatureQualityScale(scale) {
+    this.natureSystem?.setQualityScale(scale);
+  }
+
+  updateLivingNature(dt, elapsed, env) {
+    this.natureSystem?.update(dt, elapsed, env);
+  }
+
   update(dt, elapsed, sawmillWorking) {
-    this.fisheryIsland.userData.pier.visible = gameState.islandRoute.pierBuilt;
+    if (this.fisheryIsland?.userData?.pier) {
+      this.fisheryIsland.userData.pier.visible = gameState.islandRoute.pierBuilt;
+    }
     if (this.oceanUniforms) {
       this.oceanUniforms.uTime.value = elapsed;
     } else if (this.waterTex) {
       this.waterTex.offset.x = (elapsed * 0.025) % 1;
       this.waterTex.offset.y = (elapsed * 0.018) % 1;
+    }
+    if (this.streamUniforms) {
+      this.streamUniforms.uTime.value = elapsed;
     }
 
     // Rotate Logging Zone Canal Waterwheel
@@ -2624,7 +3535,10 @@ export class WorldManager {
           const nz = b.cz + Math.sin(ang + 0.05) * b.rz;
           b.group.position.set(bx, b.alt + Math.sin(elapsed * 1.8 + b.phase) * 0.7, bz);
           b.group.rotation.y = Math.atan2(nx - bx, nz - bz);
-          const flap = Math.sin(elapsed * 7.5 + b.phase) * 0.45;
+          b.group.rotation.z = -0.22 + Math.sin(elapsed * 0.9 + b.phase) * 0.08;
+          // Natural soaring glide alternating with crisp wingbeats
+          const glideCycle = Math.sin(elapsed * 0.75 + b.phase);
+          const flap = glideCycle > -0.15 ? Math.sin(elapsed * 7.5 + b.phase) * 0.48 : 0.08;
           b.wingL.rotation.z = flap;
           b.wingR.rotation.z = -flap;
         }
@@ -2651,14 +3565,18 @@ export class WorldManager {
           this.smokePuffs.instanceMatrix.needsUpdate = true;
         }
         if (this.forestLeaves) {
+          const wDirX = this.natureSystem ? this.natureSystem.windState.dirX * this.natureSystem.windState.strength : 0.35;
+          const wDirZ = this.natureSystem ? this.natureSystem.windState.dirZ * this.natureSystem.windState.strength : 0.22;
           for (let i = 0; i < this.leafData.length; i++) {
             const ld = this.leafData[i];
+            const minLeafY = (ld.baseY ?? 0) + 0.2;
             ld.y -= ld.fallSpeed * dt;
-            if (ld.y < 0.2) ld.y = 5.8;
+            if (ld.y < minLeafY) ld.y = minLeafY + 6.2;
+            const driftH = (minLeafY + 6.2 - ld.y) * 0.45;
             this._lifeDummy.position.set(
-              ld.x + Math.sin(elapsed * 1.6 + ld.phase) * 0.55,
+              ld.x + wDirX * driftH + Math.sin(elapsed * 1.6 + ld.phase) * 0.55,
               ld.y,
-              ld.z + Math.cos(elapsed * 1.3 + ld.phase) * 0.55
+              ld.z + wDirZ * driftH + Math.cos(elapsed * 1.3 + ld.phase) * 0.55
             );
             this._lifeDummy.rotation.set(elapsed * 1.8 + ld.phase, elapsed * 2.2, Math.sin(elapsed + ld.phase) * 0.6);
             this._lifeDummy.scale.setScalar(1);
@@ -2812,18 +3730,97 @@ export class WorldManager {
     }
 
     for (const tree of this.trees) {
-      if (tree.wobble > 0) {
-        tree.wobble = Math.max(0, tree.wobble - dt * 4);
-        tree.mesh.rotation.z = Math.sin(tree.wobble * 18) * 0.12 * tree.wobble;
+      const ud = tree.mesh?.userData;
+      const pivot = ud?.fallPivot || tree.mesh;
+      const stump = ud?.stump;
+      const baseScale = tree.baseScale || 1;
+
+      if (tree.state === 'falling') {
+        if (stump) stump.visible = true;
+        tree.fallVel = (tree.fallVel || 0.35) + 4.8 * dt;
+        tree.fallAngle = Math.min(Math.PI * 0.47, (tree.fallAngle || 0) + tree.fallVel * dt);
+        if (pivot && pivot !== tree.mesh) {
+          pivot.rotation.order = 'YXZ';
+          pivot.rotation.set(tree.fallAngle, (tree.fallYaw || 0) - tree.mesh.rotation.y, 0);
+        } else {
+          tree.mesh.rotation.z = tree.fallAngle;
+        }
+        if (tree.fallAngle >= Math.PI * 0.47) {
+          if (!tree.landed) {
+            tree.landed = true;
+            tree.fallenHoldTimer = 0.42;
+            const impactPos = new THREE.Vector3(
+              tree.pos.x + Math.sin(tree.fallYaw || 0) * 3.8,
+              tree.pos.y + 0.4,
+              tree.pos.z + Math.cos(tree.fallYaw || 0) * 3.8
+            );
+            this.spawnParticles(impactPos, 0x4d7c3f, 9);
+            this.spawnParticles(impactPos, 0x8b6b43, 6);
+          } else {
+            tree.fallenHoldTimer -= dt;
+            if (tree.fallenHoldTimer <= 0) {
+              tree.state = 'stump';
+              tree.regrowTimer = 34.0;
+              if (pivot && pivot !== tree.mesh) {
+                pivot.visible = false;
+                pivot.rotation.set(0, 0, 0);
+                pivot.scale.setScalar(0.08);
+              } else {
+                tree.mesh.scale.setScalar(0.08 * baseScale);
+              }
+              if (typeof this.onTreeFelledLanded === 'function') {
+                this.onTreeFelledLanded(tree);
+              }
+            }
+          }
+        }
+        continue;
       }
+
+      if (tree.wobble > 0) {
+        tree.wobble = Math.max(0, tree.wobble - dt * 4.2);
+        const shake = Math.sin(tree.wobble * 22) * 0.085 * tree.wobble;
+        if (pivot && pivot !== tree.mesh) {
+          pivot.rotation.z = shake;
+          pivot.rotation.x = shake * 0.45;
+        } else {
+          tree.mesh.rotation.z = shake;
+        }
+      } else if (tree.alive) {
+        // Gentle woodland breeze sway on standing canopy
+        const breeze = Math.sin(elapsed * 1.15 + tree.id * 0.9) * 0.011;
+        if (pivot && pivot !== tree.mesh) {
+          pivot.rotation.z = breeze;
+          pivot.rotation.x = Math.cos(elapsed * 0.88 + tree.id * 0.6) * 0.008;
+        }
+      }
+
       if (!tree.alive) {
+        if (stump) stump.visible = true;
         tree.regrowTimer -= dt;
-        const pct = Math.max(0.08, 1 - tree.regrowTimer / 7.5);
-        tree.mesh.scale.setScalar(pct);
+        if (tree.regrowTimer < 6.0) {
+          const pct = Math.max(0.08, 1 - Math.max(0, tree.regrowTimer) / 6.0);
+          if (pivot && pivot !== tree.mesh) {
+            pivot.visible = true;
+            pivot.scale.setScalar(pct);
+          } else {
+            tree.mesh.scale.setScalar(pct * baseScale);
+          }
+        }
         if (tree.regrowTimer <= 0) {
           tree.alive = true;
+          tree.state = 'standing';
           tree.hp = tree.maxHp;
-          tree.mesh.scale.setScalar(1);
+          tree.fallAngle = 0;
+          tree.fallVel = 0;
+          tree.landed = false;
+          if (stump) stump.visible = false;
+          if (pivot && pivot !== tree.mesh) {
+            pivot.visible = true;
+            pivot.rotation.set(0, 0, 0);
+            pivot.scale.setScalar(1);
+          }
+          tree.mesh.scale.setScalar(baseScale);
           tree.mesh.visible = true;
         }
       }
@@ -2901,7 +3898,7 @@ export class WorldManager {
       pad.radialTex?.dispose();
       pad.badgeTex?.dispose();
     }
-    this.regionalLife.dispose();
+    this.regionalLife?.dispose();
     disposeObject3D(this.worldGroup);
     this.scene.remove(this.worldGroup);
   }

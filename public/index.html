@@ -10,7 +10,7 @@
   <link rel="preconnect" href="https://fonts.googleapis.com">
   <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
   <link href="https://fonts.googleapis.com/css2?family=JetBrains+Mono:wght@500;600;700&family=Outfit:wght@600;700&family=Plus+Jakarta+Sans:wght@400;500;600;700&display=swap" rel="stylesheet">
-  <link rel="stylesheet" href="/css/style.css?v=2.18.0">
+  <link rel="stylesheet" href="/css/style.css?v=2.29.0">
   <link rel="icon" href="data:image/svg+xml,<svg xmlns=%22http://www.w3.org/2000/svg%22 viewBox=%220 0 100 100%22><text y=%22.9em%22 font-size=%2290%22>🪵</text></svg>">
   <script type="importmap">
   {
@@ -36,6 +36,77 @@
 
   <!-- World-Space Floating Feedback Container -->
   <div id="floating-container" aria-hidden="true"></div>
+
+  <!-- Streamlined Nordic Woodland Top Bar (Active in Wilderness Mode) -->
+  <header id="wilderness-top-bar" class="wilderness-top-bar" hidden aria-label="Thanh thông số Rừng Nguyên Sơ">
+    <div class="w-zone-brand">
+      <span class="w-wordmark">Rừng Nguyên Sơ</span>
+      <span class="meta-sep" aria-hidden="true">·</span>
+      <span id="w-zone-name" class="w-zone-label">Bãi Trống Trung Tâm</span>
+    </div>
+
+    <div class="w-zone-resources tabular-nums" aria-label="Tài nguyên khai thác gỗ">
+      <span class="w-res-item w-res-level" id="w-level-btn" title="Cấp độ mở khóa Máy xúc &amp; Nhà ở (Bấm để mở Hạ tầng)">
+        Cấp <strong id="w-level">1</strong>
+      </span>
+      <span class="meta-sep" aria-hidden="true">·</span>
+      <span class="w-res-item w-res-cash" title="Tiền mặt kiếm được từ thả bè, Thương Lái &amp; thu nhập nhà">
+        <strong id="w-cash">$0</strong>
+      </span>
+      <span class="meta-sep" aria-hidden="true">·</span>
+      <span class="w-res-item" title="Khúc gỗ đang vác trên vai (tối đa 3)">
+        Vai <strong id="w-shoulder-logs">0/3</strong>
+      </span>
+      <span id="w-cart-sep" class="meta-sep" aria-hidden="true" hidden>·</span>
+      <span id="w-cart-stat" class="w-res-item" title="Khúc gỗ trên Xe Kéo Tay" hidden>
+        Xe <strong id="w-cart-logs">0/10</strong>
+      </span>
+      <span class="meta-sep" aria-hidden="true">·</span>
+      <span class="w-res-item" title="Gỗ tròn lưu trữ tại Bãi Tập Kết">
+        Bãi gỗ <strong id="w-yard-stock">0</strong>
+      </span>
+      <span class="meta-sep hide-xs" aria-hidden="true">·</span>
+      <span class="w-res-item hide-xs" title="Ván xẻ từ Xưởng Cưa Guồng Nước">
+        Ván <strong id="w-plank-stock">0</strong>
+      </span>
+      <span id="w-craft-sep" class="meta-sep hide-sm" aria-hidden="true" hidden>·</span>
+      <span id="w-craft-stat" class="w-res-item hide-sm" title="Đồ Gỗ Thủ Công từ Xưởng Mộc ($56/bộ)" hidden>
+        Đồ gỗ <strong id="w-craft-stock">0</strong>
+      </span>
+      <span class="meta-sep" aria-hidden="true">·</span>
+      <span class="w-res-item w-res-camp" title="Công trình căn cứ rừng đã hoàn thành">
+        Trại <strong id="w-camp-progress">0/8</strong>
+      </span>
+    </div>
+
+    <div class="w-zone-actions">
+      <button type="button" id="w-btn-weather" class="w-top-btn tabular-nums" title="Đổi thời tiết &amp; thời gian trong ngày">
+        <span id="w-weather-icon">☀️</span>
+        <span id="w-clock-time" class="hide-xs">10:30</span>
+      </button>
+      <button type="button" id="w-btn-camera" class="w-top-btn" title="Đổi góc máy (Phím V)">
+        <span>🎥</span>
+        <span id="w-camera-label" class="hide-sm">Theo chân</span>
+      </button>
+      <button type="button" id="w-btn-zen" class="w-top-btn" title="Ẩn gọn HUD ngắm cảnh rừng (Phím Z)">
+        <span>👁️</span>
+        <span class="hide-sm">Gọn</span>
+      </button>
+      <button type="button" id="w-btn-audio" class="w-top-btn" title="Bật hoặc tắt âm thanh">🔊</button>
+    </div>
+  </header>
+
+  <!-- Compact Top-Left Forestry Contract Tracker (Active in Wilderness Mode) -->
+  <div id="wilderness-contract-hud" class="wilderness-contract-hud" hidden aria-label="Hợp đồng khai thác rừng">
+    <div class="w-contract-meta">
+      <span class="w-contract-kicker">Hợp đồng</span>
+      <span class="meta-sep" aria-hidden="true">·</span>
+      <span id="w-contract-title" class="w-contract-title">Khai Thác Rừng Thông</span>
+      <span class="meta-sep" aria-hidden="true">·</span>
+      <span id="w-contract-progress" class="w-contract-progress tabular-nums">0/4</span>
+    </div>
+    <button type="button" id="w-contract-action" class="w-contract-action tabular-nums">Chi tiết</button>
+  </div>
 
   <!-- Compact 3-Zone Top Bar (PC & Mobile Responsive) -->
   <header id="top-bar" class="top-bar">
@@ -221,20 +292,30 @@
     <div id="virtual-joystick-stick"></div>
   </div>
 
-  <!-- Compact 2D Tactical Minimap (Bottom-Left, Collapsible) -->
+  <!-- Compact 2D Tactical Minimap (Collapsible, Hotkey M) -->
   <aside id="minimap-wrap" class="minimap-wrap" aria-label="Bản đồ chiến thuật khu vực">
     <div class="minimap-head">
       <span class="minimap-title">Bản đồ khu vực</span>
-      <button type="button" id="btn-toggle-minimap" class="minimap-toggle" title="Thu gọn hoặc mở rộng bản đồ">▾</button>
+      <div class="minimap-head-actions">
+        <button type="button" id="btn-minimap-orient" class="minimap-toggle minimap-orient-btn" title="Chuyển chế độ xoay bản đồ theo hướng nhân vật hoặc cố định hướng Bắc" aria-pressed="false" hidden>Bắc</button>
+        <button type="button" id="btn-toggle-minimap" class="minimap-toggle" title="Thu gọn hoặc mở rộng bản đồ (Phím M)">▾</button>
+      </div>
     </div>
     <div class="minimap-body">
-      <canvas id="minimap-canvas" width="176" height="176" aria-label="Bản đồ TimberPort, Rừng Tây, Đồi Bắc, Cao Nguyên, Bãi Đông, Bến Liên Đảo và Ngư Trường"></canvas>
+      <canvas id="minimap-canvas" width="184" height="184" aria-label="Bản đồ khu vực TimberPort 3D"></canvas>
       <div class="minimap-region-controls">
-        <button type="button" id="btn-minimap-scale" class="minimap-toggle" aria-pressed="false">Toàn vùng</button>
+        <button type="button" id="btn-minimap-scale" class="minimap-toggle" aria-pressed="false">1x</button>
         <span id="regional-population"></span>
       </div>
+      <div id="minimap-atmo-bar" class="minimap-atmo-bar" hidden>
+        <span id="minimap-atmo-readout" class="minimap-atmo-readout tabular-nums">10:30 · Nắng trong</span>
+        <div class="minimap-atmo-actions">
+          <button type="button" id="btn-mini-time" class="minimap-toggle" title="Chuyển thời gian &amp; ánh sáng">Đổi giờ</button>
+          <button type="button" id="btn-mini-rain" class="minimap-toggle" aria-pressed="false" title="Bật hoặc tắt Mưa Rừng Nhẹ">Mưa nhẹ</button>
+        </div>
+      </div>
       <button type="button" id="btn-archipelago-minimap" class="top-btn">Mở bản đồ quần đảo</button>
-      <div class="minimap-legend">
+      <div id="minimap-legend" class="minimap-legend">
         <span>🌲 Rừng</span>
         <span class="meta-sep" aria-hidden="true">·</span>
         <span>👥 Dân</span>
@@ -282,6 +363,149 @@
         <span class="dock-label" id="btn-boost-label">Tăng tốc</span>
       </button>
     </nav>
+  </div>
+
+  <!-- Floating 3D Structure Placement Mode Bar -->
+  <div id="placement-bar" class="placement-bar" hidden aria-live="polite">
+    <div class="placement-info">
+      <strong id="placement-title" class="placement-title">Đang chọn vị trí công trình</strong>
+      <span id="placement-status" class="placement-status is-valid">Di chuột hoặc bước tới vị trí — Click hoặc E để đặt</span>
+    </div>
+    <div class="placement-actions">
+      <button type="button" id="btn-place-grade" class="placement-btn is-grade" hidden title="Gọi Máy Xúc AI tới san phẳng bãi đồi ngay tại vị trí này (Phím G)">🚜 San phẳng (G)</button>
+      <button type="button" id="btn-place-rotate" class="placement-btn" title="Xoay hướng công trình (Phím R)">↻ Xoay (R)</button>
+      <button type="button" id="btn-place-confirm" class="placement-btn is-confirm" title="Xác nhận đặt tại đây (Click hoặc phím E)">✓ Đặt tại đây (E)</button>
+      <button type="button" id="btn-place-cancel" class="placement-btn is-cancel" title="Hủy chọn vị trí (Phím Esc)">✕ Hủy</button>
+    </div>
+  </div>
+
+  <!-- Excavator Manual Driving & Real-Time Terrain Grading Bar -->
+  <div id="excavator-drive-hud" class="excavator-drive-hud" hidden aria-live="polite">
+    <div class="placement-info">
+      <strong class="placement-title">🚜 Đang tự lái Máy Xúc San Lấp</strong>
+      <span id="excavator-drive-status" class="placement-status is-valid">WASD lái lên đồi gồ ghề · Giữ Space hoặc giữ nút San đất để san phẳng mặt bằng</span>
+    </div>
+    <div class="placement-actions">
+      <button type="button" id="btn-excavator-grade-hold" class="placement-btn is-grade">⚒️ Giữ san đất (Space)</button>
+      <button type="button" id="btn-excavator-exit" class="placement-btn is-cancel">🚶 Xuống xe (F)</button>
+    </div>
+  </div>
+
+  <!-- Timber Chop Combo Readout (Visible at Combo x2+) -->
+  <div id="timber-combo-hud" class="timber-combo-hud" hidden aria-live="polite">
+    <div class="timber-combo-row">
+      <strong id="timber-combo-mult" class="timber-combo-mult tabular-nums">x2 COMBO</strong>
+      <span id="timber-combo-bonus" class="timber-combo-bonus tabular-nums">-5% hồi · +8% gỗ phụ</span>
+    </div>
+    <div class="timber-combo-track" aria-hidden="true">
+      <div id="timber-combo-fill" class="timber-combo-fill"></div>
+    </div>
+  </div>
+
+  <!-- Sweet-Spot Rhythm Crit Chopping Bar (Visible while chopping trees/trunks) -->
+  <button type="button" id="crit-rhythm-hud" class="crit-rhythm-hud" hidden title="Nhấn Space hoặc bấm khi kim vào vùng vàng để chặt Chí Mạng!">
+    <span class="crit-track" aria-hidden="true">
+      <span id="crit-zone" class="crit-zone"></span>
+      <span id="crit-cursor" class="crit-cursor"></span>
+    </span>
+    <span id="crit-rhythm-label" class="crit-label">SPACE · Chặt nhịp x2</span>
+  </button>
+
+  <!-- Streamlined Wilderness Bottom Dock (Active in Wilderness Mode) -->
+  <div id="wilderness-dock-wrap" class="wilderness-dock-wrap" hidden>
+    <button type="button" id="w-btn-toggle-dock" class="w-dock-toggle" title="Thu gọn hoặc mở thanh công cụ (Phím H)">
+      ▾ Ẩn thanh
+    </button>
+    <nav id="wilderness-dock" class="wilderness-dock" aria-label="Điều khiển căn cứ rừng">
+      <button type="button" id="w-dock-camp" class="w-dock-btn is-primary" title="Mở sổ quản lý trại, hạ tầng, nâng cấp, nhân công &amp; thương lái (Phím B)">
+        <span class="w-dock-icon">🏕️</span>
+        <span class="w-dock-label">Quản lý trại</span>
+        <span id="w-camp-badge" class="w-dock-meta tabular-nums">0/8</span>
+      </button>
+      <button type="button" id="w-dock-skills" class="w-dock-btn" title="Mở Cây Kỹ Năng Nhân Vật (Phím K)">
+        <span class="w-dock-icon">🌿</span>
+        <span class="w-dock-label">Kỹ năng</span>
+        <span id="w-skills-points" class="w-dock-meta w-skills-pts tabular-nums" hidden>+2</span>
+      </button>
+      <button type="button" id="w-dock-excavator" class="w-dock-btn" title="Tự lái Máy Xúc San Lấp hoặc mở mục Hạ tầng (Phím F)">
+        <span class="w-dock-icon">🚜</span>
+        <span id="w-dock-excavator-label" class="w-dock-label">Hạ tầng</span>
+      </button>
+      <button type="button" id="w-dock-run" class="w-dock-btn" title="Chuyển giữa Đi bộ và Chạy nhanh (hoặc giữ Shift)">
+        <span class="w-dock-icon">🏃</span>
+        <span id="w-dock-run-label" class="w-dock-label">Chạy</span>
+      </button>
+      <button type="button" id="w-dock-cart" class="w-dock-btn" title="Kéo hoặc dựng Xe Kéo Gỗ Tay (Phím C)">
+        <span class="w-dock-icon">🛒</span>
+        <span id="w-dock-cart-label" class="w-dock-label">Xe kéo</span>
+      </button>
+      <button type="button" id="w-dock-drop" class="w-dock-btn" title="Hạ 1 khúc gỗ trên vai xuống đất (Phím Q)">
+        <span class="w-dock-icon">🪵</span>
+        <span class="w-dock-label">Hạ gỗ</span>
+      </button>
+      <button type="button" id="w-dock-plant" class="w-dock-btn" title="Trồng 1 cây rừng non tại vị trí trước mặt (Phím P)">
+        <span class="w-dock-icon">🌱</span>
+        <span class="w-dock-label">Trồng cây</span>
+      </button>
+      <button type="button" id="w-dock-gesture" class="w-dock-btn" title="Cử chỉ nhân vật (Phím G hoặc 1-4 · Nhảy: Space)">
+        <span class="w-dock-icon">👋</span>
+        <span class="w-dock-label">Cử chỉ</span>
+      </button>
+    </nav>
+  </div>
+
+  <!-- Wilderness Camp Management Slide-Over Drawer (4 Tabs) -->
+  <div id="camp-drawer-backdrop" class="camp-drawer-backdrop" role="dialog" aria-modal="true" aria-labelledby="camp-drawer-title" hidden>
+    <aside class="camp-drawer">
+      <div class="camp-drawer-header">
+        <div>
+          <h2 id="camp-drawer-title" class="camp-drawer-title">Quản Lý Căn Cứ Rừng</h2>
+          <p class="camp-drawer-subtitle">Xây dựng công trình, rèn dụng cụ 3 bậc, thuê nhân công AI và giao thương đường sông.</p>
+        </div>
+        <button type="button" id="btn-close-camp-drawer" class="camp-drawer-close" aria-label="Đóng">✕</button>
+      </div>
+      <div id="camp-drawer-summary" class="camp-drawer-summary tabular-nums">
+        Tiến độ 0/8 · Tiền $0 · Bãi gỗ 0 · Ván 0
+      </div>
+      <div class="camp-drawer-tabs" role="tablist" aria-label="Danh mục quản lý trại">
+        <button type="button" class="camp-tab-btn is-active" data-camp-tab="build" role="tab">🏕️ Trại</button>
+        <button type="button" class="camp-tab-btn" data-camp-tab="infra" role="tab">🏗️ Hạ tầng</button>
+        <button type="button" class="camp-tab-btn" data-camp-tab="upgrades" role="tab">⚒️ Nâng cấp</button>
+        <button type="button" class="camp-tab-btn" data-camp-tab="workers" role="tab">👷 Công nhân</button>
+        <button type="button" class="camp-tab-btn" data-camp-tab="contracts" role="tab">📋 Hợp đồng</button>
+        <button type="button" class="camp-tab-btn" data-camp-tab="merchant" role="tab">⛵ Sông</button>
+      </div>
+      <div id="camp-blueprint-list" class="camp-blueprint-list">
+        <!-- Rendered dynamically by ui.js -->
+      </div>
+      <div class="camp-drawer-footer">
+        <span class="camp-key-hint">K: Kỹ năng · M: Bản đồ · F: Máy xúc · B: Trại · Shift: Chạy</span>
+        <button type="button" id="btn-reset-wilderness-camp" class="camp-reset-btn">Đặt lại từ 0</button>
+      </div>
+    </aside>
+  </div>
+
+  <!-- 3-Branch Character Skill Tree Modal (Hotkey K) -->
+  <div id="skill-tree-modal" class="skill-modal-backdrop" role="dialog" aria-modal="true" aria-labelledby="skill-modal-title" hidden>
+    <section class="skill-modal-panel">
+      <header class="skill-modal-header">
+        <div>
+          <h2 id="skill-modal-title" class="skill-modal-title">Cây Kỹ Năng Nhân Vật</h2>
+          <p class="skill-modal-subtitle">Tăng năng lực di chuyển, khai thác thụ động và vận hành lâm trường bằng điểm từ Cấp độ &amp; Hợp đồng.</p>
+        </div>
+        <button type="button" id="btn-close-skill-tree" class="camp-drawer-close" aria-label="Đóng cây kỹ năng">✕</button>
+      </header>
+      <div id="skill-modal-summary" class="skill-modal-summary tabular-nums">
+        Điểm khả dụng: 0 · Đã dùng: 0/27 · Cấp 1
+      </div>
+      <div id="skill-tree-grid" class="skill-tree-grid">
+        <!-- Rendered dynamically by ui.js -->
+      </div>
+      <footer class="skill-modal-footer">
+        <span class="camp-key-hint">Phím K: Đóng/Mở Kỹ năng · Phím M: Ẩn/Hiện Bản đồ · Hoàn điểm miễn phí bất cứ lúc nào</span>
+        <button type="button" id="btn-reset-skills" class="skill-reset-btn">↺ Đặt lại điểm (Miễn phí)</button>
+      </footer>
+    </section>
   </div>
 
   <!-- Unified Commercial Empire Hub Modal (7 Organized Tabs) -->
@@ -479,6 +703,6 @@
       <p id="island-regatta-rival"></p>
     </details>
   </dialog>
-  <script type="module" src="/js/engine.js?v=2.18.0"></script>
+  <script type="module" src="/js/engine.js?v=2.35.0"></script>
 </body>
 </html>

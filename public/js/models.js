@@ -10,31 +10,72 @@ import { MeshoptDecoder } from 'three/addons/libs/meshopt_decoder.module.js';
 import * as SkeletonUtils from 'three/addons/utils/SkeletonUtils.js';
 import { mergeGeometries } from 'three/addons/utils/BufferGeometryUtils.js';
 import { getBarkTexture, getTimberTexture, getTravertineTexture } from './textures.js';
+import {
+  IDLE_REST_PHASE,
+  createBlendTreeState,
+  computeBlendTreeTargets,
+  updateLocomotionBlendTree,
+  sampleBlendTreeLeg,
+  getBlendedHalfStride,
+  computeBlendTreeHipOffset,
+  didCrossHeelStrike,
+  createFootIKState,
+  applyTwoBoneFootIK,
+  createShoulderConstraints,
+  applyShoulderRotationConstraints
+} from './locomotion-ik.js';
 
 export const FOREST_ASSETS = {
   lumberjackPlayer: '/models/forest/lumberjack_player.glb',
   forestryWorker: '/models/forest/forestry_worker.glb',
-  pineTree1: '/models/forest/pine_tree_1.glb',
-  pineTree2: '/models/forest/pine_tree_2.glb',
-  pineTreeSilhouette: '/models/forest/pine_tree_silhouette.glb',
-  oakTree1: '/models/forest/oak_tree_1.glb',
-  oakTree2: '/models/forest/oak_tree_2.glb',
+  pineTree1: '/models/forest/pine_github.glb',
+  pineTree2: '/models/forest/pine_github.glb',
+  pineTreeHero: '/models/forest/pine_github.glb',
+  pineTreeSilhouette: '/models/forest/pine_github.glb',
+  oakTree1: '/models/forest/oak_github.glb',
+  oakTree2: '/models/forest/oak_github.glb',
+  pineGithub: '/models/forest/pine_github.glb',
+  oakGithub: '/models/forest/oak_github.glb',
   riverBoulder: '/models/forest/river_boulder.glb',
-  logBridge: '/models/forest/log_bridge.glb',
+  riverBouldersGithub: '/models/forest/river_boulders_github.glb',
+  logBridge: '/models/forest/log_bridge_github.glb',
+  logBridgeGithub: '/models/forest/log_bridge_github.glb',
   workerBunkhouse: '/models/forest/worker_bunkhouse.glb',
-  waterwheelSawmill: '/models/forest/waterwheel_sawmill.glb',
+  waterwheelSawmill: '/models/forest/sawmill_github.glb',
+  sawmillGithub: '/models/forest/sawmill_github.glb',
   tradingPost: '/models/forest/trading_post.glb',
   forestLogTruck: '/models/forest/forest_log_truck.glb',
-  logHandcart: '/models/forest/log_handcart.glb',
+  logHandcart: '/models/forest/log_handcart_github.glb',
+  logHandcartGithub: '/models/forest/log_handcart_github.glb',
   timberLogSingle: '/models/forest/timber_log_single.glb',
   lumberShedStack: '/models/forest/lumber_shed_stack.glb',
   stoneChimneyHearth: '/models/forest/stone_chimney_hearth.glb',
   plankBundle: '/models/forest/plank_bundle.glb',
-  woodLanternPost: '/models/forest/wood_lantern_post.glb',
+  woodLanternPost: '/models/forest/lantern_github.glb',
+  lanternGithub: '/models/forest/lantern_github.glb',
   logPile: '/models/forest/log_pile.glb',
-  campfire1: '/models/forest/campfire_set_1.glb',
-  campfire2: '/models/forest/campfire_set_2.glb',
-  fellingAxe: '/models/forest/felling_axe.glb'
+  campfire1: '/models/forest/campfire_github.glb',
+  campfire2: '/models/forest/campfire_github.glb',
+  campfireGithub: '/models/forest/campfire_github.glb',
+  fellingAxe: '/models/forest/felling_axe.glb',
+  // New Earthmoving Machinery, Industrial Sawmills & Articulated Workers (pulled & optimized from GitHub)
+  excavatorHero: '/models/forest/excavator_hero_github.glb',
+  wheelLoader: '/models/forest/wheel_loader_github.glb',
+  bulldozerGrader: '/models/forest/bulldozer_grader_github.glb',
+  crawlerCrane: '/models/forest/crawler_crane_github.glb',
+  autoSawmill: '/models/forest/auto_sawmill_github.glb',
+  tableSaw: '/models/forest/table_saw_github.glb',
+  workerOperator: '/models/forest/worker_operator_github.glb',
+  workerBuilderA: '/models/forest/worker_builder_a_github.glb',
+  workerBuilderB: '/models/forest/worker_builder_b_github.glb',
+  workerChainsaw: '/models/forest/worker_chainsaw_github.glb',
+  workerSawyer: '/models/forest/worker_sawyer_github.glb',
+  workerSawmillOp: '/models/forest/worker_sawmill_op_github.glb',
+  // Tiered Residential Infrastructure Progression (Nhà cấp 4 -> Nhà sàn -> Nhà gỗ vùng cao -> Biệt thự)
+  houseTier1: '/models/nhacap4_opt.glb',
+  houseTier2: '/models/nhasan_opt.glb',
+  houseTier3: '/models/nhatuyet_opt.glb',
+  houseTier4: '/models/bietthu_opt.glb'
 };
 
 function markShared(resource) {
@@ -334,6 +375,7 @@ export function createPlayerModel(skinData, vipLevel = 0) {
   // Pre-pooled 16 backpack log slots (Zero GC / GPU allocation on chop or unload!)
   const logStackGroup = new THREE.Group();
   logStackGroup.position.set(0, 0.18, -0.44);
+  logStackGroup.visible = false;
   for (let i = 0; i < 16; i++) {
     const col = i % 2;
     const row = Math.floor(i / 2);
@@ -387,11 +429,80 @@ export function updatePlayerModelSkin(playerModel, skinData, vipLevel) {
 }
 
 export function syncPlayerBackLogs(playerModel, count) {
-  const group = playerModel?.userData?.logStackGroup;
+  const ud = playerModel?.userData;
+  if (!ud) return;
+  const carryCount = Math.max(0, Math.floor(count || 0));
+  ud.carryCount = carryCount;
+
+  // On the 17-bone GLB lumberjack rig: carry logs realistically on the shoulder (up to 3 visible)
+  // and holster the felling axe neatly at the hip belt while hands hold the timber
+  const rig = ud.glbRig;
+  if (rig && Array.isArray(rig.shoulderLogSlots)) {
+    const shown = Math.min(carryCount, rig.shoulderLogSlots.length);
+    for (let i = 0; i < rig.shoulderLogSlots.length; i++) {
+      rig.shoulderLogSlots[i].visible = i < shown;
+    }
+    if (rig.shoulderLogAnchor) rig.shoulderLogAnchor.visible = shown > 0;
+    if (ud.logStackGroup) ud.logStackGroup.visible = false;
+    return;
+  }
+
+  // Fallback for procedural body before GLB finishes streaming
+  const group = ud.logStackGroup;
   if (!group) return;
-  const shown = Math.min(count, group.children.length);
+  group.visible = carryCount > 0;
+  const shown = Math.min(carryCount, group.children.length);
   for (let i = 0; i < group.children.length; i++) {
     group.children[i].visible = i < shown;
+  }
+}
+
+export function syncPlayerAxeTier(playerModel, tier = 1) {
+  const ud = playerModel?.userData;
+  if (!ud) return;
+  const lv = Math.max(1, Math.min(3, Math.floor(Number(tier) || 1)));
+  ud.axeUpgradeTier = lv;
+
+  const palette = {
+    1: { tint: 0xffffff, emissive: 0x000000, emissiveIntensity: 0.0, metalness: 0.72, roughness: 0.36, scale: 1.0 },
+    2: { tint: 0xdbeafe, emissive: 0x1d4ed8, emissiveIntensity: 0.14, metalness: 0.9, roughness: 0.22, scale: 1.06 },
+    3: { tint: 0xfde68a, emissive: 0xd97706, emissiveIntensity: 0.32, metalness: 0.95, roughness: 0.18, scale: 1.13 }
+  }[lv];
+
+  const applyToAxe = (axeGroup) => {
+    if (!axeGroup) return;
+    if (!axeGroup.userData._baseScale) {
+      axeGroup.userData._baseScale = axeGroup.scale.x || 1;
+    }
+    axeGroup.scale.setScalar(axeGroup.userData._baseScale * palette.scale);
+    axeGroup.traverse((child) => {
+      if (!child.isMesh || !child.material) return;
+      const mats = Array.isArray(child.material) ? child.material : [child.material];
+      for (const m of mats) {
+        if (!m || !m.color) continue;
+        if (m.metalness >= 0.45 || /blade|head|metal|iron|steel|axe/i.test(child.name || m.name || '')) {
+          if (!m.userData._clonedForTier) {
+            // Avoid mutating shared materials across unrelated props
+            m.userData._clonedForTier = true;
+          }
+          m.color.setHex(palette.tint);
+          if (m.emissive) {
+            m.emissive.setHex(palette.emissive);
+            m.emissiveIntensity = palette.emissiveIntensity;
+          }
+          if (typeof m.metalness === 'number') m.metalness = palette.metalness;
+          if (typeof m.roughness === 'number') m.roughness = palette.roughness;
+          m.needsUpdate = true;
+        }
+      }
+    });
+  };
+
+  if (ud.glbRig?.axeMesh) applyToAxe(ud.glbRig.axeMesh);
+  if (ud.glbRig?.beltAxeMesh) applyToAxe(ud.glbRig.beltAxeMesh);
+  if (ud.axeBlade?.material) {
+    ud.axeBlade.material.color.setHex(lv === 3 ? 0xfbbf24 : lv === 2 ? 0xbfdbfe : 0xdbe4ee);
+    ud.axeBlade.material.needsUpdate = true;
   }
 }
 
@@ -441,13 +552,23 @@ function loadNormalizedGlbScene(url) {
         root.position.set(-center.x, -box.min.y, -center.z);
         root.traverse((obj) => {
           if (obj.isMesh) {
-            obj.castShadow = false;
+            obj.castShadow = true;
             obj.receiveShadow = true;
             obj.frustumCulled = true;
             const mats = Array.isArray(obj.material) ? obj.material : [obj.material];
             for (const m of mats) {
               if (!m) continue;
               if (m.map) m.map.colorSpace = THREE.SRGBColorSpace;
+              if (m.emissiveMap) m.emissiveMap.colorSpace = THREE.SRGBColorSpace;
+              if (typeof m.envMapIntensity === 'number') {
+                m.envMapIntensity = 1.08;
+              }
+              if (typeof m.metalness === 'number' && m.metalness > 0 && m.metalness < 0.45) {
+                m.metalness *= 0.3;
+              }
+              if (typeof m.roughness === 'number' && m.roughness > 0.88) {
+                m.roughness = 0.86;
+              }
               m.needsUpdate = true;
             }
           }
@@ -474,7 +595,8 @@ export function mountNormalizedGlb(targetGroup, url, options = {}) {
     targetHeight = null,
     yaw = 0,
     yOffset = 0,
-    placeholder = null
+    placeholder = null,
+    onLoad = null
   } = options;
 
   return loadNormalizedGlbScene(url).then((entry) => {
@@ -491,6 +613,13 @@ export function mountNormalizedGlb(targetGroup, url, options = {}) {
     clone.position.y = yOffset;
     if (placeholder) placeholder.visible = false;
     targetGroup.add(clone);
+    if (typeof onLoad === 'function') {
+      try {
+        onLoad(clone);
+      } catch (err) {
+        console.warn('[TimberPort] mountNormalizedGlb onLoad error:', err);
+      }
+    }
     return true;
   });
 }
@@ -523,13 +652,24 @@ function loadWorkerGlbTemplate(url) {
         root.traverse((obj) => {
           if (obj.isSkinnedMesh) isSkinned = true;
           if (obj.isMesh) {
-            obj.castShadow = false;
+            if (obj.geometry) markShared(obj.geometry);
+            obj.castShadow = true;
             obj.receiveShadow = true;
             obj.frustumCulled = false;
             const mats = Array.isArray(obj.material) ? obj.material : [obj.material];
             for (const m of mats) {
               if (!m) continue;
               if (m.map) m.map.colorSpace = THREE.SRGBColorSpace;
+              if (m.emissiveMap) m.emissiveMap.colorSpace = THREE.SRGBColorSpace;
+              if (typeof m.envMapIntensity === 'number') {
+                m.envMapIntensity = 1.08;
+              }
+              if (typeof m.metalness === 'number' && m.metalness > 0 && m.metalness < 0.45) {
+                m.metalness *= 0.3;
+              }
+              if (typeof m.roughness === 'number' && m.roughness > 0.88) {
+                m.roughness = 0.86;
+              }
               m.needsUpdate = true;
             }
           }
@@ -566,14 +706,15 @@ export function mountGlbWorker(targetGroup, url, options = {}) {
     cloned.position.set(-entry.centerX, -entry.minY, -entry.centerZ);
     holder.add(cloned);
     holder.scale.setScalar(scale);
-    holder.rotation.y = yaw;
 
     // Auto-rig static upright Meshy humanoid GLBs (e.g. forestry_worker.glb) with 13 articulated bones
     if (!entry.isSkinned && autoRigStatic) {
       holder.updateMatrixWorld(true);
-      const rig = buildBiomechanicalRig(holder, targetHeight, true);
+      const rig = buildAutoHumanoidRig(holder, targetHeight, true);
       if (rig && rig.meshCount > 0) {
         if (rig.axeMesh) rig.axeMesh.visible = false;
+        if (rig.beltAxeMesh) rig.beltAxeMesh.visible = false;
+        if (rig.shoulderLogAnchor) rig.shoulderLogAnchor.visible = false;
         const rigHolder = new THREE.Group();
         rigHolder.rotation.y = yaw;
         rigHolder.add(rig.rigRoot);
@@ -586,6 +727,7 @@ export function mountGlbWorker(targetGroup, url, options = {}) {
       }
     }
 
+    holder.rotation.y = yaw;
     targetGroup.add(holder);
     targetGroup.userData.glbHolder = holder;
     targetGroup.userData.glbLoaded = true;
@@ -706,27 +848,478 @@ function createHeroLumberjackAxe(scale = 1, lowSpec = false) {
   axe.add(fallback);
 
   const glbWrap = new THREE.Group();
-  glbWrap.position.set(0, 0, -0.14);
-  glbWrap.rotation.set(Math.PI / 2, 0, Math.PI / 2);
+  // Exact canonical orthonormal alignment solved from felling_axe.glb vertices:
+  // places leather grip at (0,0,0), pommel at z=-0.22, head at z=+0.70, blade edge pointing cleanly -Y
+  glbWrap.position.set(0.2406, -0.2115, -0.0543);
+  glbWrap.quaternion.set(-0.5814, 0.6270, 0.2330, -0.4631);
   axe.add(glbWrap);
   mountNormalizedGlb(glbWrap, FOREST_ASSETS.fellingAxe, {
-    targetHeight: 0.92,
+    targetHeight: 0.84,
     yaw: 0,
     placeholder: fallback
   });
+
+  // Explicit weapon sockets: lower handle grip for Left-Hand 2-Bone IK + blade segment for Slash Trail VFX
+  const secondaryGripAnchor = new THREE.Object3D();
+  secondaryGripAnchor.name = 'AxeSecondaryGripAnchor';
+  secondaryGripAnchor.position.set(0, 0, -0.155);
+  axe.add(secondaryGripAnchor);
+
+  const bladeBaseAnchor = new THREE.Object3D();
+  bladeBaseAnchor.name = 'AxeBladeBaseAnchor';
+  bladeBaseAnchor.position.set(0, -0.04, 0.56);
+  axe.add(bladeBaseAnchor);
+
+  const bladeTipAnchor = new THREE.Object3D();
+  bladeTipAnchor.name = 'AxeBladeTipAnchor';
+  bladeTipAnchor.position.set(0, -0.24, 0.60);
+  axe.add(bladeTipAnchor);
+
+  axe.userData.secondaryGripAnchor = secondaryGripAnchor;
+  axe.userData.bladeBaseAnchor = bladeBaseAnchor;
+  axe.userData.bladeTipAnchor = bladeTipAnchor;
 
   axe.scale.setScalar(scale);
   return axe;
 }
 
-// Builds a 13-bone humanoid skeleton & smooth-weighted SkinnedMeshes for static A-pose GLB models
+function createShoulderTimberLog(scale = 1, lowSpec = false) {
+  const holder = new THREE.Group();
+  holder.name = 'ShoulderTimberLog';
+
+  // Procedural fallback aligned front-to-back (+Z) matching timber_log_single.glb
+  const fallback = new THREE.Group();
+  const barkMat = markShared(new THREE.MeshStandardMaterial({ color: 0x674224, roughness: 0.9, metalness: 0.02 }));
+  const endMat = markShared(new THREE.MeshStandardMaterial({ color: 0xe2bc88, roughness: 0.78, metalness: 0.02 }));
+  const cyl = new THREE.Mesh(
+    markShared(new THREE.CylinderGeometry(0.145, 0.16, 1.82, 10)),
+    [barkMat, endMat, endMat]
+  );
+  cyl.rotation.x = Math.PI / 2;
+  cyl.position.y = 0.15;
+  cyl.castShadow = !lowSpec;
+  fallback.add(cyl);
+  holder.add(fallback);
+
+  const glbWrap = new THREE.Group();
+  holder.add(glbWrap);
+  mountNormalizedGlb(glbWrap, FOREST_ASSETS.timberLogSingle, {
+    targetFootprint: 1.85,
+    yaw: 0,
+    placeholder: fallback
+  });
+
+  holder.scale.setScalar(scale);
+  return holder;
+}
+
+// De-interleaves and de-quantizes meshopt/KHR_mesh_quantization Int16/Int8 normalized attributes
+// into clean Float32BufferAttributes BEFORE applyMatrix4 so coordinates > 1.0 are never clamped.
+function prepareGeometryForSkinning(srcGeometry, matrixWorld) {
+  const geo = new THREE.BufferGeometry();
+  if (srcGeometry.index) {
+    geo.setIndex(srcGeometry.index.clone());
+  }
+
+  for (const [attrName, attr] of Object.entries(srcGeometry.attributes)) {
+    if (!attr) continue;
+    const needsFloatUnpack =
+      attr.isInterleavedBufferAttribute ||
+      attr.normalized ||
+      ((attrName === 'position' || attrName === 'normal' || attrName === 'uv' || attrName === 'uv1' || attrName === 'tangent') &&
+        !(attr.array instanceof Float32Array));
+
+    if (needsFloatUnpack) {
+      const count = attr.count;
+      const itemSize = attr.itemSize;
+      const arr = new Float32Array(count * itemSize);
+      for (let i = 0; i < count; i++) {
+        const base = i * itemSize;
+        arr[base] = attr.getX(i);
+        if (itemSize > 1) arr[base + 1] = attr.getY(i);
+        if (itemSize > 2) arr[base + 2] = attr.getZ(i);
+        if (itemSize > 3) arr[base + 3] = attr.getW(i);
+      }
+      geo.setAttribute(attrName, new THREE.Float32BufferAttribute(arr, itemSize));
+    } else {
+      geo.setAttribute(attrName, attr.clone());
+    }
+  }
+
+  if (Array.isArray(srcGeometry.groups) && srcGeometry.groups.length > 0) {
+    for (const grp of srcGeometry.groups) {
+      geo.addGroup(grp.start, grp.count, grp.materialIndex);
+    }
+  }
+
+  geo.applyMatrix4(matrixWorld);
+  geo.computeBoundingBox();
+  geo.computeBoundingSphere();
+  return geo;
+}
+
+// Builds a 17-bone anatomical humanoid skeleton & smooth-weighted SkinnedMeshes for static humanoid GLB models
 function buildAutoHumanoidRig(model, normH, lowSpec = false) {
   const s = normH / 2.1;
 
-  // Bone indices:
+  // Collect & bake source meshes into clean Float32 world-space geometries first
+  // so we can measure whether this character has relaxed straight-down arms vs a wide 45-degree A-pose
+  model.updateMatrixWorld(true);
+  const sourceMeshes = [];
+  model.traverse((child) => {
+    if (child.isMesh && child.geometry) {
+      sourceMeshes.push(child);
+    }
+  });
+
+  const preparedMeshes = [];
+  let armSpanX = 0;
+  for (const src of sourceMeshes) {
+    const geo = prepareGeometryForSkinning(src.geometry, src.matrixWorld);
+    const pos = geo.attributes.position;
+    if (!pos) {
+      geo.dispose();
+      continue;
+    }
+    preparedMeshes.push({ src, geo, pos });
+
+    const name = (src.name || '').toLowerCase();
+    if (!/basket|buches|backpack/.test(name)) {
+      const vCount = pos.count;
+      for (let i = 0; i < vCount; i++) {
+        const ny = pos.getY(i) / s;
+        if (ny >= 0.84 && ny <= 1.44) {
+          const ax = Math.abs(pos.getX(i) / s);
+          if (ax > armSpanX) armSpanX = ax;
+        }
+      }
+    }
+  }
+
+  // Relaxed-arm models (e.g. plaid-shirt lumberjack_player.glb) have hands near |x| ~ 0.41..0.52
+  // Wide 45-degree A-pose models reach |x| ~ 0.68..0.80
+  const isRelaxedArms = armSpanX > 0.25 && armSpanX < 0.62;
+  const armDropZ = isRelaxedArms ? 0.085 : 0.62;
+
+  // Auto-measure exact 3D left/right elbow & fist centroids directly from the GLB vertices
+  // so handR/handL sit dead-center inside the actual closed fists (fixes the 18cm offset bug!)
+  let shLX = isRelaxedArms ? 0.265 : 0.22;
+  let shLY = isRelaxedArms ? 1.56 : 1.65;
+  let shLZ = isRelaxedArms ? -0.04 : -0.05;
+  let elLX = isRelaxedArms ? 0.39 : 0.44;
+  let elLY = isRelaxedArms ? 1.22 : 1.44;
+  let elLZ = isRelaxedArms ? -0.06 : -0.07;
+  let fiLX = isRelaxedArms ? 0.365 : 0.62;
+  let fiLY = isRelaxedArms ? 0.875 : 1.26;
+  let fiLZ = isRelaxedArms ? 0.06 : -0.04;
+
+  let shRX = -shLX;
+  let shRY = shLY;
+  let shRZ = shLZ;
+  let elRX = -elLX;
+  let elRY = elLY;
+  let elRZ = elLZ;
+  let fiRX = isRelaxedArms ? -0.376 : -0.62;
+  let fiRY = isRelaxedArms ? 0.871 : 1.26;
+  let fiRZ = isRelaxedArms ? -0.095 : -0.04;
+
+  // Topological Arm-vs-Torso/Pants Separation for relaxed-arm GLBs:
+  // Slices below the armpit crease via welded-vertex graph BFS so the entire torso, belt,
+  // hip holster, and pants component is 100% topologically decoupled from the hanging arms.
+  // Eliminates any rubber-band stretching when raising arms (wave, cheer, stretch, chop).
+  const topoArmData = new Map();
+  if (isRelaxedArms) {
+    const cutCandidates = [1.42, 1.39, 1.36, 1.34, 1.31, 1.28, 1.24];
+    for (const pm of preparedMeshes) {
+      const mName = (pm.src.name || '').toLowerCase();
+      if (/eye|yeux|basket|buches|backpack|cheveux|hair|beard|body1_kiltchaussures|boot|shoe|kilt|skirt|tunic/.test(mName)) {
+        continue;
+      }
+      const pos = pm.pos;
+      const vCount = pos.count;
+      const idxAttr = pm.geo.index;
+      const triCount = idxAttr ? (idxAttr.count / 3) : Math.floor(vCount / 3);
+      if (vCount < 30 || triCount < 10) continue;
+
+      // 1. Weld spatially coincident vertices (so UV seams don't split a limb)
+      const posMap = new Map();
+      const canon = new Int32Array(vCount);
+      const cX = [];
+      const cY = [];
+      const cZ = [];
+      for (let i = 0; i < vCount; i++) {
+        const nx = pos.getX(i) / s;
+        const ny = pos.getY(i) / s;
+        const nz = pos.getZ(i) / s;
+        const key = `${Math.round(nx * 1500)},${Math.round(ny * 1500)},${Math.round(nz * 1500)}`;
+        let cid = posMap.get(key);
+        if (cid === undefined) {
+          cid = cX.length;
+          posMap.set(key, cid);
+          cX.push(nx);
+          cY.push(ny);
+          cZ.push(nz);
+        }
+        canon[i] = cid;
+      }
+      const cCount = cX.length;
+
+      // 2. Build full welded adjacency graph once (deduped via small neighbor lists)
+      const adj = Array.from({ length: cCount }, () => []);
+      const addEdge = (a, b) => {
+        if (a === b) return;
+        if (!adj[a].includes(b)) adj[a].push(b);
+        if (!adj[b].includes(a)) adj[b].push(a);
+      };
+      for (let t = 0; t < triCount; t++) {
+        const i0 = idxAttr ? idxAttr.getX(t * 3) : t * 3;
+        const i1 = idxAttr ? idxAttr.getX(t * 3 + 1) : t * 3 + 1;
+        const i2 = idxAttr ? idxAttr.getX(t * 3 + 2) : t * 3 + 2;
+        const a = canon[i0];
+        const b = canon[i1];
+        const c = canon[i2];
+        addEdge(a, b);
+        addEdge(b, c);
+        addEdge(c, a);
+      }
+
+      // 3. Sweep armpit Y_CUT downward to find highest clean topological separation per arm
+      let leftArmMask = null;
+      let rightArmMask = null;
+      let cutYL = 1.34;
+      let cutYR = 1.34;
+      const visited = new Int32Array(cCount);
+      const queue = new Int32Array(cCount);
+      let visitStamp = 0;
+
+      for (let ci = 0; ci < cutCandidates.length; ci++) {
+        if (leftArmMask && rightArmMask) break;
+        const yCut = cutCandidates[ci];
+        visitStamp++;
+        let bestLeftComp = null;
+        let bestRightComp = null;
+        for (let i = 0; i < cCount; i++) {
+          if (cY[i] >= yCut || visited[i] === visitStamp) continue;
+          let qHead = 0;
+          let qTail = 0;
+          queue[qTail++] = i;
+          visited[i] = visitStamp;
+          let minX = 1e9, maxX = -1e9, minY = 1e9, maxY = -1e9, sumX = 0;
+          while (qHead < qTail) {
+            const u = queue[qHead++];
+            const ux = cX[u];
+            const uy = cY[u];
+            sumX += ux;
+            if (ux < minX) minX = ux;
+            if (ux > maxX) maxX = ux;
+            if (uy < minY) minY = uy;
+            if (uy > maxY) maxY = uy;
+            const nbs = adj[u];
+            for (let k = 0; k < nbs.length; k++) {
+              const nb = nbs[k];
+              if (cY[nb] < yCut && visited[nb] !== visitStamp) {
+                visited[nb] = visitStamp;
+                queue[qTail++] = nb;
+              }
+            }
+          }
+          // Skip main torso/pants/legs component (touches lower legs), tiny dust, and detached props not reaching armpit cut
+          if (qTail < 25 || minY < 0.48 || maxY < yCut - 0.04 || (maxY - minY) < 0.07) continue;
+          const cx = sumX / qTail;
+          if (!leftArmMask && cx > 0.15 && maxX > 0.34) {
+            if (!bestLeftComp || qTail > bestLeftComp.length) {
+              bestLeftComp = queue.slice(0, qTail);
+            }
+          } else if (!rightArmMask && cx < -0.15 && minX < -0.34) {
+            if (!bestRightComp || qTail > bestRightComp.length) {
+              bestRightComp = queue.slice(0, qTail);
+            }
+          }
+        }
+        if (bestLeftComp) {
+          leftArmMask = new Uint8Array(cCount);
+          for (let k = 0; k < bestLeftComp.length; k++) leftArmMask[bestLeftComp[k]] = 1;
+          cutYL = yCut;
+        }
+        if (bestRightComp) {
+          rightArmMask = new Uint8Array(cCount);
+          for (let k = 0; k < bestRightComp.length; k++) rightArmMask[bestRightComp[k]] = 1;
+          cutYR = yCut;
+        }
+      }
+
+      if (leftArmMask || rightArmMask) {
+        // 4. Build per-welded-vertex armFactor with hard zero lock on entire body/pants below armpit
+        //    and 3-pass Laplacian smoothing strictly across the deltoid/armpit crease
+        const armW = new Float32Array(cCount);
+        const armWNext = new Float32Array(cCount);
+        const pinned = new Uint8Array(cCount);
+
+        for (let u = 0; u < cCount; u++) {
+          const nx = cX[u];
+          const ny = cY[u];
+          const absX = Math.abs(nx);
+          const isLeft = nx >= 0;
+          const hasSideTopo = isLeft ? Boolean(leftArmMask) : Boolean(rightArmMask);
+          const yCut = isLeft ? cutYL : cutYR;
+
+          if (leftArmMask && leftArmMask[u]) {
+            armW[u] = 1.0;
+            if (ny < cutYL - 0.035) pinned[u] = 1;
+          } else if (rightArmMask && rightArmMask[u]) {
+            armW[u] = 1.0;
+            if (ny < cutYR - 0.035) pinned[u] = 1;
+          } else if (hasSideTopo && ny < yCut) {
+            // Guaranteed body/belt/pants/leg vertex below armpit -> HARD-LOCKED to 0!
+            armW[u] = 0.0;
+            pinned[u] = 1;
+          } else if (ny >= yCut && ny <= 1.74 && absX > 0.16) {
+            armW[u] = smoothstep(0.22, 0.30, absX) * smoothstep(1.74, 1.62, ny);
+          } else {
+            armW[u] = 0.0;
+            pinned[u] = 1;
+          }
+        }
+
+        // Smooth shoulder crease so deltoid raises cleanly without hard steps
+        for (let pass = 0; pass < 3; pass++) {
+          for (let u = 0; u < cCount; u++) {
+            if (pinned[u]) {
+              armWNext[u] = armW[u];
+              continue;
+            }
+            const nbs = adj[u];
+            if (nbs.length === 0) {
+              armWNext[u] = armW[u];
+              continue;
+            }
+            let sum = armW[u] * 2.0;
+            let weightSum = 2.0;
+            for (let k = 0; k < nbs.length; k++) {
+              sum += armW[nbs[k]];
+              weightSum += 1.0;
+            }
+            armWNext[u] = sum / weightSum;
+          }
+          armW.set(armWNext);
+        }
+
+        topoArmData.set(pm.geo, {
+          canon,
+          armW,
+          hasLeft: Boolean(leftArmMask),
+          hasRight: Boolean(rightArmMask),
+          leftArmMask,
+          rightArmMask,
+          cX,
+          cY,
+          cZ
+        });
+      }
+    }
+
+    // Pass 1: find lowest Y of outer arm vertices on each side to isolate the true fist/palm region
+    // Prefer topologically isolated arm vertices when available so hip/pants never contaminate centroids
+    let minArmYL = 1.12;
+    let minArmYR = 1.12;
+    for (const pm of preparedMeshes) {
+      if (/basket|buches|backpack/.test((pm.src.name || '').toLowerCase())) continue;
+      const topo = topoArmData.get(pm.geo);
+      if (topo && (topo.hasLeft || topo.hasRight)) {
+        for (let u = 0; u < topo.cY.length; u++) {
+          const uy = topo.cY[u];
+          if (topo.leftArmMask && topo.leftArmMask[u] && uy < minArmYL) minArmYL = uy;
+          if (topo.rightArmMask && topo.rightArmMask[u] && uy < minArmYR) minArmYR = uy;
+        }
+        continue;
+      }
+      const pos = pm.pos;
+      for (let i = 0; i < pos.count; i++) {
+        const nx = pos.getX(i) / s;
+        const ny = pos.getY(i) / s;
+        if (ny < 0.72 || ny > 1.12) continue;
+        if (nx > 0.295 && ny < minArmYL) minArmYL = ny;
+        if (nx < -0.295 && ny < minArmYR) minArmYR = ny;
+      }
+    }
+
+    // Pass 2: compute weighted centroids of actual left/right fists & elbows
+    let fLSumX = 0, fLSumY = 0, fLSumZ = 0, fLCnt = 0;
+    let fRSumX = 0, fRSumY = 0, fRSumZ = 0, fRCnt = 0;
+    let eLSumX = 0, eLSumY = 0, eLSumZ = 0, eLCnt = 0;
+    let eRSumX = 0, eRSumY = 0, eRSumZ = 0, eRCnt = 0;
+
+    for (const pm of preparedMeshes) {
+      if (/basket|buches|backpack/.test((pm.src.name || '').toLowerCase())) continue;
+      const topo = topoArmData.get(pm.geo);
+      if (topo && (topo.hasLeft || topo.hasRight)) {
+        for (let u = 0; u < topo.cY.length; u++) {
+          const nx = topo.cX[u];
+          const ny = topo.cY[u];
+          const nz = topo.cZ[u];
+          if (topo.leftArmMask && topo.leftArmMask[u]) {
+            if (ny >= minArmYL && ny <= minArmYL + 0.145) {
+              fLSumX += nx; fLSumY += ny; fLSumZ += nz; fLCnt++;
+            }
+            if (ny >= 1.14 && ny <= 1.32) {
+              eLSumX += nx; eLSumY += ny; eLSumZ += nz; eLCnt++;
+            }
+          } else if (topo.rightArmMask && topo.rightArmMask[u]) {
+            if (ny >= minArmYR && ny <= minArmYR + 0.145) {
+              fRSumX += nx; fRSumY += ny; fRSumZ += nz; fRCnt++;
+            }
+            if (ny >= 1.14 && ny <= 1.32) {
+              eRSumX += nx; eRSumY += ny; eRSumZ += nz; eRCnt++;
+            }
+          }
+        }
+        continue;
+      }
+      const pos = pm.pos;
+      for (let i = 0; i < pos.count; i++) {
+        const nx = pos.getX(i) / s;
+        const ny = pos.getY(i) / s;
+        const nz = pos.getZ(i) / s;
+        if (nx > 0.295 && ny >= minArmYL && ny <= minArmYL + 0.145) {
+          fLSumX += nx; fLSumY += ny; fLSumZ += nz; fLCnt++;
+        } else if (nx < -0.295 && ny >= minArmYR && ny <= minArmYR + 0.145) {
+          fRSumX += nx; fRSumY += ny; fRSumZ += nz; fRCnt++;
+        }
+        if (ny >= 1.14 && ny <= 1.32) {
+          if (nx > 0.295) { eLSumX += nx; eLSumY += ny; eLSumZ += nz; eLCnt++; }
+          else if (nx < -0.295) { eRSumX += nx; eRSumY += ny; eRSumZ += nz; eRCnt++; }
+        }
+      }
+    }
+
+    if (fLCnt >= 6) {
+      fiLX = Math.max(0.30, Math.min(0.56, fLSumX / fLCnt));
+      fiLY = Math.max(0.76, Math.min(1.00, fLSumY / fLCnt));
+      fiLZ = Math.max(-0.22, Math.min(0.24, fLSumZ / fLCnt));
+    }
+    if (fRCnt >= 6) {
+      fiRX = Math.min(-0.30, Math.max(-0.56, fRSumX / fRCnt));
+      fiRY = Math.max(0.76, Math.min(1.00, fRSumY / fRCnt));
+      fiRZ = Math.max(-0.22, Math.min(0.24, fRSumZ / fRCnt));
+    }
+    if (eLCnt >= 6) {
+      elLX = Math.max(0.30, Math.min(0.54, eLSumX / eLCnt));
+      elLY = Math.max(1.14, Math.min(1.32, eLSumY / eLCnt));
+      elLZ = Math.max(-0.20, Math.min(0.14, eLSumZ / eLCnt));
+    }
+    if (eRCnt >= 6) {
+      elRX = Math.min(-0.30, Math.max(-0.54, eRSumX / eRCnt));
+      elRY = Math.max(1.14, Math.min(1.32, eRSumY / eRCnt));
+      elRZ = Math.max(-0.20, Math.min(0.14, eRSumZ / eRCnt));
+    }
+  }
+
+  // 17-bone indices:
   // 0:hips, 1:spine, 2:chest, 3:neck, 4:head,
-  // 5:upperArmL, 6:foreArmL, 7:upperArmR, 8:foreArmR,
-  // 9:thighL, 10:shinL, 11:thighR, 12:shinR
+  // 5:upperArmL, 6:foreArmL, 7:handL,
+  // 8:upperArmR, 9:foreArmR, 10:handR,
+  // 11:thighL, 12:shinL, 13:footL,
+  // 14:thighR, 15:shinR, 16:footR
   const hips = new THREE.Bone();
   hips.name = 'hips';
   hips.position.set(0, 1.02 * s, 0);
@@ -740,10 +1333,59 @@ function buildAutoHumanoidRig(model, normH, lowSpec = false) {
   chest.name = 'chest';
   chest.position.set(0, 0.31 * s, -0.01 * s);
   spine.add(chest);
+  // Cumulative chest world rest position: (0, 1.53, -0.01) * s
+  const chestWX = 0;
+  const chestWY = 1.53;
+  const chestWZ = -0.01;
+
+  // Measure actual lateral hip/waist/belt half-width from non-arm torso/pants vertices
+  // so Shoulder Rotation Constraints maintain exact physical clearance for every body build
+  let hipHalfWidthL = isRelaxedArms ? 0.30 : 0.25;
+  let hipHalfWidthR = isRelaxedArms ? 0.30 : 0.25;
+  {
+    let maxHipL = 0;
+    let maxHipR = 0;
+    for (const pm of preparedMeshes) {
+      if (/basket|buches|backpack/.test((pm.src.name || '').toLowerCase())) continue;
+      const topo = topoArmData.get(pm.geo);
+      if (topo && (topo.hasLeft || topo.hasRight)) {
+        for (let u = 0; u < topo.cY.length; u++) {
+          if ((topo.leftArmMask && topo.leftArmMask[u]) || (topo.rightArmMask && topo.rightArmMask[u])) continue;
+          const uy = topo.cY[u];
+          const uz = topo.cZ[u];
+          if (uy < 0.70 || uy > 1.28 || Math.abs(uz) > 0.22) continue;
+          const ux = topo.cX[u];
+          if (ux > maxHipL && ux < 0.36) maxHipL = ux;
+          if (-ux > maxHipR && -ux < 0.36) maxHipR = -ux;
+        }
+      } else {
+        const pos = pm.pos;
+        for (let i = 0; i < pos.count; i++) {
+          const ny = pos.getY(i) / s;
+          const nz = pos.getZ(i) / s;
+          if (ny < 0.70 || ny > 1.28 || Math.abs(nz) > 0.20) continue;
+          const nx = pos.getX(i) / s;
+          if (nx > maxHipL && nx < 0.28) maxHipL = nx;
+          if (-nx > maxHipR && -nx < 0.28) maxHipR = -nx;
+        }
+      }
+    }
+    if (maxHipL >= 0.16) hipHalfWidthL = Math.max(0.22, Math.min(0.33, maxHipL));
+    if (maxHipR >= 0.16) hipHalfWidthR = Math.max(0.22, Math.min(0.33, maxHipR));
+  }
+  const shoulderConstraints = createShoulderConstraints({
+    isRelaxedArms,
+    armDropZ,
+    hipHalfWidthL,
+    hipHalfWidthR,
+    chestWX,
+    chestWY,
+    chestWZ
+  });
 
   const neck = new THREE.Bone();
   neck.name = 'neck';
-  neck.position.set(0, 0.24 * s, 0);
+  neck.position.set(0, (isRelaxedArms ? 0.22 : 0.24) * s, 0);
   chest.add(neck);
 
   const head = new THREE.Bone();
@@ -751,60 +1393,160 @@ function buildAutoHumanoidRig(model, normH, lowSpec = false) {
   head.position.set(0, 0.12 * s, 0.02 * s);
   neck.add(head);
 
+  // Left arm chain: exact local subtraction from measured world joint coordinates
   const upperArmL = new THREE.Bone();
   upperArmL.name = 'upperArmL';
-  upperArmL.position.set(0.22 * s, 0.12 * s, -0.05 * s);
+  upperArmL.position.set((shLX - chestWX) * s, (shLY - chestWY) * s, (shLZ - chestWZ) * s);
   chest.add(upperArmL);
 
   const foreArmL = new THREE.Bone();
   foreArmL.name = 'foreArmL';
-  foreArmL.position.set(0.22 * s, -0.21 * s, -0.02 * s);
+  foreArmL.position.set((elLX - shLX) * s, (elLY - shLY) * s, (elLZ - shLZ) * s);
   upperArmL.add(foreArmL);
 
+  const handL = new THREE.Bone();
+  handL.name = 'handL';
+  handL.position.set((fiLX - elLX) * s, (fiLY - elLY) * s, (fiLZ - elLZ) * s);
+  foreArmL.add(handL);
+
+  // Right arm chain: exact local subtraction so handR sits dead-center inside the closed right fist
   const upperArmR = new THREE.Bone();
   upperArmR.name = 'upperArmR';
-  upperArmR.position.set(-0.22 * s, 0.12 * s, -0.05 * s);
+  upperArmR.position.set((shRX - chestWX) * s, (shRY - chestWY) * s, (shRZ - chestWZ) * s);
   chest.add(upperArmR);
 
   const foreArmR = new THREE.Bone();
   foreArmR.name = 'foreArmR';
-  foreArmR.position.set(-0.22 * s, -0.21 * s, -0.02 * s);
+  foreArmR.position.set((elRX - shRX) * s, (elRY - shRY) * s, (elRZ - shRZ) * s);
   upperArmR.add(foreArmR);
+
+  const handR = new THREE.Bone();
+  handR.name = 'handR';
+  handR.position.set((fiRX - elRX) * s, (fiRY - elRY) * s, (fiRZ - elRZ) * s);
+  foreArmR.add(handR);
+
+  // Auto-measure anatomical leg columns (hip -> knee -> ankle) so bones align cleanly with the mesh
+  // without artificial outward splay, and compute subtle inward adduction if the GLB rest pose is wide.
+  let legHipLX = 0.105, legHipRX = -0.105;
+  let legKneeLX = 0.105, legKneeRX = -0.105;
+  let legAnkleLX = 0.105, legAnkleRX = -0.105;
+  {
+    let hLS = 0, hLC = 0, hRS = 0, hRC = 0;
+    let kLS = 0, kLC = 0, kRS = 0, kRC = 0;
+    let aLS = 0, aLC = 0, aRS = 0, aRC = 0;
+    for (const pm of preparedMeshes) {
+      const pos = pm.geo.attributes.position;
+      for (let i = 0; i < pos.count; i++) {
+        const nx = pos.getX(i) / s;
+        const ny = pos.getY(i) / s;
+        const absX = Math.abs(nx);
+        if (absX < 0.025 || absX > 0.245) continue;
+        if (ny >= 0.78 && ny <= 0.96) {
+          if (nx > 0) { hLS += nx; hLC++; } else { hRS += nx; hRC++; }
+        } else if (ny >= 0.45 && ny <= 0.62) {
+          if (nx > 0) { kLS += nx; kLC++; } else { kRS += nx; kRC++; }
+        } else if (ny >= 0.06 && ny <= 0.24) {
+          if (nx > 0) { aLS += nx; aLC++; } else { aRS += nx; aRC++; }
+        }
+      }
+    }
+    if (hLC >= 6) legHipLX = Math.max(0.082, Math.min(0.135, hLS / hLC));
+    if (hRC >= 6) legHipRX = Math.min(-0.082, Math.max(-0.135, hRS / hRC));
+    if (kLC >= 6) legKneeLX = Math.max(0.080, Math.min(0.155, kLS / kLC));
+    if (kRC >= 6) legKneeRX = Math.min(-0.080, Math.max(-0.155, kRS / kRC));
+    if (aLC >= 6) legAnkleLX = Math.max(0.078, Math.min(0.175, aLS / aLC));
+    if (aRC >= 6) legAnkleRX = Math.min(-0.078, Math.max(-0.175, aRS / aRC));
+  }
+  // Subtle inward adduction angle if the source GLB mesh was sculpted in a wide A-pose stance
+  const legAdductL = legAnkleLX > 0.104 ? -Math.min(0.11, Math.atan2(legAnkleLX - 0.098, 0.86)) : 0;
+  const legAdductR = legAnkleRX < -0.104 ? Math.min(0.11, Math.atan2(-legAnkleRX - 0.098, 0.86)) : 0;
 
   const thighL = new THREE.Bone();
   thighL.name = 'thighL';
-  thighL.position.set(0.15 * s, -0.02 * s, 0);
+  thighL.position.set(legHipLX * s, -0.02 * s, 0);
   hips.add(thighL);
 
   const shinL = new THREE.Bone();
   shinL.name = 'shinL';
-  shinL.position.set(0.02 * s, -0.42 * s, -0.01 * s);
+  shinL.position.set((legKneeLX - legHipLX) * s, -0.43 * s, -0.008 * s);
   thighL.add(shinL);
+
+  const footL = new THREE.Bone();
+  footL.name = 'footL';
+  footL.position.set((legAnkleLX - legKneeLX) * s, -0.44 * s, 0.016 * s);
+  shinL.add(footL);
 
   const thighR = new THREE.Bone();
   thighR.name = 'thighR';
-  thighR.position.set(-0.15 * s, -0.02 * s, 0);
+  thighR.position.set(legHipRX * s, -0.02 * s, 0);
   hips.add(thighR);
 
   const shinR = new THREE.Bone();
   shinR.name = 'shinR';
-  shinR.position.set(-0.02 * s, -0.42 * s, -0.01 * s);
+  shinR.position.set((legKneeRX - legHipRX) * s, -0.43 * s, -0.008 * s);
   thighR.add(shinR);
 
-  // Hand anchor on right forearm for the PBR lumberjack axe
+  const footR = new THREE.Bone();
+  footR.name = 'footR';
+  footR.position.set((legAnkleRX - legKneeRX) * s, -0.44 * s, 0.016 * s);
+  shinR.add(footR);
+
+  // Hand anchor seated directly inside the auto-measured right palm center
   const handRAnchor = new THREE.Group();
   handRAnchor.name = 'handRAnchor';
-  handRAnchor.position.set(-0.20 * s, -0.20 * s, 0.10 * s);
-  handRAnchor.rotation.set(0.22, -0.10, -0.58);
-  foreArmR.add(handRAnchor);
+  if (isRelaxedArms) {
+    handRAnchor.position.set(0.0 * s, -0.012 * s, 0.015 * s);
+    handRAnchor.rotation.set(-0.06, 0.02, 0.03);
+  } else {
+    handRAnchor.position.set(-0.01 * s, -0.02 * s, 0.065 * s);
+    handRAnchor.rotation.set(0.12, -0.06, -0.54);
+  }
+  handR.add(handRAnchor);
 
   const axeMesh = createHeroLumberjackAxe(s * 1.04, lowSpec);
   handRAnchor.add(axeMesh);
 
+  // Hip belt holster anchor on left waist (visible while carrying heavy timber or pulling handcart)
+  const beltAxeAnchor = new THREE.Group();
+  beltAxeAnchor.name = 'beltAxeAnchor';
+  beltAxeAnchor.position.set(0.255 * s, -0.035 * s, 0.02 * s);
+  beltAxeAnchor.rotation.set(Math.PI * 0.44, 0.18, 0.16);
+  hips.add(beltAxeAnchor);
+
+  const beltAxeMesh = createHeroLumberjackAxe(s * 0.90, lowSpec);
+  beltAxeMesh.visible = false;
+  beltAxeAnchor.add(beltAxeMesh);
+
+  // Right-shoulder timber carry mount attached to chest (hidden until player actually carries chopped logs)
+  const shoulderLogAnchor = new THREE.Group();
+  shoulderLogAnchor.name = 'shoulderLogAnchor';
+  shoulderLogAnchor.position.set(-0.23 * s, 0.19 * s, 0.05 * s);
+  shoulderLogAnchor.rotation.set(-0.14, 0.06, 0.08);
+  shoulderLogAnchor.visible = false;
+  chest.add(shoulderLogAnchor);
+
+  const shoulderLogSlots = [];
+  const logSlotOffsets = [
+    { x: 0.0, y: 0.0, z: 0.0, rz: 0.0 },
+    { x: -0.16 * s, y: 0.07 * s, z: -0.04 * s, rz: -0.06 },
+    { x: -0.06 * s, y: 0.22 * s, z: -0.02 * s, rz: 0.05 }
+  ];
+  for (let i = 0; i < logSlotOffsets.length; i++) {
+    const off = logSlotOffsets[i];
+    const logSlot = createShoulderTimberLog(s * 0.96, lowSpec);
+    logSlot.position.set(off.x, off.y, off.z);
+    logSlot.rotation.z = off.rz;
+    logSlot.visible = false;
+    shoulderLogAnchor.add(logSlot);
+    shoulderLogSlots.push(logSlot);
+  }
+
   const boneList = [
     hips, spine, chest, neck, head,
-    upperArmL, foreArmL, upperArmR, foreArmR,
-    thighL, shinL, thighR, shinR
+    upperArmL, foreArmL, handL,
+    upperArmR, foreArmR, handR,
+    thighL, shinL, footL,
+    thighR, shinR, footR
   ];
 
   const rigRoot = new THREE.Group();
@@ -814,24 +1556,16 @@ function buildAutoHumanoidRig(model, normH, lowSpec = false) {
 
   const skeleton = new THREE.Skeleton(boneList);
 
-  // Collect source meshes from normalized static model
-  model.updateMatrixWorld(true);
-  const sourceMeshes = [];
-  model.traverse((child) => {
-    if (child.isMesh && child.geometry) {
-      sourceMeshes.push(child);
-    }
-  });
-
-  // Reusable per-vertex accumulator for top-4 bone weights
-  const wBuf = new Float32Array(13);
+  // Reusable per-vertex accumulator for top-4 bone weights across 17 bones
+  const BONE_COUNT = 17;
+  const wBuf = new Float32Array(BONE_COUNT);
   const idx4 = [0, 0, 0, 0];
   const val4 = [0, 0, 0, 0];
 
   const writeTop4 = (skinIndices, skinWeights, vIdx) => {
     idx4[0] = idx4[1] = idx4[2] = idx4[3] = 0;
     val4[0] = val4[1] = val4[2] = val4[3] = 0;
-    for (let b = 0; b < 13; b++) {
+    for (let b = 0; b < BONE_COUNT; b++) {
       const w = wBuf[b];
       if (w <= 0.0001) continue;
       if (w > val4[0]) {
@@ -869,15 +1603,7 @@ function buildAutoHumanoidRig(model, normH, lowSpec = false) {
   };
 
   let meshCount = 0;
-  for (const src of sourceMeshes) {
-    const geo = src.geometry.clone();
-    geo.applyMatrix4(src.matrixWorld);
-    const pos = geo.attributes.position;
-    if (!pos) {
-      geo.dispose();
-      continue;
-    }
-
+  for (const { src, geo, pos } of preparedMeshes) {
     const vCount = pos.count;
     const skinIndices = new Uint16Array(vCount * 4);
     const skinWeights = new Float32Array(vCount * 4);
@@ -893,6 +1619,7 @@ function buildAutoHumanoidRig(model, normH, lowSpec = false) {
       wBuf.fill(0);
       const nx = pos.getX(i) / s;
       const ny = pos.getY(i) / s;
+      const absX = Math.abs(nx);
 
       if (isEye) {
         wBuf[4] = 1;
@@ -903,7 +1630,11 @@ function buildAutoHumanoidRig(model, normH, lowSpec = false) {
         wBuf[4] = wHead;
         wBuf[2] = 1 - wHead;
       } else if (isBootsMesh) {
-        wBuf[nx >= 0 ? 10 : 12] = 1;
+        const ankleBlend = smoothstep(0.22, 0.11, ny);
+        const shinIdx = nx >= 0 ? 12 : 15;
+        const footIdx = nx >= 0 ? 13 : 16;
+        wBuf[shinIdx] = 1 - ankleBlend;
+        wBuf[footIdx] = ankleBlend;
       } else if (isKiltMesh) {
         if (ny >= 1.02) {
           const tSpine = smoothstep(1.02, 1.22, ny);
@@ -916,37 +1647,168 @@ function buildAutoHumanoidRig(model, normH, lowSpec = false) {
           const sideL = smoothstep(-0.11, 0.11, nx);
           const legShare = 0.52 * tSkirt;
           wBuf[0] = 1 - legShare;
-          wBuf[9] = legShare * sideL;
-          wBuf[11] = legShare * (1 - sideL);
+          wBuf[11] = legShare * sideL;
+          wBuf[14] = legShare * (1 - sideL);
+        }
+      } else if (isRelaxedArms) {
+        // 3D Bone-Capsule Separation for relaxed-arm anatomy:
+        // Strictly separates arms/forearms/fists from hips/pockets/thighs below the armpit crease
+        // so swinging arms NEVER pull or stretch the pants mesh (fixes "vừa đi vừa kéo quần").
+        const nz = pos.getZ(i) / s;
+        const isLeft = nx >= 0;
+        const shX = isLeft ? shLX : shRX;
+        const shY = isLeft ? shLY : shRY;
+        const shZ = isLeft ? shLZ : shRZ;
+        const elX = isLeft ? elLX : elRX;
+        const elY = isLeft ? elLY : elRY;
+        const elZ = isLeft ? elLZ : elRZ;
+        const fiX = isLeft ? fiLX : fiRX;
+        const fiY = isLeft ? fiLY : fiRY;
+        const fiZ = isLeft ? fiLZ : fiRZ;
+
+        // Squared 3D distance to a bone capsule segment A->B
+        const distSegSq = (px, py, pz, ax, ay, az, bx, by, bz) => {
+          const abx = bx - ax, aby = by - ay, abz = bz - az;
+          const abLenSq = abx * abx + aby * aby + abz * abz;
+          let tSeg = 0;
+          if (abLenSq > 1e-6) {
+            tSeg = ((px - ax) * abx + (py - ay) * aby + (pz - az) * abz) / abLenSq;
+            if (tSeg < 0) tSeg = 0;
+            else if (tSeg > 1) tSeg = 1;
+          }
+          const cx = ax + abx * tSeg - px;
+          const cy = ay + aby * tSeg - py;
+          const cz = az + abz * tSeg - pz;
+          return cx * cx + cy * cy + cz * cz;
+        };
+
+        const topo = topoArmData.get(geo);
+        const hasSideTopo = topo && (isLeft ? topo.hasLeft : topo.hasRight);
+
+        let armFactor = 0;
+        if (hasSideTopo) {
+          armFactor = topo.armW[topo.canon[i]];
+        } else if (ny >= 0.78 && ny <= 1.74 && absX > 0.21) {
+          if (ny >= 1.38) {
+            // Smooth deltoid/shoulder blend strictly above the armpit crease
+            armFactor = smoothstep(0.22, 0.30, absX) * smoothstep(1.74, 1.62, ny);
+          } else {
+            // Fallback capsule separation when topological split is unavailable
+            const dUpperSq = distSegSq(nx, ny, nz, shX, shY, shZ, elX, elY, elZ);
+            const dForeSq = distSegSq(nx, ny, nz, elX, elY, elZ, fiX, fiY, fiZ);
+            const dArm = Math.sqrt(Math.min(dUpperSq, dForeSq));
+
+            const sideSign = isLeft ? 1 : -1;
+            const dTrunkSq = distSegSq(nx, ny, nz, 0, 1.00, 0, 0, 1.53, -0.01);
+            const dHipSideSq = distSegSq(nx, ny, nz, sideSign * 0.145, 1.00, 0, sideSign * 0.16, 0.56, -0.01);
+            const dBody = Math.sqrt(Math.min(dTrunkSq, dHipSideSq));
+
+            if (absX > 0.295 && dArm < dBody * 0.82) {
+              armFactor = 1.0;
+            } else {
+              armFactor = 0.0;
+            }
+          }
+        }
+
+        if (armFactor > 0.001) {
+          // Project along the actual measured 3D shoulder -> elbow -> fist chain
+          const dUpperSq = distSegSq(nx, ny, nz, shX, shY, shZ, elX, elY, elZ);
+          const dForeSq = distSegSq(nx, ny, nz, elX, elY, elZ, fiX, fiY, fiZ);
+          const upperT = (() => {
+            const dx = elX - shX, dy = elY - shY, dz = elZ - shZ;
+            const lenSq = Math.max(1e-5, dx * dx + dy * dy + dz * dz);
+            return Math.max(0, Math.min(1, ((nx - shX) * dx + (ny - shY) * dy + (nz - shZ) * dz) / lenSq));
+          })();
+          const foreT = (() => {
+            const dx = fiX - elX, dy = fiY - elY, dz = fiZ - elZ;
+            const lenSq = Math.max(1e-5, dx * dx + dy * dy + dz * dz);
+            return Math.max(0, Math.min(1.15, ((nx - elX) * dx + (ny - elY) * dy + (nz - elZ) * dz) / lenSq));
+          })();
+          const u = dForeSq < dUpperSq ? (1.0 + foreT) : upperT;
+          const foreBlend = smoothstep(0.82, 1.16, u);
+          const handBlend = smoothstep(1.76, 2.02, u);
+          const upperIdx = isLeft ? 5 : 8;
+          const foreIdx = isLeft ? 6 : 9;
+          const handIdx = isLeft ? 7 : 10;
+          wBuf[upperIdx] += armFactor * (1 - foreBlend);
+          wBuf[foreIdx] += armFactor * foreBlend * (1 - handBlend);
+          wBuf[handIdx] += armFactor * foreBlend * handBlend;
+        }
+
+        const bodyRem = 1 - armFactor;
+        if (bodyRem > 0.001) {
+          if (ny < 1.04) {
+            const tLeg = smoothstep(1.05, 0.90, ny);
+            const sideL = smoothstep(-0.04, 0.04, nx);
+            const tKnee = smoothstep(0.66, 0.50, ny);
+            const tAnkle = smoothstep(0.20, 0.09, ny);
+            wBuf[0] += bodyRem * (1 - tLeg);
+            const wThigh = bodyRem * tLeg * (1 - tKnee);
+            const wLower = bodyRem * tLeg * tKnee;
+            const wShin = wLower * (1 - tAnkle);
+            const wFoot = wLower * tAnkle;
+            wBuf[11] += wThigh * sideL;
+            wBuf[12] += wShin * sideL;
+            wBuf[13] += wFoot * sideL;
+            wBuf[14] += wThigh * (1 - sideL);
+            wBuf[15] += wShin * (1 - sideL);
+            wBuf[16] += wFoot * (1 - sideL);
+          } else if (ny < 1.20) {
+            const t = smoothstep(1.04, 1.20, ny);
+            wBuf[0] += bodyRem * (1 - t);
+            wBuf[1] += bodyRem * t;
+          } else if (ny < 1.48) {
+            const t = smoothstep(1.20, 1.48, ny);
+            wBuf[1] += bodyRem * (1 - t);
+            wBuf[2] += bodyRem * t;
+          } else if (ny < 1.70) {
+            const tNeck = smoothstep(1.64, 1.75, ny);
+            wBuf[2] += bodyRem * (1 - tNeck);
+            wBuf[3] += bodyRem * tNeck;
+          } else if (ny < 1.84) {
+            const tHead = smoothstep(1.72, 1.84, ny);
+            wBuf[3] += bodyRem * (1 - tHead);
+            wBuf[4] += bodyRem * tHead;
+          } else {
+            wBuf[4] += bodyRem;
+          }
         }
       } else if (ny < 1.04) {
-        // Lower body (pelvis -> thighs -> shins)
+        // Lower body (pelvis -> thighs -> shins -> feet/boots) for wide A-pose models
         const tLeg = smoothstep(1.05, 0.90, ny);
         const sideL = smoothstep(-0.04, 0.04, nx);
-        const tKnee = smoothstep(0.65, 0.51, ny);
+        const tKnee = smoothstep(0.66, 0.50, ny);
+        const tAnkle = smoothstep(0.20, 0.09, ny);
         wBuf[0] = 1 - tLeg;
         const wThigh = tLeg * (1 - tKnee);
-        const wShin = tLeg * tKnee;
-        wBuf[9] = wThigh * sideL;
-        wBuf[10] = wShin * sideL;
-        wBuf[11] = wThigh * (1 - sideL);
-        wBuf[12] = wShin * (1 - sideL);
+        const wLower = tLeg * tKnee;
+        const wShin = wLower * (1 - tAnkle);
+        const wFoot = wLower * tAnkle;
+        wBuf[11] = wThigh * sideL;
+        wBuf[12] = wShin * sideL;
+        wBuf[13] = wFoot * sideL;
+        wBuf[14] = wThigh * (1 - sideL);
+        wBuf[15] = wShin * (1 - sideL);
+        wBuf[16] = wFoot * (1 - sideL);
       } else {
-        // Upper body + A-pose arms + neck + head
-        const absX = Math.abs(nx);
+        // Upper body + wide 45-deg A-pose arms (upper -> forearm -> hand) + neck + head
         const armFactor =
           smoothstep(0.175, 0.275, absX) *
           smoothstep(1.82, 1.70, ny) *
-          smoothstep(1.02, 1.12, ny);
+          smoothstep(1.00, 1.10, ny);
 
         if (armFactor > 0.001) {
-          // Projection along shoulder -> elbow axis (0 at shoulder, 1 at elbow, 2 at hand)
+          // Projection along shoulder -> elbow -> wrist axis (0=shoulder, 1=elbow, ~1.82=wrist)
           const u = ((absX - 0.22) * 0.22 + (1.65 - ny) * 0.21) / (0.22 * 0.22 + 0.21 * 0.21);
-          const foreBlend = smoothstep(0.82, 1.18, u);
-          const upperIdx = nx >= 0 ? 5 : 7;
-          const foreIdx = nx >= 0 ? 6 : 8;
+          const foreBlend = smoothstep(0.80, 1.18, u);
+          const handBlend = smoothstep(1.58, 1.88, u);
+          const upperIdx = nx >= 0 ? 5 : 8;
+          const foreIdx = nx >= 0 ? 6 : 9;
+          const handIdx = nx >= 0 ? 7 : 10;
           wBuf[upperIdx] += armFactor * (1 - foreBlend);
-          wBuf[foreIdx] += armFactor * foreBlend;
+          wBuf[foreIdx] += armFactor * foreBlend * (1 - handBlend);
+          wBuf[handIdx] += armFactor * foreBlend * handBlend;
         }
 
         const torsoRem = 1 - armFactor;
@@ -981,7 +1843,6 @@ function buildAutoHumanoidRig(model, normH, lowSpec = false) {
 
     const skinned = new THREE.SkinnedMesh(geo, src.material);
     skinned.name = src.name;
-    // Skip shadow-map pass on 83k-vert skinned GLB (contact shadow disc grounds the player cleanly at 0 GPU cost)
     skinned.castShadow = false;
     skinned.receiveShadow = !lowSpec;
     skinned.frustumCulled = false;
@@ -990,12 +1851,30 @@ function buildAutoHumanoidRig(model, normH, lowSpec = false) {
     meshCount++;
   }
 
-  // Dispose replaced static geometries (keep materials which are now shared with SkinnedMeshes)
   for (const src of sourceMeshes) {
     if (src.geometry && !src.geometry.userData?.shared) {
       src.geometry.dispose();
     }
   }
+
+  const getAxeBladeWorldSegment = (outBase, outTip) => {
+    if (!axeMesh || !axeMesh.visible || !axeMesh.userData?.bladeBaseAnchor || !axeMesh.userData?.bladeTipAnchor) {
+      return false;
+    }
+    axeMesh.updateWorldMatrix(true, true);
+    axeMesh.userData.bladeBaseAnchor.getWorldPosition(outBase);
+    axeMesh.userData.bladeTipAnchor.getWorldPosition(outTip);
+    return Number.isFinite(outBase.x) && Number.isFinite(outTip.x);
+  };
+
+  const getAxeSecondaryGripWorld = (outPos) => {
+    if (!axeMesh || !axeMesh.visible || !axeMesh.userData?.secondaryGripAnchor) {
+      return false;
+    }
+    axeMesh.updateWorldMatrix(true, true);
+    axeMesh.userData.secondaryGripAnchor.getWorldPosition(outPos);
+    return Number.isFinite(outPos.x);
+  };
 
   return {
     rigRoot,
@@ -1003,19 +1882,41 @@ function buildAutoHumanoidRig(model, normH, lowSpec = false) {
     meshCount,
     scale: s,
     hipsRestY: 1.02 * s,
+    soleHeight: 0.13 * s,
+    legAdductL,
+    legAdductR,
+    isRelaxedArms,
+    armDropZ,
+    shoulderConstraints,
     handRAnchor,
     axeMesh,
+    getAxeBladeWorldSegment,
+    getAxeSecondaryGripWorld,
+    beltAxeAnchor,
+    beltAxeMesh,
+    shoulderLogAnchor,
+    shoulderLogSlots,
     bones: {
       hips, spine, chest, neck, head,
-      upperArmL, foreArmL, upperArmR, foreArmR,
-      thighL, shinL, thighR, shinR
+      upperArmL, foreArmL, handL,
+      upperArmR, foreArmR, handR,
+      thighL, shinL, footL,
+      thighR, shinR, footR
     },
     state: {
       moveBlend: 0,
+      runBlend: 0,
       chopBlend: 0,
-      phase: 0,
+      carryBlend: 0,
+      pullBlend: 0,
+      phase: IDLE_REST_PHASE,
       breathPhase: 0,
-      idleLookPhase: 0
+      idleLookPhase: 0,
+      speedSmooth: 0,
+      prevUL: NaN,
+      prevUR: NaN,
+      blendTree: createBlendTreeState(),
+      ikState: createFootIKState()
     }
   };
 }
@@ -1153,7 +2054,7 @@ export function attachGlbToPlayerModel(playerModel, url, options = {}) {
           model.traverse((child) => {
             if (child.isMesh) {
               meshCount++;
-              child.castShadow = false;
+              child.castShadow = !lowSpec;
               child.receiveShadow = !lowSpec;
               child.frustumCulled = false;
               const matsList = Array.isArray(child.material) ? child.material : [child.material];
@@ -1162,7 +2063,13 @@ export function attachGlbToPlayerModel(playerModel, url, options = {}) {
                 if (m.map) m.map.colorSpace = THREE.SRGBColorSpace;
                 if (m.emissiveMap) m.emissiveMap.colorSpace = THREE.SRGBColorSpace;
                 if (typeof m.envMapIntensity === 'number') {
-                  m.envMapIntensity = 0.88;
+                  m.envMapIntensity = 1.12;
+                }
+                if (typeof m.metalness === 'number' && m.metalness > 0 && m.metalness < 0.45) {
+                  m.metalness *= 0.25;
+                }
+                if (typeof m.roughness === 'number' && m.roughness > 0.86) {
+                  m.roughness = 0.82;
                 }
                 m.needsUpdate = true;
               }
@@ -1207,7 +2114,7 @@ export function attachGlbToPlayerModel(playerModel, url, options = {}) {
             ud.glbMeshCount = rig.meshCount;
             ud.glbModelWrap.add(rig.rigRoot);
 
-            // Attach backpack log stack to chest bone & VIP crown to head bone
+            // Attach backpack log stack (hidden when shoulder-carry is active) & VIP crown to skeleton
             rig.bones.chest.add(ud.glbLogAnchor);
             ud.glbLogAnchor.position.set(0, 0.04 * rig.scale, -0.44 * rig.scale);
             rig.bones.head.add(ud.glbCrownAnchor);
@@ -1218,6 +2125,7 @@ export function attachGlbToPlayerModel(playerModel, url, options = {}) {
 
           ud.glbLoaded = true;
           setPlayerGlbActive(playerModel, useGlb);
+          syncPlayerBackLogs(playerModel, ud.carryCount || 0);
 
           resolve({
             ok: true,
@@ -1236,6 +2144,309 @@ export function attachGlbToPlayerModel(playerModel, url, options = {}) {
       }
     );
   });
+}
+
+// ---------------------------------------------------------------------------
+// Locomotion Blend Tree & 2-Bone Foot-Locking IK Integration (Zero-GC)
+//   • 5-State Blend Tree: Idle -> Walk -> Jog -> Run -> Sprint
+//   • Direction-change centripetal turn banking & look-ahead lead
+//   • World-space Foot-Plant Locking with Closed-Form 2-Bone Leg IK
+// ---------------------------------------------------------------------------
+const _gaitLegL = { thighRx: 0, shinRx: 0, footRx: 0 };
+const _gaitLegR = { thighRx: 0, shinRx: 0, footRx: 0 };
+const _compatBt = createBlendTreeState();
+const _ikParams = {
+  uL: 0,
+  uR: 0.5,
+  btState: null,
+  jumpY: 0,
+  inWater: false,
+  getGroundHeight: null,
+  rootYaw: 0
+};
+const _armIkTarget = new THREE.Vector3();
+const _armIkPole = new THREE.Vector3();
+
+export function computeGaitWeights4Tier(speed, loadWeight, out) {
+  return computeBlendTreeTargets(speed, loadWeight, out);
+}
+
+export function sampleHumanLegGait4Tier(u, wWalk, wJog, wSprint, strideScale, loadWeight, wadeLift, slopePitch, out) {
+  _compatBt.wWalk = wWalk;
+  _compatBt.wJog = wJog;
+  _compatBt.wRun = wSprint * 0.4;
+  _compatBt.wSprint = wSprint * 0.6;
+  return sampleBlendTreeLeg(u, _compatBt, strideScale, loadWeight, wadeLift, slopePitch, out);
+}
+
+export function sampleHumanLegGait(u, runBlend, strideScale, loadWeight, wadeLift, out) {
+  _compatBt.wWalk = Math.max(0, 1 - runBlend);
+  _compatBt.wJog = runBlend > 0.01 && runBlend < 0.8 ? Math.sin(runBlend * Math.PI) * 0.7 : 0;
+  _compatBt.wRun = Math.max(0, (runBlend - 0.25) / 0.75) * 0.6;
+  _compatBt.wSprint = Math.max(0, (runBlend - 0.55) / 0.45);
+  return sampleBlendTreeLeg(u, _compatBt, strideScale, loadWeight, wadeLift, 0, out);
+}
+
+/**
+ * Creates a real GLB camp worker with full 17-bone SkinnedMesh skeleton (hip/knee/ankle/spine/shoulder/elbow)
+ * so all workers walk, jog, run, haul logs, and saw trees with Blend Tree + 2-Bone Foot IK.
+ */
+export function createArticulatedGlbWorker(url, options = {}) {
+  const root = new THREE.Group();
+  const targetHeight = options.targetHeight || 1.92;
+  const lowSpec = Boolean(options.lowSpec);
+  const yawOffset = Number.isFinite(options.yawOffset) ? options.yawOffset : 0;
+  const hasBuiltInTool = Boolean(options.hasBuiltInTool);
+
+  root.add(makeContactShadow(0.74, 0.34));
+
+  const modelWrap = new THREE.Group();
+  modelWrap.rotation.y = yawOffset;
+  root.add(modelWrap);
+
+  const carriedLog = createLogMesh(false);
+  carriedLog.rotation.x = Math.PI / 2;
+  carriedLog.scale.set(0.52, 1.05, 0.52);
+  carriedLog.position.set(0.24, 1.48, 0.04);
+  carriedLog.visible = false;
+  root.add(carriedLog);
+
+  root.userData = {
+    glbLoaded: false,
+    glbRig: null,
+    modelWrap,
+    carriedLog,
+    hasBuiltInTool,
+    role: options.role || 'porter',
+    animState: {
+      moveBlend: 0,
+      workBlend: 0,
+      carryBlend: 0,
+      speedSmooth: 0,
+      phase: IDLE_REST_PHASE + (Math.random() < 0.5 ? 0 : Math.PI),
+      breathPhase: Math.random() * Math.PI * 2,
+      prevUL: NaN,
+      prevUR: NaN,
+      blendTree: createBlendTreeState(),
+      ikState: createFootIKState()
+    }
+  };
+
+  const loader = getGltfLoader();
+  loader.load(
+    url,
+    (gltf) => {
+      try {
+        const srcModel = gltf.scene || gltf.scenes?.[0];
+        if (!srcModel) return;
+        const model = SkeletonUtils.clone(srcModel);
+
+        model.updateMatrixWorld(true);
+        _glbBox.setFromObject(model);
+        _glbBox.getSize(_glbSize);
+        const rawH = _glbSize.y > 0.0001 ? _glbSize.y : 1;
+        model.scale.multiplyScalar(targetHeight / rawH);
+        model.updateMatrixWorld(true);
+
+        _glbBox.setFromObject(model);
+        _glbBox.getCenter(_glbCenter);
+        _glbBox.getSize(_glbSize);
+        model.position.x -= _glbCenter.x;
+        model.position.z -= _glbCenter.z;
+        model.position.y -= _glbBox.min.y;
+        model.updateMatrixWorld(true);
+
+        model.traverse((child) => {
+          if (child.isMesh) {
+            child.castShadow = !lowSpec;
+            child.receiveShadow = !lowSpec;
+            child.frustumCulled = false;
+            const mats = Array.isArray(child.material) ? child.material : [child.material];
+            for (const m of mats) {
+              if (!m) continue;
+              if (m.map) m.map.colorSpace = THREE.SRGBColorSpace;
+              if (typeof m.envMapIntensity === 'number') m.envMapIntensity = 1.08;
+              m.needsUpdate = true;
+            }
+          }
+        });
+
+        const rig = buildAutoHumanoidRig(model, Math.max(1.3, _glbSize.y), lowSpec);
+        if (rig.axeMesh) rig.axeMesh.visible = false;
+        if (rig.beltAxeMesh) rig.beltAxeMesh.visible = false;
+        if (rig.shoulderLogAnchor) rig.shoulderLogAnchor.visible = false;
+
+        modelWrap.add(rig.rigRoot);
+        if (rig.bones?.chest) {
+          rig.bones.chest.add(carriedLog);
+          carriedLog.position.set(0.22 * rig.scale, 0.22 * rig.scale, 0.04 * rig.scale);
+        }
+        root.userData.glbRig = rig;
+        root.userData.glbLoaded = true;
+      } catch (err) {
+        console.warn('[WorkerGLB] Auto-rig error:', err?.message || err);
+      }
+    },
+    undefined,
+    (err) => {
+      console.warn('[WorkerGLB] Failed to load:', url, err?.message || err);
+    }
+  );
+
+  return root;
+}
+
+/**
+ * Drives a 17-bone articulated GLB camp worker with the 5-State Locomotion Blend Tree
+ * (Idle -> Walk -> Jog -> Run -> Sprint), turn banking, and 2-Bone Foot-Locking IK.
+ */
+export function updateArticulatedGlbWorker(workerRoot, dt, opts = {}) {
+  const ud = workerRoot?.userData;
+  if (!ud || !ud.glbRig) return;
+
+  const rig = ud.glbRig;
+  const b = rig.bones;
+  const st = ud.animState;
+  if (!st.blendTree) st.blendTree = createBlendTreeState();
+  if (!st.ikState) st.ikState = createFootIKState();
+
+  const clampedDt = Math.min(dt, 0.05);
+  const moving = Boolean(opts.moving);
+  const working = Boolean(opts.working);
+  const carrying = Boolean(opts.carrying);
+  const inWater = Boolean(opts.inWater);
+  const distMoved = Number.isFinite(opts.distMoved) ? opts.distMoved : (moving ? 3.5 * clampedDt : 0);
+  const rawSpeed = Number.isFinite(opts.speed) ? opts.speed : (clampedDt > 0.0001 ? distMoved / clampedDt : 0);
+  const yawRate = Number.isFinite(opts.yawRate) ? opts.yawRate : 0;
+  const slopePitch = Number.isFinite(opts.slopePitch) ? opts.slopePitch : 0;
+  const workStyle = opts.workStyle || 'chainsaw';
+  const elapsed = opts.elapsed || 0;
+
+  if (ud.carriedLog) ud.carriedLog.visible = carrying;
+
+  const dampMove = 1 - Math.exp(-(moving ? 10.5 : 8.5) * clampedDt);
+  st.speedSmooth += (rawSpeed - st.speedSmooth) * (1 - Math.exp(-9.0 * clampedDt));
+  st.moveBlend += ((moving ? 1 : 0) - st.moveBlend) * dampMove;
+  st.workBlend += ((working ? 1 : 0) - st.workBlend) * (1 - Math.exp(-10 * clampedDt));
+  st.carryBlend += ((carrying ? 1 : 0) - st.carryBlend) * (1 - Math.exp(-9 * clampedDt));
+
+  const loadW = carrying ? 0.55 : 0;
+  const bt = updateLocomotionBlendTree(st.blendTree, clampedDt, st.speedSmooth, loadW, yawRate, 0, 0);
+  const m = Math.max(0, Math.min(1, 1 - bt.wIdle));
+  const idle = Math.max(0, 1 - m);
+  const fastRatio = Math.min(1, bt.wJog * 0.45 + bt.wRun * 0.78 + bt.wSprint);
+
+  if (distMoved > 0.0005) {
+    const halfStride = getBlendedHalfStride(bt, loadW);
+    st.phase += (distMoved / Math.max(0.38, halfStride)) * Math.PI;
+  } else if (m > 0.005 || Math.abs(((st.phase - IDLE_REST_PHASE) % Math.PI + Math.PI) % Math.PI) > 0.02) {
+    const nearestRest = Math.round((st.phase - IDLE_REST_PHASE) / Math.PI) * Math.PI + IDLE_REST_PHASE;
+    st.phase += (nearestRest - st.phase) * (1 - Math.exp(-6.5 * clampedDt));
+  }
+  st.breathPhase += clampedDt * (1.85 + m * (1.2 + fastRatio * 1.6) + st.workBlend * 1.6);
+
+  const wk = st.workBlend;
+  const cy = st.carryBlend;
+  const p = st.phase;
+  const s = rig.scale;
+  const breath = Math.sin(st.breathPhase);
+  const uL = (((p / (Math.PI * 2)) % 1) + 1) % 1;
+  const uR = (uL + 0.5) % 1;
+
+  if (typeof opts.onFootstep === 'function' && m > 0.28 && distMoved > 0.002) {
+    const stepInt = 0.45 + fastRatio * 0.42 + loadW * 0.2;
+    if (didCrossHeelStrike(st.prevUL, uL)) opts.onFootstep('left', stepInt);
+    if (didCrossHeelStrike(st.prevUR, uR)) opts.onFootstep('right', stepInt);
+  }
+  st.prevUL = uL;
+  st.prevUR = uR;
+
+  const walkRamp = 0.58 + 0.42 * (bt.walkAmp ?? 1);
+  const strideScale = (carrying ? 0.84 : 0.96) * walkRamp * (1 + bt.wJog * 0.10 + bt.wRun * 0.22 + bt.wSprint * 0.32);
+  const legL = sampleBlendTreeLeg(uL, bt, strideScale, loadW, inWater ? 0.24 : 0, slopePitch, _gaitLegL);
+  const legR = sampleBlendTreeLeg(uR, bt, strideScale, loadW, inWater ? 0.24 : 0, slopePitch, _gaitLegR);
+
+  const hipDyn = computeBlendTreeHipOffset(legL, legR, p, bt, loadW) * m;
+  const workCrouch = wk * (workStyle === 'chainsaw' ? -0.055 : -0.032);
+  b.hips.position.set(
+    Math.sin(p - 0.30) * (0.020 * (1 - fastRatio * 0.35)) * m * s,
+    rig.hipsRestY + (hipDyn + breath * 0.006 * idle + workCrouch - cy * 0.024) * s,
+    ((0.010 + fastRatio * 0.028) * m + wk * 0.03) * s
+  );
+  b.hips.rotation.set(
+    (0.020 + bt.wJog * 0.042 + bt.wRun * 0.080 + bt.wSprint * 0.115 + slopePitch * 0.15) * m + wk * 0.09,
+    Math.cos(p - 0.18) * (0.064 + fastRatio * 0.062) * m,
+    -Math.sin(p - 0.12) * 0.030 * m + bt.turnBank * 0.62
+  );
+
+  const sawVib = wk > 0.05 && workStyle === 'chainsaw' ? Math.sin(elapsed * 42) * 0.024 * wk : 0;
+  const sawStroke = wk > 0.05 && workStyle === 'handsaw' ? Math.sin(elapsed * 7.8) * 0.16 * wk : 0;
+
+  b.spine.rotation.set(
+    (0.024 + bt.wJog * 0.064 + bt.wRun * 0.120 + bt.wSprint * 0.175 + slopePitch * 0.20) * m + breath * 0.014 * idle + cy * 0.08 + wk * (workStyle === 'chainsaw' ? 0.16 : 0.12) + sawVib,
+    -Math.cos(p - 0.24) * (0.062 + fastRatio * 0.058) * m + bt.turnLead * 0.35 + sawStroke * 0.55,
+    Math.sin(p - 0.14) * 0.022 * m + cy * 0.05 + bt.turnBank * 0.45
+  );
+  b.chest.rotation.set(
+    (0.018 + fastRatio * 0.082) * m + breath * 0.022 * idle + cy * 0.05 + wk * 0.08 + sawVib,
+    -Math.cos(p - 0.30) * (0.084 + fastRatio * 0.075) * m + bt.turnLead * 0.45 + sawStroke * 0.75,
+    Math.sin(p - 0.18) * 0.018 * m + cy * 0.04 + bt.turnBank * 0.25
+  );
+  b.neck.rotation.set(-(0.02 + fastRatio * 0.07) * m - wk * 0.04, Math.cos(p - 0.28) * 0.045 * m + bt.turnLead * 0.35, -bt.turnBank * 0.22);
+  b.head.rotation.set(
+    -(0.03 + fastRatio * 0.11) * m + wk * 0.14 + Math.sin(st.breathPhase * 0.45) * 0.03 * idle,
+    Math.cos(p - 0.32) * 0.055 * m + bt.turnLead * 0.55 + Math.sin(st.breathPhase * 0.33) * 0.12 * idle,
+    -Math.sin(p - 0.18) * 0.015 * m - bt.turnBank * 0.28
+  );
+
+  // Legs: straight-line human gait FK (zero duck-foot turnout, zero outward splay; refined by World-Space 2-Bone Foot IK)
+  const adductL = rig.legAdductL || 0;
+  const adductR = rig.legAdductR || 0;
+  b.thighL.rotation.set(legL.thighRx * m - wk * 0.14, 0, adductL + wk * 0.022);
+  b.shinL.rotation.set(0.04 * idle + legL.shinRx * m + wk * 0.22, 0, 0);
+  b.footL.rotation.set(legL.footRx * m - wk * 0.08, 0, 0);
+
+  b.thighR.rotation.set(legR.thighRx * m + wk * 0.12, 0, adductR - wk * 0.022);
+  b.shinR.rotation.set(0.04 * idle + legR.shinRx * m + wk * 0.18, 0, 0);
+  b.footR.rotation.set(legR.footRx * m - wk * 0.06, 0, 0);
+
+  // Arms: natural hip-to-chest Walk -> Jog -> Run -> Sprint pendulum (damped for built-in chainsaw/handsaw props)
+  const wRelaxed = Boolean(rig.isRelaxedArms);
+  const armAmp = ud.hasBuiltInTool ? (0.14 + fastRatio * 0.08) : (0.34 + bt.wJog * 0.10 + bt.wRun * 0.22 + bt.wSprint * 0.34);
+  const armRearBias = ud.hasBuiltInTool ? 0.0 : (0.02 + bt.wJog * 0.04 + bt.wRun * 0.06 + bt.wSprint * 0.07);
+  const elbowBase = ud.hasBuiltInTool
+    ? 0.14
+    : (wRelaxed ? (0.14 + bt.wJog * 0.46 + bt.wRun * 0.64 + bt.wSprint * 0.76) : (0.20 + bt.wJog * 0.54 + bt.wRun * 0.72 + bt.wSprint * 0.86));
+  const elbowAmp = ud.hasBuiltInTool ? 0.10 : (0.22 + fastRatio * 0.04);
+  const sideClear = ud.hasBuiltInTool ? 0.04 : (wRelaxed ? (0.03 + fastRatio * 0.04) : -(rig.armDropZ ?? 0.52) + 0.06 + fastRatio * 0.04);
+  const armWaveL = Math.cos(p - 0.16);
+  const armLagL = Math.cos(p - 0.48);
+  const fwdL = smoothstep(-0.15, 0.95, -armWaveL);
+  const fwdR = smoothstep(-0.15, 0.95, armWaveL);
+
+  const lArmX = (armWaveL * armAmp + armRearBias) * m * (1 - cy * 0.65) - cy * 0.52 + wk * (workStyle === 'chainsaw' ? -0.18 + sawVib * 1.4 : sawStroke * 0.5);
+  const rArmX = (-armWaveL * armAmp + armRearBias) * m * (1 - cy * 0.85) - cy * 1.15 + wk * (workStyle === 'chainsaw' ? -0.14 + sawVib * 1.6 : -0.20 + sawStroke * 1.35);
+
+  b.upperArmL.rotation.set(lArmX, -(0.02 + fwdL * (0.04 + fastRatio * 0.09)) * m, sideClear);
+  b.foreArmL.rotation.set(-(elbowBase + smoothstep(-0.5, 0.9, -armLagL) * elbowAmp * m + cy * 0.65), 0, 0);
+  b.handL.rotation.set(-0.04, 0, 0);
+
+  b.upperArmR.rotation.set(rArmX, (0.02 + fwdR * (0.04 + fastRatio * 0.09)) * m, -sideClear);
+  b.foreArmR.rotation.set(-(elbowBase + smoothstep(-0.5, 0.9, armLagL) * elbowAmp * m + cy * 0.95 + Math.abs(sawStroke) * 0.5), 0, 0);
+  b.handR.rotation.set(-0.04 + sawVib * 2.0, 0, 0);
+
+  // Enforce anatomical shoulder rotation limits & 3D hip-clearance guard
+  applyShoulderRotationConstraints(rig);
+
+  // Analytical 2-Bone Foot-Locking IK (locks stance boots to live terrain height & slope)
+  _ikParams.uL = uL;
+  _ikParams.uR = uR;
+  _ikParams.btState = bt;
+  _ikParams.jumpY = 0;
+  _ikParams.inWater = inWater;
+  _ikParams.getGroundHeight = opts.getGroundHeight || null;
+  _ikParams.rootYaw = Number.isFinite(opts.rootYaw) ? opts.rootYaw : workerRoot.rotation.y;
+  applyTwoBoneFootIK(rig, st.ikState, clampedDt, _ikParams);
 }
 
 export function updatePlayerModelAnimation(playerModel, dt, moving, walkPhase, chopSwing, elapsed = 0, options = null) {
@@ -1283,260 +2494,551 @@ export function updatePlayerModelAnimation(playerModel, dt, moving, walkPhase, c
     }
 
     if (ud.glbRig) {
-      // Articulated 13-bone human biomechanical animation (zero GC)
+      // Full 5-State Locomotion Blend Tree (Idle -> Walk -> Jog -> Run -> Sprint),
+      // Direction-Change Turn Banking, Start/Brake Momentum & 2-Bone Foot-Locking IK (Zero GC)
       const rig = ud.glbRig;
       const b = rig.bones;
       const st = rig.state;
-      const clampedDt = Math.min(dt, 0.05);
-      const carryRatio = options ? (options.carryRatio || 0) : 0;
-      const speedMult = options ? (options.speedMult || 1) : 1;
+      if (!st.blendTree) st.blendTree = createBlendTreeState();
+      if (!st.ikState) st.ikState = createFootIKState();
 
-      // Reset outer wrapper transforms cleanly
+      const clampedDt = Math.min(dt, 0.05);
+      const carryCount = options ? (options.carryCount ?? ud.carryCount ?? 0) : (ud.carryCount || 0);
+      const carryRatio = options ? (options.carryRatio || 0) : 0;
+      const loadWeight = options ? (options.loadWeight ?? carryRatio) : carryRatio;
+      const speedMult = options ? (options.speedMult || 1) : 1;
+      const targetRun = options ? Math.max(0, Math.min(1, options.runBlend || 0)) : 0;
+      const slopePitch = options ? (options.slopePitch || 0) : 0;
+      const inWater = Boolean(options && options.inWater);
+      const chopHitStop = options ? (options.chopHitStop || 0) : 0;
+      const isBucking = Boolean(options && options.isBucking);
+      const pullingCart = Boolean(options && options.pullingCart);
+      const distMoved = options && Number.isFinite(options.distMoved) ? options.distMoved : null;
+      const rawSpeed = options && Number.isFinite(options.speed)
+        ? options.speed
+        : (distMoved !== null && clampedDt > 0.0001 ? distMoved / clampedDt : (moving ? (4.0 + targetRun * 4.8) : 0));
+      const yawRate = options && Number.isFinite(options.yawRate) ? options.yawRate : 0;
+      const accelForward = options && Number.isFinite(options.accelForward) ? options.accelForward : 0;
+      const braking = options && Number.isFinite(options.braking) ? options.braking : 0;
+
       anim.position.set(0, 0, 0);
       anim.rotation.set(0, 0, 0);
       anim.scale.set(1, 1, 1);
 
-      // Smooth locomotive & chop blend states
-      const targetMove = moving ? 1 : 0;
-      const moveRate = moving ? 11 : 8.5;
-      st.moveBlend += (targetMove - st.moveBlend) * (1 - Math.exp(-moveRate * clampedDt));
-      if (st.moveBlend < 0.001 && !moving) st.moveBlend = 0;
+      // Smoothly filtered speed & 5-state Blend Tree weights (Idle / Walk / Jog / Run / Sprint)
+      st.speedSmooth = (st.speedSmooth || 0) + (rawSpeed - (st.speedSmooth || 0)) * (1 - Math.exp(-10.0 * clampedDt));
+      const activelyMoving = moving || st.speedSmooth > 0.20;
+      const moveRate = activelyMoving ? 10.5 : 8.5;
+      st.moveBlend += ((activelyMoving ? 1 : 0) - st.moveBlend) * (1 - Math.exp(-moveRate * clampedDt));
+      if (st.moveBlend < 0.001 && !activelyMoving) st.moveBlend = 0;
 
-      const targetChop = chopSwing > 0 ? smoothstep(0.0, 0.18, chopSwing) : 0;
-      const chopRate = chopSwing > 0 ? 28 : 11;
+      const runGoal = activelyMoving ? targetRun : 0;
+      st.runBlend = (st.runBlend || 0) + (runGoal - (st.runBlend || 0)) * (1 - Math.exp(-7.5 * clampedDt));
+      if (st.runBlend < 0.001 && runGoal <= 0) st.runBlend = 0;
+
+      const bt = updateLocomotionBlendTree(st.blendTree, clampedDt, st.speedSmooth, loadWeight, yawRate, accelForward, braking);
+      const wWalk = bt.wWalk;
+      const wJog = bt.wJog;
+      const wRun = bt.wRun;
+      const wSprint = bt.wSprint;
+      const rb = Math.min(1, wJog * 0.38 + wRun * 0.72 + wSprint);
+
+      const targetChop = chopSwing > 0 ? smoothstep(0.0, 0.14, chopSwing) : 0;
+      const chopRate = chopSwing > 0 ? 26 : 10;
       st.chopBlend += (targetChop - st.chopBlend) * (1 - Math.exp(-chopRate * clampedDt));
       if (st.chopBlend < 0.001 && chopSwing <= 0) st.chopBlend = 0;
 
-      // Advance gait cycle smoothly while moving; settle feet cleanly when stopping
-      if (moving) {
-        st.phase += clampedDt * (9.2 * Math.max(0.75, Math.min(1.55, speedMult)));
-      } else if (st.moveBlend > 0.005) {
-        const nearestRest = Math.round(st.phase / Math.PI) * Math.PI;
-        st.phase += (nearestRest - st.phase) * (1 - Math.exp(-10 * clampedDt));
+      const wantsShoulderCarry = carryCount > 0 && st.chopBlend < 0.25 && !pullingCart;
+      const targetCarry = wantsShoulderCarry ? 1 : 0;
+      st.carryBlend = (st.carryBlend || 0) + (targetCarry - (st.carryBlend || 0)) * (1 - Math.exp(-9.5 * clampedDt));
+      if (st.carryBlend < 0.001 && !wantsShoulderCarry) st.carryBlend = 0;
+
+      const targetPull = pullingCart && st.chopBlend < 0.2 ? 1 : 0;
+      st.pullBlend = (st.pullBlend || 0) + (targetPull - (st.pullBlend || 0)) * (1 - Math.exp(-10.0 * clampedDt));
+      if (st.pullBlend < 0.001 && !pullingCart) st.pullBlend = 0;
+
+      // Holster axe while carrying timber or pulling handcart
+      const holsterAxe = (st.carryBlend > 0.35 || st.pullBlend > 0.35) && st.chopBlend < 0.2;
+      if (rig.axeMesh) rig.axeMesh.visible = !holsterAxe;
+      if (rig.beltAxeMesh) rig.beltAxeMesh.visible = holsterAxe;
+      if (rig.shoulderLogAnchor) rig.shoulderLogAnchor.visible = carryCount > 0;
+
+      // Distance-locked stride cadence with neutral passing-stance rest phase (eliminates Idle <-> Walk stomping)
+      if (activelyMoving) {
+        const heavyCadence = 1 - loadWeight * 0.24;
+        const wadeCadence = inWater ? 0.80 : 1.0;
+        if (distMoved !== null && distMoved > 0.0002) {
+          const halfStrideLen = getBlendedHalfStride(bt, loadWeight);
+          st.phase += (distMoved / Math.max(0.38, halfStrideLen)) * Math.PI;
+        } else if (moving) {
+          const baseFreq = 5.4 + wJog * 2.4 + wRun * 4.2 + wSprint * 6.0;
+          st.phase += clampedDt * (baseFreq * heavyCadence * wadeCadence * Math.max(0.72, Math.min(1.38, speedMult)));
+        }
+      } else if (st.moveBlend > 0.005 || (1 - bt.wIdle) > 0.005) {
+        // Settle gently onto the nearest neutral mid-stance passing phase (u ≈ 0.24 / 0.74) instead of scissor heel-strike
+        const nearestRest = Math.round((st.phase - IDLE_REST_PHASE) / Math.PI) * Math.PI + IDLE_REST_PHASE;
+        st.phase += (nearestRest - st.phase) * (1 - Math.exp(-6.5 * clampedDt));
       }
 
-      st.breathPhase += clampedDt * (2.15 + st.moveBlend * 1.45);
-      st.idleLookPhase += clampedDt * 0.68;
+      st.breathPhase += clampedDt * (1.85 + st.moveBlend * (1.1 + wJog * 0.9 + wRun * 1.6 + wSprint * 2.4) + loadWeight * 0.65);
+      st.idleLookPhase += clampedDt * 0.56;
 
-      const m = st.moveBlend;
-      const idle = 1 - m;
+      // Pure Blend Tree Idle <-> Walk weight (no artificial instant leg kick while velocity is near 0)
+      const m = Math.max(0, Math.min(1, 1 - bt.wIdle));
+      const idle = Math.max(0, 1 - m);
       const ch = st.chopBlend;
+      const cy = st.carryBlend;
       const p = st.phase;
       const sp = Math.sin(p);
       const cp = Math.cos(p);
       const breath = Math.sin(st.breathPhase);
-      const shift = Math.sin(elapsed * 0.85);
+      const shift = Math.sin(elapsed * 0.70);
       const s = rig.scale;
 
-      // --- 1. Pelvis / Hips ---
-      const idleHipY = rig.hipsRestY + breath * 0.007 * s;
-      const walkHipY = rig.hipsRestY + (Math.abs(sp) * 0.056 - 0.026) * s;
-      let hipY = idleHipY * idle + walkHipY * m;
-      let hipX = (shift * 0.015 * idle - cp * 0.025 * m) * s;
-      let hipZ = 0;
-      let hipRx = 0.015 * idle + 0.05 * m;
-      let hipRy = sp * 0.115 * m;
-      let hipRz = shift * 0.022 * idle - sp * 0.048 * m;
+      const TWO_PI = Math.PI * 2;
+      const uL = (((p / TWO_PI) % 1) + 1) % 1;
+      const uR = (uL + 0.5) % 1;
 
-      // --- 2. Spine & Chest (counter-rotation + carry lean + breathing) ---
-      let spineRx = (0.025 + carryRatio * 0.075 + breath * 0.016) * idle + (0.095 + carryRatio * 0.095 + Math.abs(cp) * 0.028) * m;
-      let spineRy = -sp * 0.09 * m;
-      let spineRz = -shift * 0.014 * idle + sp * 0.026 * m;
-
-      let chestRx = (-0.015 + breath * 0.028) * idle + (0.055 + carryRatio * 0.045 + breath * 0.014) * m;
-      let chestRy = Math.sin(elapsed * 0.58) * 0.042 * idle - sp * 0.135 * m;
-      let chestRz = -shift * 0.012 * idle + sp * 0.022 * m;
-
-      // --- 3. Neck & Head (natural scanning on idle, gaze stabilization while walking) ---
-      const lookYaw = (Math.sin(st.idleLookPhase) * 0.17 + Math.sin(st.idleLookPhase * 0.43) * 0.08) * idle;
-      const lookPitch = Math.sin(st.idleLookPhase * 0.71) * 0.042 * idle;
-      const lookTilt = Math.sin(st.idleLookPhase * 0.54) * 0.036 * idle;
-
-      let neckRx = -0.02 * m;
-      let neckRy = lookYaw * 0.35 + sp * 0.075 * m;
-      let neckRz = lookTilt * 0.35;
-
-      let headRx = lookPitch - (0.095 + carryRatio * 0.05) * m;
-      let headRy = lookYaw * 0.65 + sp * 0.09 * m;
-      let headRz = lookTilt * 0.65 - sp * 0.02 * m;
-
-      // --- 4. Legs (relaxed athletic stance <-> alternating human stride with realistic knee flexion) ---
-      const kneeLiftL = Math.max(0.05, Math.sin(p - 0.85) * 0.50 + 0.42);
-      const kneeLiftR = Math.max(0.05, Math.sin(p + Math.PI - 0.85) * 0.50 + 0.42);
-
-      let thighLRx = -0.04 * idle + (-sp * 0.62) * m;
-      let thighLRy = 0.05 * idle;
-      let thighLRz = 0.03 * idle + 0.02 * m;
-      let shinLRx = 0.08 * idle + kneeLiftL * m;
-
-      let thighRRx = 0.045 * idle + (sp * 0.62) * m;
-      let thighRRy = -0.05 * idle;
-      let thighRRz = -0.03 * idle - 0.02 * m;
-      let shinRRx = 0.04 * idle + kneeLiftR * m;
-
-      // --- 5. Arms (relaxed out of A-pose <-> opposite-phase swing + dynamic elbow bend) ---
-      // Default A-pose arms are lowered with upperArmL.rz ~ -0.64 and upperArmR.rz ~ +0.58
-      let uArmLRx = (0.05 + breath * 0.025) * idle + (sp * 0.58 + 0.05) * m;
-      let uArmLRy = 0.08 * idle + 0.04 * m;
-      let uArmLRz = -0.64 - breath * 0.025 * idle - 0.04 * m;
-
-      const elbowFlexL = 0.22 * idle + (0.28 + Math.max(0, -sp) * 0.42) * m;
-      let fArmLRx = -elbowFlexL * 0.65;
-      let fArmLRy = -elbowFlexL * 0.65;
-      let fArmLRz = -0.04;
-
-      // Right arm holds the PBR lumberjack axe naturally at the ready
-      let uArmRRx = (-0.16 + breath * 0.022) * idle + (-sp * 0.44 - 0.12) * m;
-      let uArmRRy = -0.08 * idle - 0.04 * m;
-      let uArmRRz = 0.58 + breath * 0.022 * idle + 0.03 * m;
-
-      const elbowFlexR = 0.38 * idle + (0.36 + Math.max(0, sp) * 0.34) * m;
-      let fArmRRx = -elbowFlexR * 0.65;
-      let fArmRRy = elbowFlexR * 0.65;
-      let fArmRRz = 0.05;
-
-      // --- 6. Full-Body Athletic Lumberjack Axe Chop Overlay ---
-      if (ch > 0.001) {
-        const t = 1 - Math.max(0, Math.min(1, chopSwing));
-        // Phase A: explosive overhead wind-up (t: 0 -> 0.34)
-        const windUp = smoothstep(0.0, 0.26, t) * (1 - smoothstep(0.28, 0.46, t));
-        // Phase B: powerful diagonal downswing & impact strike (t: 0.28 -> 0.88)
-        const strike = smoothstep(0.26, 0.54, t) * (1 - smoothstep(0.68, 1.0, t));
-
-        // Grounded athletic stance & knee drive on strike
-        hipY += (windUp * 0.022 - strike * 0.068) * s * ch;
-        hipZ += (strike * 0.04 - windUp * 0.02) * s * ch;
-        hipRy += (-windUp * 0.18 + strike * 0.16) * ch;
-
-        // Torso coil right on wind-up -> whip forward & left into tree trunk on strike
-        spineRx += (-windUp * 0.14 + strike * 0.30) * ch;
-        spineRy += (-windUp * 0.30 + strike * 0.28) * ch;
-        chestRx += (-windUp * 0.16 + strike * 0.24) * ch;
-        chestRy += (-windUp * 0.38 + strike * 0.34) * ch;
-        chestRz += (windUp * 0.08 - strike * 0.12) * ch;
-
-        // Keep head locked forward on the target trunk
-        headRy += (windUp * 0.46 - strike * 0.42) * ch;
-        headRx += (windUp * 0.12 - strike * 0.18) * ch;
-
-        // Braced leg drive during impact
-        thighLRx += (-strike * 0.16) * ch;
-        shinLRx += (strike * 0.24) * ch;
-        thighRRx += (strike * 0.14) * ch;
-        shinRRx += (strike * 0.18) * ch;
-
-        // Right arm: high overhead axe raise -> explosive diagonal slash down
-        const chopUArmRRx = -windUp * 2.05 + strike * 0.56 - 0.35;
-        const chopUArmRRy = -windUp * 0.28 + strike * 0.42;
-        const chopUArmRRz = 0.56 - windUp * 0.32 - strike * 0.16;
-        const chopElbowR = 0.88 * windUp + 0.18 * strike + 0.14;
-
-        uArmRRx = uArmRRx * (1 - ch) + chopUArmRRx * ch;
-        uArmRRy = uArmRRy * (1 - ch) + chopUArmRRy * ch;
-        uArmRRz = uArmRRz * (1 - ch) + chopUArmRRz * ch;
-        fArmRRx = fArmRRx * (1 - ch) + (-chopElbowR * 0.65) * ch;
-        fArmRRy = fArmRRy * (1 - ch) + (chopElbowR * 0.65) * ch;
-
-        // Left arm: counterbalance sweep
-        const chopUArmLRx = -windUp * 0.72 + strike * 0.48;
-        const chopUArmLRz = -0.64 + windUp * 0.26 - strike * 0.14;
-        const chopElbowL = 0.62 * windUp + 0.30 * strike + 0.22;
-
-        uArmLRx = uArmLRx * (1 - ch) + chopUArmLRx * ch;
-        uArmLRz = uArmLRz * (1 - ch) + chopUArmLRz * ch;
-        fArmLRx = fArmLRx * (1 - ch) + (-chopElbowL * 0.65) * ch;
-        fArmLRy = fArmLRy * (1 - ch) + (-chopElbowL * 0.65) * ch;
+      // Emit exact heel-strike footstep callbacks (zero timer drift!)
+      if (options && typeof options.onFootstep === 'function' && m > 0.26 && (distMoved === null || distMoved > 0.002)) {
+        const stepInt = 0.44 * wWalk + 0.70 * wJog + 0.94 * wRun + 1.18 * wSprint + loadWeight * 0.24 + braking * 0.22;
+        if (didCrossHeelStrike(st.prevUL, uL)) options.onFootstep('left', Math.max(0.32, stepInt));
+        if (didCrossHeelStrike(st.prevUR, uR)) options.onFootstep('right', Math.max(0.32, stepInt));
       }
+      st.prevUL = uL;
+      st.prevUR = uR;
 
-      // --- 7. Expressive Player Actions, Limb Gestures, Jump & Organic Idle Micro-Gestures ---
-      const action = options ? options.action : null;
-      const actionT = options ? (options.actionT || 0) : 0;
-      const jumpY = options ? (options.jumpY || 0) : 0;
-      const actionEnv = action ? (smoothstep(0.0, 0.14, actionT) * (1 - smoothstep(0.82, 1.0, actionT))) : 0;
+      const walkRamp = 0.56 + 0.44 * (bt.walkAmp ?? 1);
+      const strideScale = walkRamp * (1 - loadWeight * 0.24) * (1 + wJog * 0.12 + wRun * 0.24 + wSprint * 0.36) * (1 - braking * 0.24);
+      const wadeLift = inWater ? 0.30 : 0.0;
 
-      // Subtle automatic idle gestures when standing still (periodic brow wipe & axe check)
-      if (!action && ch < 0.05 && idle > 0.75) {
-        const cycle = elapsed % 9.5;
-        if (cycle > 4.2 && cycle < 6.4) {
-          // Left hand lifts to wipe brow naturally
-          const wt = (cycle - 4.2) / 2.2;
-          const wEnv = smoothstep(0.0, 0.25, wt) * (1 - smoothstep(0.75, 1.0, wt)) * idle;
-          const swipe = Math.sin(wt * Math.PI * 3.0) * 0.22;
-          uArmLRx += (-1.25 + swipe * 0.2) * wEnv;
-          uArmLRz += (0.48 + swipe * 0.35) * wEnv;
-          fArmLRx += -0.88 * wEnv;
-          fArmLRy += -0.75 * wEnv;
-          headRx += -0.08 * wEnv;
-          headRy += swipe * 0.35 * wEnv;
-        } else if (cycle > 7.4 && cycle < 9.1) {
-          // Right hand gently hefts/inspects axe grip
-          const at = (cycle - 7.4) / 1.7;
-          const aEnv = smoothstep(0.0, 0.25, at) * (1 - smoothstep(0.75, 1.0, at)) * idle;
-          uArmRRx += -0.36 * aEnv;
-          fArmRRx += -0.35 * aEnv;
-          headRx += 0.12 * aEnv;
-          headRy += -0.18 * aEnv;
+      // --- 4-Pace Blend Tree Leg FK (refined by 2-Bone Foot-Locking IK at end of pose) ---
+      const legL = sampleBlendTreeLeg(uL, bt, strideScale, loadWeight, wadeLift, slopePitch, _gaitLegL);
+      const legR = sampleBlendTreeLeg(uR, bt, strideScale, loadWeight, wadeLift, slopePitch, _gaitLegR);
+
+      // --- 1. Pelvis / Hips (Blend Tree Vault/Flight + Turn Banking + Braking Drop) ---
+      const idleHipY = rig.hipsRestY + breath * 0.008 * s;
+      const analyticalHipOff = computeBlendTreeHipOffset(legL, legR, p, bt, loadWeight);
+      const brakeCrouch = braking * -0.038;
+      const locoHipY = rig.hipsRestY + (analyticalHipOff + brakeCrouch) * s;
+      let hipY = (idleHipY * idle + locoHipY * m) - cy * loadWeight * 0.026 * s;
+      let hipX = (shift * 0.014 * idle + Math.sin(p - 0.30) * (0.021 * (1 - rb * 0.38) + loadWeight * 0.010) * m) * s;
+      let hipZ = ((0.010 + wJog * 0.014 + wRun * 0.022 + wSprint * 0.030 + bt.accelLean * 0.09) * m) * s;
+      let hipRx = 0.010 * idle + (0.016 + wJog * 0.030 + wRun * 0.052 + wSprint * 0.072 + slopePitch * 0.14 + bt.accelLean * 0.34) * m;
+      let hipRy = Math.cos(p - 0.16) * (0.056 + wJog * 0.022 + wRun * 0.040 + wSprint * 0.056) * (1 - loadWeight * 0.24) * m;
+      let hipRz = shift * 0.016 * idle - Math.sin(p - 0.12) * (0.026 + rb * 0.014 + loadWeight * 0.014) * m + bt.turnBank * 0.56;
+
+      // --- 2. Spine & Chest (Composed Athletic Lean + Crisp Counter-Rotation) ---
+      let spineRx =
+        (0.015 + breath * 0.014) * idle +
+        (0.020 + wJog * 0.045 + wRun * 0.078 + wSprint * 0.110 + Math.cos(p * 2) * (0.008 + rb * 0.014) + slopePitch * 0.20 + bt.accelLean * 0.52) * m +
+        cy * (0.058 + loadWeight * 0.095);
+      let spineRy = -Math.cos(p - 0.20) * (0.052 + wJog * 0.020 + wRun * 0.036 + wSprint * 0.052) * (1 - loadWeight * 0.24) * m + bt.turnLead * 0.32;
+      let spineRz = -shift * 0.014 * idle + Math.sin(p - 0.14) * (0.018 + rb * 0.012) * m + cy * (0.054 + loadWeight * 0.068) + bt.turnBank * 0.44;
+
+      let chestRx =
+        (-0.008 + breath * 0.024) * idle +
+        (0.012 + wJog * 0.028 + wRun * 0.046 + wSprint * 0.064 + breath * 0.012 + slopePitch * 0.10 + bt.accelLean * 0.26) * m +
+        cy * (0.035 + loadWeight * 0.048);
+      let chestRy = Math.sin(elapsed * 0.48) * 0.040 * idle - Math.cos(p - 0.24) * (0.068 + wJog * 0.026 + wRun * 0.048 + wSprint * 0.068) * (1 - loadWeight * 0.24) * m + bt.turnLead * 0.42 - cy * 0.07;
+      let chestRz = -shift * 0.010 * idle + Math.sin(p - 0.18) * (0.014 + rb * 0.012) * m + cy * (0.048 + loadWeight * 0.058) + bt.turnBank * 0.24;
+
+      // --- 3. Neck & Head (Look-Ahead Turn Lead + Horizon Stabilization) ---
+      const lookYaw = (Math.sin(st.idleLookPhase) * 0.17 + Math.sin(st.idleLookPhase * 0.41) * 0.08) * idle;
+      const lookPitch = Math.sin(st.idleLookPhase * 0.68) * 0.038 * idle;
+      const lookTilt = Math.sin(st.idleLookPhase * 0.52) * 0.032 * idle;
+
+      let neckRx = -(0.012 + wJog * 0.028 + wRun * 0.046 + wSprint * 0.066 + bt.accelLean * 0.20) * m - cy * 0.04;
+      let neckRy = lookYaw * 0.35 + Math.cos(p - 0.24) * (0.038 + rb * 0.032) * m + bt.turnLead * 0.38 + cy * 0.05;
+      let neckRz = lookTilt * 0.35 - Math.sin(p - 0.16) * 0.012 * m - bt.turnBank * 0.20 - cy * (0.046 + loadWeight * 0.038);
+
+      let headRx = lookPitch - (0.022 + wJog * 0.048 + wRun * 0.078 + wSprint * 0.108 + loadWeight * 0.044 + bt.accelLean * 0.26) * m - cy * 0.03;
+      let headRy = lookYaw * 0.65 + Math.cos(p - 0.28) * (0.050 + rb * 0.042) * m + bt.turnLead * 0.58 + cy * 0.06;
+      let headRz = lookTilt * 0.65 - Math.sin(p - 0.18) * 0.015 * m - bt.turnBank * 0.28 - cy * (0.052 + loadWeight * 0.048);
+
+      // --- 4. Leg Joints (Straight-Line Human Posture — ZERO Duck-Splay / ZERO Toe-Out) ---
+      const brakeKnee = braking * 0.22;
+      const adductL = rig.legAdductL || 0;
+      const adductR = rig.legAdductR || 0;
+      let thighLRx = (-0.020 - cy * loadWeight * 0.06 + shift * 0.018) * idle + (legL.thighRx - cy * loadWeight * 0.05 - braking * 0.08) * m;
+      let thighLRy = 0;
+      let thighLRz = adductL + cy * 0.008 * m;
+      let shinLRx = (0.042 + cy * loadWeight * 0.10 + Math.max(0, -shift) * 0.028) * idle + (legL.shinRx + brakeKnee) * m;
+      let footLRx = (-0.018 - cy * loadWeight * 0.035) * idle + legL.footRx * m;
+
+      let thighRRx = (0.024 - cy * loadWeight * 0.06 - shift * 0.018) * idle + (legR.thighRx - cy * loadWeight * 0.05 + braking * 0.06) * m;
+      let thighRRy = 0;
+      let thighRRz = adductR - cy * 0.008 * m;
+      let shinRRx = (0.036 + cy * loadWeight * 0.10 + Math.max(0, shift) * 0.028) * idle + (legR.shinRx + brakeKnee * 0.85) * m;
+      let footRRx = (-0.016 - cy * loadWeight * 0.035) * idle + legR.footRx * m;
+
+      // --- 5. Natural Human "Hip-to-Chest" 4-Pace Running Arm Pendulum & Woodsman Axe Carry ---
+      // Anatomically verified:
+      //   • Rear-biased shoulder swing drives elbow cleanly behind ribs and brings hand smoothly to lower chest (never face!)
+      //   • Left ry < 0 & Right ry > 0 create subtle athletic inward convergence on upswing (zero outward chicken-wing flare!)
+      //   • Natural ~72°-86° elbow bend during Jog/Run/Sprint accounting for relaxed GLB rest flexion
+      const relaxed = Boolean(rig.isRelaxedArms);
+      const armDrop = rig.armDropZ ?? 0.62;
+      const armWaveL = Math.cos(p - 0.16);
+      const armLagL = Math.cos(p - 0.48);
+      const denomGait = Math.max(0.001, wWalk + wJog + wRun + wSprint);
+      const bw = wWalk / denomGait;
+      const bj = wJog / denomGait;
+      const br = wRun / denomGait;
+      const bs = wSprint / denomGait;
+
+      const fwdSwingL = smoothstep(-0.15, 0.95, -armWaveL);
+      const walkArmLRx = armWaveL * 0.34 + 0.02;
+      const jogArmLRx = armWaveL * 0.44 + 0.06;
+      const runArmLRx = armWaveL * 0.56 + 0.08;
+      const sprintArmLRx = armWaveL * 0.68 + 0.09;
+      let uArmLRx = (0.020 + breath * 0.016) * idle + (walkArmLRx * bw + jogArmLRx * bj + runArmLRx * br + sprintArmLRx * bs) * m;
+      // Subtle inward convergence ONLY on forward upswing (negative ry for Left arm)
+      let uArmLRy = -(0.02 * idle + (0.02 + fwdSwingL * (0.04 * bw + 0.09 * bj + 0.13 * br + 0.16 * bs)) * m);
+      const baseClearL = relaxed ? (0.030 + rb * 0.048) : (-armDrop + 0.06 + rb * 0.048);
+      let uArmLRz = (relaxed ? 0.028 : -armDrop + 0.04) * idle + (baseClearL + Math.max(0, armWaveL) * 0.028 * rb) * m - breath * 0.012 * idle;
+
+      const walkElbowL = (relaxed ? 0.14 : 0.20) + smoothstep(-0.5, 0.9, -armLagL) * 0.24;
+      const jogElbowL = (relaxed ? 0.62 : 0.76) + smoothstep(-0.5, 0.9, -armLagL) * 0.20;
+      const runElbowL = (relaxed ? 0.78 : 0.94) + smoothstep(-0.5, 0.9, -armLagL) * 0.22;
+      const sprintElbowL = (relaxed ? 0.90 : 1.08) + smoothstep(-0.4, 0.9, -armLagL) * 0.24;
+      const elbowFlexL = (relaxed ? 0.14 : 0.20) * idle + (walkElbowL * bw + jogElbowL * bj + runElbowL * br + sprintElbowL * bs) * m;
+      let fArmLRx = -elbowFlexL * (relaxed ? 0.96 : 0.74);
+      let fArmLRy = relaxed ? (-fwdSwingL * (0.04 * bj + 0.06 * br + 0.08 * bs) * m) : (-elbowFlexL * 0.45);
+      let fArmLRz = 0;
+      let handLRx = -0.04 * idle + (-0.04 - Math.sin(p - 0.65) * (0.08 * bw + 0.06 * bj + 0.05 * br + 0.04 * bs)) * m;
+      let handLRy = 0;
+      let handLRz = 0;
+
+      // Right arm: balanced athletic opposition while steadying the 1-handed woodsman axe cleanly beside the right ribs
+      const armWaveR = -armWaveL;
+      const armLagR = -armLagL;
+      const fwdSwingR = smoothstep(-0.15, 0.95, -armWaveR);
+      const walkArmRRx = armWaveR * 0.25 - 0.04;
+      const jogArmRRx = armWaveR * 0.34 + 0.01;
+      const runArmRRx = armWaveR * 0.44 + 0.03;
+      const sprintArmRRx = armWaveR * 0.54 + 0.04;
+      let uArmRRx = ((relaxed ? -0.06 : -0.10) + breath * 0.014) * idle + (walkArmRRx * bw + jogArmRRx * bj + runArmRRx * br + sprintArmRRx * bs) * m;
+      // Subtle inward convergence ONLY on forward upswing (positive ry for Right arm, milder so axe clears chest)
+      let uArmRRy = (0.02 * idle + (0.01 + fwdSwingR * (0.03 * bw + 0.06 * bj + 0.09 * br + 0.11 * bs)) * m);
+      const baseClearR = relaxed ? -(0.038 + rb * 0.052) : (armDrop - 0.06 - rb * 0.052);
+      let uArmRRz = (relaxed ? -0.032 : armDrop - 0.04) * idle + (baseClearR - Math.max(0, armWaveR) * 0.028 * rb) * m + breath * 0.012 * idle;
+
+      const walkElbowR = (relaxed ? 0.24 : 0.30) + smoothstep(-0.5, 0.9, -armLagR) * 0.18;
+      const jogElbowR = (relaxed ? 0.56 : 0.70) + smoothstep(-0.5, 0.9, -armLagR) * 0.16;
+      const runElbowR = (relaxed ? 0.70 : 0.86) + smoothstep(-0.5, 0.9, -armLagR) * 0.18;
+      const sprintElbowR = (relaxed ? 0.80 : 0.98) + smoothstep(-0.4, 0.9, -armLagR) * 0.20;
+      const elbowFlexR = (relaxed ? 0.24 : 0.30) * idle + (walkElbowR * bw + jogElbowR * bj + runElbowR * br + sprintElbowR * bs) * m;
+      let fArmRRx = -elbowFlexR * (relaxed ? 0.96 : 0.74);
+      let fArmRRy = relaxed ? (fwdSwingR * (0.03 * bj + 0.05 * br + 0.06 * bs) * m) : (elbowFlexR * 0.45);
+      let fArmRRz = 0;
+      // Steady axe wrist so blade tracks smoothly forward-downward outside right thigh without wobbling
+      let handRRx = (-0.04 + breath * 0.016) * idle + ((-0.03 + Math.sin(p - 0.65) * 0.06) * bw + (-0.10 - cp * 0.03) * bj + (-0.16 - cp * 0.04) * br + (-0.22 - cp * 0.05) * bs) * m;
+      let handRRy = (0.01) * idle + (-0.03 * bj - 0.05 * br - 0.07 * bs) * m;
+      let handRRz = (-0.01) * idle + (-0.02 * bj - 0.04 * br - 0.06 * bs) * m;
+
+      // --- 5B. Shoulder Timber Carry Overlay (heaving & steadying logs cleanly on right shoulder) ---
+      if (cy > 0.001) {
+        const carrySway = Math.sin(p) * 0.045 * m + breath * 0.025 * idle;
+
+        const cUArmRRx = -1.24 + carrySway;
+        const cUArmRRy = relaxed ? 0.06 : 0.22;
+        const cUArmRRz = relaxed ? -0.14 : 0.12;
+        const cFArmRRx = relaxed ? -1.42 : -1.18;
+        const cFArmRRy = relaxed ? 0.12 : 0.52;
+        const cFArmRRz = relaxed ? -0.06 : 0.18;
+        const cHandRRx = -0.26;
+        const cHandRRz = -0.16;
+
+        const cUArmLRx = (relaxed ? -0.52 : -1.14) - carrySway * 0.55;
+        const cUArmLRy = relaxed ? -0.28 : -0.68;
+        const cUArmLRz = relaxed ? 0.14 : -0.34;
+        const cFArmLRx = relaxed ? -0.92 : -1.04;
+        const cFArmLRy = relaxed ? -0.36 : -0.82;
+        const cFArmLRz = relaxed ? 0.04 : -0.14;
+        const cHandLRx = -0.18;
+        const cHandLRz = 0.12;
+
+        uArmRRx = uArmRRx * (1 - cy) + cUArmRRx * cy;
+        uArmRRy = uArmRRy * (1 - cy) + cUArmRRy * cy;
+        uArmRRz = uArmRRz * (1 - cy) + cUArmRRz * cy;
+        fArmRRx = fArmRRx * (1 - cy) + cFArmRRx * cy;
+        fArmRRy = fArmRRy * (1 - cy) + cFArmRRy * cy;
+        fArmRRz = fArmRRz * (1 - cy) + cFArmRRz * cy;
+        handRRx = handRRx * (1 - cy) + cHandRRx * cy;
+        handRRz = handRRz * (1 - cy) + cHandRRz * cy;
+
+        uArmLRx = uArmLRx * (1 - cy) + cUArmLRx * cy;
+        uArmLRy = uArmLRy * (1 - cy) + cUArmLRy * cy;
+        uArmLRz = uArmLRz * (1 - cy) + cUArmLRz * cy;
+        fArmLRx = fArmLRx * (1 - cy) + cFArmLRx * cy;
+        fArmLRy = fArmLRy * (1 - cy) + cFArmLRy * cy;
+        fArmLRz = fArmLRz * (1 - cy) + cFArmLRz * cy;
+        handLRx = handLRx * (1 - cy) + cHandLRx * cy;
+        handLRz = handLRz * (1 - cy) + cHandLRz * cy;
+
+        if (rig.shoulderLogAnchor) {
+          rig.shoulderLogAnchor.position.y = (0.19 - Math.abs(sp) * 0.018 * m + breath * 0.008) * s;
+          rig.shoulderLogAnchor.rotation.set(
+            -0.14 + Math.cos(p * 2) * 0.025 * m,
+            0.06 + sp * 0.03 * m,
+            0.08 - sp * 0.035 * m
+          );
         }
       }
 
-      // Interactive manual gesture overlays (Phím 1-4 / Nút Cử chỉ)
+      // --- 5C. Handcart Pulling Pose Overlay (axe holstered on left hip; both hands reach cleanly down-and-back gripping the cart T-bar handle) ---
+      const pl = st.pullBlend || 0;
+      if (pl > 0.001) {
+        const pullLean = (0.20 + loadWeight * 0.18) * m + 0.09 * idle;
+        hipY -= (0.038 + loadWeight * 0.026) * s * pl;
+        spineRx += pullLean * pl;
+        chestRx += (0.10 + loadWeight * 0.08) * pl;
+        // Counter-pitch neck & head so lumberjack watches the trail ahead while leaning into the cart load
+        neckRx -= (0.08 + loadWeight * 0.05) * pl;
+        headRx -= (0.16 + loadWeight * 0.09) * pl;
+
+        // Grounded driving knee bend & firm stance
+        shinLRx += (0.12 + loadWeight * 0.06) * pl;
+        shinRRx += (0.12 + loadWeight * 0.06) * pl;
+
+        // Bilateral rear-down reach: both arms extend straight back & slightly inward so both fists lock onto the horizontal T-handle at z=-0.38m, y=0.80m
+        const pullSway = Math.sin(p) * 0.028 * m;
+        const pArmX = 0.44 + pullSway + loadWeight * 0.05;
+        const pForeX = -0.14;
+        const pHandX = 0.24;
+
+        uArmLRx = uArmLRx * (1 - pl) + pArmX * pl;
+        uArmLRy = uArmLRy * (1 - pl) + (-0.12) * pl;
+        uArmLRz = uArmLRz * (1 - pl) + (relaxed ? -0.16 : -0.68) * pl;
+        fArmLRx = fArmLRx * (1 - pl) + pForeX * pl;
+        fArmLRy = fArmLRy * (1 - pl) + (-0.06) * pl;
+        fArmLRz = fArmLRz * (1 - pl) + (-0.06) * pl;
+        handLRx = handLRx * (1 - pl) + pHandX * pl;
+
+        uArmRRx = uArmRRx * (1 - pl) + pArmX * pl;
+        uArmRRy = uArmRRy * (1 - pl) + (0.12) * pl;
+        uArmRRz = uArmRRz * (1 - pl) + (relaxed ? 0.16 : 0.68) * pl;
+        fArmRRx = fArmRRx * (1 - pl) + pForeX * pl;
+        fArmRRy = fArmRRy * (1 - pl) + (0.06) * pl;
+        fArmRRz = fArmRRz * (1 - pl) + (0.06) * pl;
+        handRRx = handRRx * (1 - pl) + pHandX * pl;
+      }
+
+      // --- 6. Crisp One-Handed Right-Arm Axe Chop (Standing Tree Felling & Ground-Trunk Bucking) ---
+      if (ch > 0.001) {
+        const t = 1 - Math.max(0, Math.min(1, chopSwing));
+        // Coiled right-shoulder windup -> snappy 1-handed whip-down strike -> brief hit-stop tremor -> smooth follow-through
+        const windUp = smoothstep(0.0, 0.30, t) * (1 - smoothstep(0.32, 0.48, t));
+        const strike = smoothstep(0.30, 0.52, t) * (1 - smoothstep(0.66, 1.0, t));
+        const impactTremor = chopHitStop > 0 ? Math.sin(elapsed * 96) * 0.065 : 0;
+
+        if (isBucking) {
+          // One-handed overhead vertical log-bucking chop down into felled trunk; left arm counterbalances freely
+          hipY += (windUp * 0.032 - strike * 0.11) * s * ch;
+          hipZ += (strike * 0.05 - windUp * 0.025) * s * ch;
+          spineRx += (-windUp * 0.18 + strike * 0.48) * ch;
+          chestRx += (-windUp * 0.18 + strike * 0.32) * ch;
+          spineRy += (-windUp * 0.18 + strike * 0.16) * ch;
+          chestRy += (-windUp * 0.22 + strike * 0.20) * ch;
+          headRx += (windUp * 0.14 + strike * 0.20) * ch;
+
+          thighLRx += (-0.12 - strike * 0.22) * ch;
+          shinLRx += (0.14 + strike * 0.34) * ch;
+          thighRRx += (0.12 - strike * 0.14) * ch;
+          shinRRx += (0.14 + strike * 0.28) * ch;
+
+          // Right arm drives the axe overhead & straight down
+          const bArmR = -windUp * 2.38 + strike * 0.76 - 0.30;
+          const bElbowR = 0.82 * windUp + 0.14 * strike + 0.16;
+
+          uArmRRx = uArmRRx * (1 - ch) + bArmR * ch;
+          uArmRRy = uArmRRy * (1 - ch) + (-0.16 * windUp + 0.20 * strike) * ch;
+          uArmRRz = uArmRRz * (1 - ch) + ((relaxed ? 0.14 : 0.46) + windUp * 0.12 - strike * 0.12) * ch;
+          fArmRRx = fArmRRx * (1 - ch) + (-bElbowR * (relaxed ? 0.94 : 0.66)) * ch;
+          fArmRRy = fArmRRy * (1 - ch) + (relaxed ? 0.10 : bElbowR * 0.56) * ch;
+          handRRx = handRRx * (1 - ch) + (-0.34 * windUp + 0.56 * strike + impactTremor) * ch;
+
+          // Left arm stays relaxed at left side as natural balance brace (never grips axe)
+          const bArmL = 0.14 + windUp * 0.18 + strike * 0.26;
+          const bElbowL = 0.34 + strike * 0.18;
+          uArmLRx = uArmLRx * (1 - ch) + bArmL * ch;
+          uArmLRy = uArmLRy * (1 - ch) + (0.06 - strike * 0.10) * ch;
+          uArmLRz = uArmLRz * (1 - ch) + (-armDrop - 0.14 - strike * 0.14) * ch;
+          fArmLRx = fArmLRx * (1 - ch) + (-bElbowL * (relaxed ? 0.92 : 0.66)) * ch;
+          fArmLRy = fArmLRy * (1 - ch) + (relaxed ? -0.06 : -bElbowL * 0.45) * ch;
+          handLRx = handLRx * (1 - ch) + (-0.06) * ch;
+        } else {
+          // One-handed diagonal standing tree felling chop (right hand swings axe, left arm counterbalances freely)
+          hipY += (windUp * 0.026 - strike * 0.078) * s * ch;
+          hipZ += (strike * 0.05 - windUp * 0.03) * s * ch;
+          hipRy += (-windUp * 0.24 + strike * 0.24) * ch;
+
+          spineRx += (-windUp * 0.14 + strike * 0.28) * ch;
+          spineRy += (-windUp * 0.38 + strike * 0.36) * ch;
+          chestRx += (-windUp * 0.14 + strike * 0.22) * ch;
+          chestRy += (-windUp * 0.46 + strike * 0.44) * ch;
+          chestRz += (windUp * 0.10 - strike * 0.14) * ch;
+
+          headRy += (windUp * 0.52 - strike * 0.48) * ch;
+          headRx += (windUp * 0.12 - strike * 0.14) * ch;
+
+          thighLRx += (-0.10 - strike * 0.18) * ch;
+          thighLRz += 0.018 * ch;
+          shinLRx += (0.14 + strike * 0.24) * ch;
+          footLRx += (-0.05 - strike * 0.08) * ch;
+          thighRRx += (0.12 + strike * 0.16) * ch;
+          thighRRz += -0.018 * ch;
+          shinRRx += (0.10 + strike * 0.20) * ch;
+          footRRx += (-0.06 - strike * 0.06) * ch;
+
+          // Right arm: athletic 1-handed diagonal slash from right-high to center-low
+          const chopUArmRRx = -windUp * 2.02 + strike * 0.68 - 0.36;
+          const chopUArmRRy = -windUp * 0.34 + strike * 0.46;
+          const chopUArmRRz = (relaxed ? 0.22 : 0.56) + windUp * (relaxed ? 0.26 : 0.16) - strike * (relaxed ? 0.20 : 0.24);
+          const chopElbowR = 0.86 * windUp + 0.14 * strike + 0.18;
+
+          uArmRRx = uArmRRx * (1 - ch) + chopUArmRRx * ch;
+          uArmRRy = uArmRRy * (1 - ch) + chopUArmRRy * ch;
+          uArmRRz = uArmRRz * (1 - ch) + chopUArmRRz * ch;
+          fArmRRx = fArmRRx * (1 - ch) + (-chopElbowR * (relaxed ? 0.95 : 0.66)) * ch;
+          fArmRRy = fArmRRy * (1 - ch) + (relaxed ? 0.14 : chopElbowR * 0.62) * ch;
+          handRRx = handRRx * (1 - ch) + (-0.34 * windUp + 0.54 * strike + impactTremor) * ch;
+          handRRz = handRRz * (1 - ch) + (-0.16 * windUp + 0.14 * strike) * ch;
+
+          // Left arm: stays freely at left side for natural athletic counterbalance (zero cross-chest grip)
+          const chopUArmLRx = 0.10 + windUp * 0.14 + strike * 0.34;
+          const chopUArmLRy = 0.06 - strike * 0.14;
+          const chopUArmLRz = -armDrop - 0.12 - windUp * 0.06 - strike * 0.18;
+          const chopElbowL = 0.30 + windUp * 0.10 + strike * 0.20;
+
+          uArmLRx = uArmLRx * (1 - ch) + chopUArmLRx * ch;
+          uArmLRy = uArmLRy * (1 - ch) + chopUArmLRy * ch;
+          uArmLRz = uArmLRz * (1 - ch) + chopUArmLRz * ch;
+          fArmLRx = fArmLRx * (1 - ch) + (-chopElbowL * (relaxed ? 0.92 : 0.66)) * ch;
+          fArmLRy = fArmLRy * (1 - ch) + (relaxed ? -0.06 : -chopElbowL * 0.42) * ch;
+          handLRx = handLRx * (1 - ch) + (-0.06) * ch;
+        }
+      }
+
+      // --- 7. Expressive Human Gestures (Phím 1-4), Jump & Subtle Idle Micro-Gestures ---
+      const action = options ? options.action : null;
+      const actionT = options ? (options.actionT || 0) : 0;
+      const jumpY = options ? (options.jumpY || 0) : 0;
+      const actionEnv = action ? (smoothstep(0.0, 0.16, actionT) * (1 - smoothstep(0.80, 1.0, actionT))) : 0;
+
+      // Subtle natural idle micro-behaviors (wipe brow / inspect axe edge) when standing still
+      if (!action && ch < 0.05 && cy < 0.05 && idle > 0.78) {
+        const cycle = elapsed % 11.0;
+        if (cycle > 4.6 && cycle < 6.8) {
+          const wt = (cycle - 4.6) / 2.2;
+          const wEnv = smoothstep(0.0, 0.25, wt) * (1 - smoothstep(0.75, 1.0, wt)) * idle;
+          const swipe = Math.sin(wt * Math.PI * 2.5) * 0.18;
+          uArmLRx += (-1.18 + swipe * 0.2) * wEnv;
+          uArmLRz += ((relaxed ? 0.22 : 0.46) + swipe * 0.22) * wEnv;
+          fArmLRx += -(relaxed ? 1.12 : 0.85) * wEnv;
+          fArmLRy += -(relaxed ? 0.28 : 0.72) * wEnv;
+          headRx += -0.06 * wEnv;
+          headRy += swipe * 0.30 * wEnv;
+        } else if (cycle > 8.2 && cycle < 10.2) {
+          // Glances down at the steel axe blade and shifts grip slightly
+          const at = (cycle - 8.2) / 2.0;
+          const aEnv = smoothstep(0.0, 0.25, at) * (1 - smoothstep(0.75, 1.0, at)) * idle;
+          uArmRRx += -0.36 * aEnv;
+          fArmRRx += -0.44 * aEnv;
+          handRRy += Math.sin(at * Math.PI * 2) * 0.22 * aEnv;
+          headRx += 0.16 * aEnv;
+          headRy += -0.22 * aEnv;
+        }
+      }
+
+      // Interactive manual human gesture overlays (1: Vẫy tay, 2: Vươn vai, 3: Ăn mừng, 4: Chỉ hướng)
       if (action === 'wave' && actionEnv > 0.001) {
         const waveOsc = Math.sin(actionT * Math.PI * 6.0);
-        chestRz += -0.08 * actionEnv;
-        headRz += 0.14 * actionEnv;
-        headRy += waveOsc * 0.08 * actionEnv;
-        uArmLRx = uArmLRx * (1 - actionEnv) + (-0.35) * actionEnv;
-        uArmLRz = uArmLRz * (1 - actionEnv) + (1.18 + waveOsc * 0.24) * actionEnv;
-        fArmLRx = fArmLRx * (1 - actionEnv) + (-0.28) * actionEnv;
-        fArmLRy = fArmLRy * (1 - actionEnv) + (-0.35 + waveOsc * 0.48) * actionEnv;
+        hipX += 0.032 * s * actionEnv;
+        hipRz += 0.04 * actionEnv;
+        chestRz += -0.09 * actionEnv;
+        chestRy += 0.12 * actionEnv;
+        headRz += 0.13 * actionEnv;
+        headRy += (0.14 + waveOsc * 0.07) * actionEnv;
+        headRx += -0.06 * actionEnv;
+        uArmLRx = uArmLRx * (1 - actionEnv) + (-0.42) * actionEnv;
+        uArmLRz = uArmLRz * (1 - actionEnv) + ((relaxed ? 1.82 : 1.24) + waveOsc * 0.26) * actionEnv;
+        fArmLRx = fArmLRx * (1 - actionEnv) + (-0.36) * actionEnv;
+        fArmLRy = fArmLRy * (1 - actionEnv) + ((relaxed ? -0.16 : -0.35) + waveOsc * 0.52) * actionEnv;
+        handLRz = handLRz * (1 - actionEnv) + (waveOsc * 0.28) * actionEnv;
+        // Keep axe safely relaxed at right side
+        uArmRRx = uArmRRx * (1 - actionEnv) + (-0.08) * actionEnv;
+        fArmRRx = fArmRRx * (1 - actionEnv) + (-0.22) * actionEnv;
       } else if (action === 'stretch' && actionEnv > 0.001) {
         const stretchPeak = Math.sin(actionT * Math.PI);
-        spineRx += -0.16 * actionEnv;
-        chestRx += -0.22 * stretchPeak * actionEnv;
-        headRx += -0.2 * stretchPeak * actionEnv;
-        hipY += 0.03 * stretchPeak * s * actionEnv;
-        uArmLRx = uArmLRx * (1 - actionEnv) + (-2.25) * actionEnv;
-        uArmLRz = uArmLRz * (1 - actionEnv) + (0.45 + stretchPeak * 0.28) * actionEnv;
-        fArmLRx = fArmLRx * (1 - actionEnv) + (-0.38) * actionEnv;
-        uArmRRx = uArmRRx * (1 - actionEnv) + (-2.15) * actionEnv;
-        uArmRRz = uArmRRz * (1 - actionEnv) + (-0.45 - stretchPeak * 0.28) * actionEnv;
-        fArmRRx = fArmRRx * (1 - actionEnv) + (-0.38) * actionEnv;
+        spineRx += -0.18 * stretchPeak * actionEnv;
+        chestRx += -0.24 * stretchPeak * actionEnv;
+        headRx += -0.22 * stretchPeak * actionEnv;
+        hipY += 0.036 * stretchPeak * s * actionEnv;
+        uArmLRx = uArmLRx * (1 - actionEnv) + (-2.28) * actionEnv;
+        uArmLRz = uArmLRz * (1 - actionEnv) + ((relaxed ? 0.30 : 0.48) + stretchPeak * 0.26) * actionEnv;
+        fArmLRx = fArmLRx * (1 - actionEnv) + (-0.34) * actionEnv;
+        uArmRRx = uArmRRx * (1 - actionEnv) + (-2.12) * actionEnv;
+        uArmRRz = uArmRRz * (1 - actionEnv) + ((relaxed ? -0.30 : -0.48) - stretchPeak * 0.26) * actionEnv;
+        fArmRRx = fArmRRx * (1 - actionEnv) + (-0.36) * actionEnv;
       } else if (action === 'cheer' && actionEnv > 0.001) {
         const pump = Math.abs(Math.sin(actionT * Math.PI * 3.0));
-        hipY += pump * 0.085 * s * actionEnv;
-        chestRx += -0.14 * pump * actionEnv;
-        headRx += -0.16 * pump * actionEnv;
-        uArmLRx = uArmLRx * (1 - actionEnv) + (-1.95 - pump * 0.52) * actionEnv;
-        uArmLRz = uArmLRz * (1 - actionEnv) + (0.65 + pump * 0.22) * actionEnv;
-        fArmLRx = fArmLRx * (1 - actionEnv) + (-0.45 + pump * 0.25) * actionEnv;
-        uArmRRx = uArmRRx * (1 - actionEnv) + (-1.95 - pump * 0.52) * actionEnv;
-        uArmRRz = uArmRRz * (1 - actionEnv) + (-0.65 - pump * 0.22) * actionEnv;
-        fArmRRx = fArmRRx * (1 - actionEnv) + (-0.45 + pump * 0.25) * actionEnv;
+        hipY += (pump * 0.095 - 0.02) * s * actionEnv;
+        chestRx += -0.16 * pump * actionEnv;
+        headRx += -0.18 * pump * actionEnv;
+        shinLRx += (1 - pump) * 0.14 * actionEnv;
+        shinRRx += (1 - pump) * 0.14 * actionEnv;
+        uArmLRx = uArmLRx * (1 - actionEnv) + (-1.98 - pump * 0.54) * actionEnv;
+        uArmLRz = uArmLRz * (1 - actionEnv) + ((relaxed ? 0.36 : 0.65) + pump * 0.22) * actionEnv;
+        fArmLRx = fArmLRx * (1 - actionEnv) + (-0.42 + pump * 0.26) * actionEnv;
+        uArmRRx = uArmRRx * (1 - actionEnv) + (-1.92 - pump * 0.48) * actionEnv;
+        uArmRRz = uArmRRz * (1 - actionEnv) + ((relaxed ? -0.36 : -0.65) - pump * 0.22) * actionEnv;
+        fArmRRx = fArmRRx * (1 - actionEnv) + (-0.42 + pump * 0.24) * actionEnv;
       } else if (action === 'command' && actionEnv > 0.001) {
-        const pulse = Math.sin(actionT * Math.PI * 2.0) * 0.08;
-        spineRx += 0.12 * actionEnv;
-        chestRy += 0.22 * actionEnv;
-        headRy += -0.16 * actionEnv;
-        uArmLRx = uArmLRx * (1 - actionEnv) + (-1.42 + pulse) * actionEnv;
-        uArmLRy = uArmLRy * (1 - actionEnv) + (0.14) * actionEnv;
-        uArmLRz = uArmLRz * (1 - actionEnv) + (0.18) * actionEnv;
-        fArmLRx = fArmLRx * (1 - actionEnv) + (-0.08) * actionEnv;
-        fArmLRy = fArmLRy * (1 - actionEnv) + (-0.08) * actionEnv;
+        // Confident woodsman pointing / directing gesture forward
+        const pulse = Math.sin(actionT * Math.PI * 3.0) * 0.08;
+        hipRy += -0.16 * actionEnv;
+        spineRx += 0.08 * actionEnv;
+        chestRy += 0.24 * actionEnv;
+        headRy += -0.06 * actionEnv;
+        headRx += -0.05 * actionEnv;
+        // Left arm extends cleanly forward pointing toward horizon
+        uArmLRx = uArmLRx * (1 - actionEnv) + (-1.48 + pulse) * actionEnv;
+        uArmLRy = uArmLRy * (1 - actionEnv) + (relaxed ? 0.12 : 0.08) * actionEnv;
+        uArmLRz = uArmLRz * (1 - actionEnv) + (relaxed ? 0.16 : -0.08) * actionEnv;
+        fArmLRx = fArmLRx * (1 - actionEnv) + (-0.12 + pulse * 0.5) * actionEnv;
+        fArmLRy = fArmLRy * (1 - actionEnv) + 0 * actionEnv;
+        handLRx = handLRx * (1 - actionEnv) + (-0.06) * actionEnv;
+        // Right hand braces axe comfortably downward
+        uArmRRx = uArmRRx * (1 - actionEnv) + (0.10) * actionEnv;
+        fArmRRx = fArmRRx * (1 - actionEnv) + (-0.28) * actionEnv;
+      } else if (action === 'unload' && actionEnv > 0.001) {
+        const dip = Math.sin(actionT * Math.PI);
+        hipY -= dip * 0.24 * s * actionEnv;
+        spineRx += dip * 0.44 * actionEnv;
+        chestRx += dip * 0.18 * actionEnv;
+        thighLRx -= dip * 0.36 * actionEnv;
+        shinLRx += dip * 0.58 * actionEnv;
+        thighRRx -= dip * 0.36 * actionEnv;
+        shinRRx += dip * 0.58 * actionEnv;
       }
 
       // Midair Jump Pose (athletic knee tuck & arm balance)
       if (jumpY > 0.02) {
         const air = Math.min(1, jumpY / 0.85);
         thighLRx = thighLRx * (1 - air) + (-0.72) * air;
-        shinLRx = shinLRx * (1 - air) + (0.95) * air;
+        shinLRx = shinLRx * (1 - air) + (0.98) * air;
+        footLRx = footLRx * (1 - air) + 0.24 * air;
         thighRRx = thighRRx * (1 - air) + (-0.42) * air;
-        shinRRx = shinRRx * (1 - air) + (0.72) * air;
-        uArmLRz += 0.58 * air;
-        uArmRRz -= 0.52 * air;
+        shinRRx = shinRRx * (1 - air) + (0.74) * air;
+        footRRx = footRRx * (1 - air) + 0.24 * air;
+        uArmLRz += (relaxed ? 0.42 : 0.52) * air;
+        uArmRRz -= (relaxed ? 0.38 : 0.48) * air;
         spineRx += 0.14 * air;
       }
 
-      // Apply pose to 13-bone skeleton
+      // Apply full biomechanical pose to 17-bone skeleton
       b.hips.position.set(hipX, hipY, hipZ);
       b.hips.rotation.set(hipRx, hipRy, hipRz);
 
@@ -1547,13 +3049,33 @@ export function updatePlayerModelAnimation(playerModel, dt, moving, walkPhase, c
 
       b.thighL.rotation.set(thighLRx, thighLRy, thighLRz);
       b.shinL.rotation.set(shinLRx, 0, 0);
+      if (b.footL) b.footL.rotation.set(footLRx, 0, 0);
+
       b.thighR.rotation.set(thighRRx, thighRRy, thighRRz);
       b.shinR.rotation.set(shinRRx, 0, 0);
+      if (b.footR) b.footR.rotation.set(footRRx, 0, 0);
 
       b.upperArmL.rotation.set(uArmLRx, uArmLRy, uArmLRz);
       b.foreArmL.rotation.set(fArmLRx, fArmLRy, fArmLRz);
+      if (b.handL) b.handL.rotation.set(handLRx, handLRy, handLRz);
+
       b.upperArmR.rotation.set(uArmRRx, uArmRRy, uArmRRz);
       b.foreArmR.rotation.set(fArmRRx, fArmRRy, fArmRRz);
+      if (b.handR) b.handR.rotation.set(handRRx, handRRy, handRRz);
+
+      // Enforce anatomical shoulder rotation limits & 3D hip-clearance guard (prevents arm-to-hip clipping & mesh distortion)
+      applyShoulderRotationConstraints(rig);
+
+      // Apply Analytical 2-Bone Foot-Locking IK onto stance feet (locks boots to world terrain with zero foot sliding)
+      const activeRootYaw = (options && Number.isFinite(options.rootYaw)) ? options.rootYaw : playerModel.rotation.y;
+      _ikParams.uL = uL;
+      _ikParams.uR = uR;
+      _ikParams.btState = bt;
+      _ikParams.jumpY = jumpY;
+      _ikParams.inWater = inWater;
+      _ikParams.getGroundHeight = options ? options.getGroundHeight : null;
+      _ikParams.rootYaw = activeRootYaw;
+      applyTwoBoneFootIK(rig, st.ikState, clampedDt, _ikParams);
       return;
     }
 
@@ -1775,7 +3297,7 @@ function getTreeAssets(kind) {
   return sharedTreeAssets[kind];
 }
 
-export function createTreeModel(kind = 'pine', variant = 0) {
+export function createTreeModel(kind = 'pine', variant = 0, options = {}) {
   const assets = getTreeAssets(kind);
   const g = new THREE.Group();
 
@@ -1792,8 +3314,13 @@ export function createTreeModel(kind = 'pine', variant = 0) {
   stump.visible = false;
   g.add(stump);
 
-  // Full tree canopy group (wobbles on chop & hides when felled)
+  // Felling pivot anchored near stump base so trees tip over realistically when chopped down
+  const fallPivot = new THREE.Group();
+  fallPivot.position.y = 0.22;
   const canopy = new THREE.Group();
+  canopy.position.y = -0.22;
+  fallPivot.add(canopy);
+
   const fallback = new THREE.Group();
 
   const rootFlare = new THREE.Mesh(assets.rootGeo, assets.barkMat);
@@ -1817,16 +3344,14 @@ export function createTreeModel(kind = 'pine', variant = 0) {
 
   const glbHolder = new THREE.Group();
   canopy.add(glbHolder);
-  const url = kind === 'oak'
-    ? (variant % 2 === 0 ? FOREST_ASSETS.oakTree1 : FOREST_ASSETS.oakTree2)
-    : kind === 'redwood'
-      ? FOREST_ASSETS.pineTree2
-      : (variant % 2 === 0 ? FOREST_ASSETS.pineTree1 : FOREST_ASSETS.pineTree2);
-  const targetHeight = kind === 'redwood' ? 9.8 : kind === 'oak' ? 7.6 : 8.4;
+  const url = options.modelUrl || (kind === 'oak'
+    ? FOREST_ASSETS.oakGithub
+    : FOREST_ASSETS.pineGithub);
+  const targetHeight = options.targetHeight || (kind === 'redwood' ? 11.4 : kind === 'oak' ? 8.4 : 9.2);
   mountNormalizedGlb(glbHolder, url, { targetHeight, yaw: 0, placeholder: fallback });
 
-  g.add(canopy);
-  g.userData = { canopy, trunk, stump, glbHolder };
+  g.add(fallPivot);
+  g.userData = { fallPivot, canopy, trunk, stump, glbHolder };
   return g;
 }
 
@@ -2509,6 +4034,7 @@ export function createWorkerModel(role = 'lumberjack') {
         b.upperArmR.rotation.x += (armRX - b.upperArmR.rotation.x) * damp;
         b.upperArmR.rotation.z += (armRZ - b.upperArmR.rotation.z) * damp;
         b.foreArmR.rotation.x += (foreRX - b.foreArmR.rotation.x) * damp;
+        applyShoulderRotationConstraints(rig);
         b.thighL.rotation.x += (thighLX - b.thighL.rotation.x) * damp;
         b.shinL.rotation.x += (shinLX - b.shinL.rotation.x) * damp;
         b.thighR.rotation.x += (thighRX - b.thighR.rotation.x) * damp;
